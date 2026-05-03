@@ -43,6 +43,7 @@ struct MacWindowConfigurator: NSViewRepresentable {
         window.styleMask.remove(.borderless)
         window.isMovableByWindowBackground = true
         window.backgroundColor = NSColor(Theme.background)
+        window.showsResizeIndicator = false
 
         // Do not hide or remove the standard close/minimize/zoom buttons.
         for buttonType in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {

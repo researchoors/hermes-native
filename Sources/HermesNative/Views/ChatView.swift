@@ -69,7 +69,7 @@ struct ChatView: View {
             // Message list
             ScrollViewReader { proxy in
                 ZStack(alignment: .bottom) {
-                    ScrollView {
+                    ScrollView(showsIndicators: false) {
                         GeometryReader { viewport in
                             Color.clear.preference(
                                 key: ChatViewportHeightKey.self,
@@ -166,6 +166,9 @@ struct ChatView: View {
                     #endif
                 }
                 .background(activeSkin.background)
+                #if os(macOS)
+                .scrollIndicators(.hidden)
+                #endif
                 #if os(iOS)
                 .scrollDismissesKeyboard(.interactively)
                 #endif
