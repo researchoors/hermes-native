@@ -278,12 +278,25 @@ final class ChatViewModel: ObservableObject {
 
             let parsedMessages = Self.parseHistoryMessages(result.messages)
             if !parsedMessages.isEmpty {
-                sessionStates[key] = SessionRuntimeState(
-                    messages: parsedMessages,
-                    isStreaming: false,
-                    isSessionReady: true,
-                    sessionTitle: cachedBeforeResume?.sessionTitle ?? sessionTitle
-                )
+                if var liveState = sessionStates[key], liveState.isStreaming {
+                    // The gateway history returned by session.resume is a persisted
+                    // snapshot and can lag behind the currently running turn. Do not
+                    // replace an in-memory live stream with non-streaming history when
+                    // the user clicks away and back mid-tool-use; that is the exact
+                    // path that made the live session appear to disappear.
+                    if liveState.messages.isEmpty {
+                        liveState.messages = parsedMessages
+                    }
+                    liveState.isSessionReady = true
+                    sessionStates[key] = liveState
+                } else {
+                    sessionStates[key] = SessionRuntimeState(
+                        messages: parsedMessages,
+                        isStreaming: false,
+                        isSessionReady: true,
+                        sessionTitle: cachedBeforeResume?.sessionTitle ?? sessionTitle
+                    )
+                }
             } else if cachedBeforeResume == nil, let cachedMessages = ChatHistoryStore.shared.loadMessages(forSession: key) {
                 sessionStates[key] = SessionRuntimeState(
                     messages: cachedMessages,
@@ -554,6 +567,25 @@ final class ChatViewModel: ObservableObject {
     var testCachedMessageCount: Int {
         guard let sessionID else { return 0 }
         return sessionStates[displaySessionID(for: sessionID)]?.messages.count ?? 0
+    }
+
+    func simulateTestResumeResult(displayID: String, runtimeID: String, history: [ChatMessage]) {
+        stableSessionByGatewayID[runtimeID] = displayID
+        gatewayIDByStableSession[displayID] = runtimeID
+        if var liveState = sessionStates[displayID], liveState.isStreaming {
+            if liveState.messages.isEmpty {
+                liveState.messages = history
+            }
+            liveState.isSessionReady = true
+            sessionStates[displayID] = liveState
+        } else {
+            sessionStates[displayID] = SessionRuntimeState(
+                messages: history,
+                isStreaming: false,
+                isSessionReady: true
+            )
+        }
+        _ = restoreSessionState(displayID: displayID, runtimeID: runtimeID)
     }
 
     func applyTestEvent(_ event: GatewayEvent, sessionID: String) {

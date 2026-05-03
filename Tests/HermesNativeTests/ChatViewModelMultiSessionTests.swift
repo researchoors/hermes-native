@@ -64,6 +64,34 @@ struct ChatViewModelMultiSessionTests {
         #expect(vm.testCachedMessageCount == 1)
     }
 
+    @Test("resume history does not overwrite an in-memory live stream")
+    @MainActor
+    func liveStreamSurvivesLaggingResumeHistory() async {
+        let vm = ChatViewModel()
+
+        let live = vm.createLocalTestSession(id: "session-a")
+        vm.applyTestEvent(.messageStart, sessionID: live)
+        vm.applyTestEvent(.messageDelta(text: "live-partial", rendered: nil), sessionID: live)
+        vm.applyTestEvent(.toolStart(payload: ToolStartPayload(toolID: "tool-a", name: "terminal", context: "running")), sessionID: live)
+        vm.bindRuntimeSession(displayID: "20260503_180000_live", runtimeID: live)
+
+        // Simulate the resume path getting a non-empty persisted history while
+        // the live tool turn is still in memory. The visible state must stay live.
+        vm.simulateTestResumeResult(
+            displayID: "20260503_180000_live",
+            runtimeID: live,
+            history: [ChatMessage(role: .user, content: "older prompt")]
+        )
+
+        vm.switchToLocalTestSession(id: "20260503_180000_live")
+        #expect(vm.currentSessionID == live)
+        #expect(vm.isStreaming)
+        #expect(vm.messages.count == 1)
+        #expect(vm.messages[0].role == .assistant)
+        #expect(vm.messages[0].content == "live-partial")
+        #expect(vm.activeToolCalls["tool-a"]?.name == "terminal")
+    }
+
     @Test("completing a background running session preserves selected foreground session")
     @MainActor
     func backgroundCompletionDoesNotStealForegroundSelection() async {
