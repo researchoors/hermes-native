@@ -35,8 +35,23 @@ final class ChatViewModel: ObservableObject {
     @Published var sessionTitle: String = "New Chat"
     @Published private(set) var createGeneration: Int = 0
 
+    private struct SessionRuntimeState {
+        var messages: [ChatMessage] = []
+        var isStreaming: Bool = false
+        var isSessionReady: Bool = false
+        var pendingApproval: ApprovalPayload?
+        var activeToolCalls: [String: ToolCallRecord] = [:]
+        var error: String?
+        var avatarState: AvatarState = .idle
+        var sessionTitle: String = "New Chat"
+        var streamingMessageID: UUID?
+    }
+
     private var gatewayClient: GatewayClient?
     private var sessionID: String?
+    private var stableSessionByGatewayID: [String: String] = [:]
+    private var gatewayIDByStableSession: [String: String] = [:]
+    private var sessionStates: [String: SessionRuntimeState] = [:]
     private var streamingMessageID: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var isCreatingSession = false  // Guard against double-trigger
@@ -119,6 +134,55 @@ final class ChatViewModel: ObservableObject {
     /// The session ID currently active in this chat view.
     var currentSessionID: String? { sessionID }
 
+    private func displaySessionID(for runtimeID: String) -> String {
+        stableSessionByGatewayID[runtimeID] ?? runtimeID
+    }
+
+    private func runtimeSessionID(for displayID: String) -> String {
+        gatewayIDByStableSession[displayID] ?? displayID
+    }
+
+    private func snapshotCurrentSessionState() {
+        guard let sessionID else { return }
+        let displayID = displaySessionID(for: sessionID)
+        sessionStates[displayID] = SessionRuntimeState(
+            messages: messages,
+            isStreaming: isStreaming,
+            isSessionReady: isSessionReady,
+            pendingApproval: pendingApproval,
+            activeToolCalls: activeToolCalls,
+            error: error,
+            avatarState: avatarState,
+            sessionTitle: sessionTitle,
+            streamingMessageID: streamingMessageID
+        )
+    }
+
+    private func restoreSessionState(displayID: String, runtimeID: String? = nil) -> Bool {
+        guard let state = sessionStates[displayID] else { return false }
+        sessionID = runtimeID ?? runtimeSessionID(for: displayID)
+        messages = state.messages
+        isStreaming = state.isStreaming
+        isSessionReady = state.isSessionReady
+        pendingApproval = state.pendingApproval
+        activeToolCalls = state.activeToolCalls
+        error = state.error
+        avatarState = state.avatarState
+        sessionTitle = state.sessionTitle
+        streamingMessageID = state.streamingMessageID
+        return true
+    }
+
+    private func mutateSessionState(for eventSessionID: String, _ mutation: (inout SessionRuntimeState) -> Void) {
+        let displayID = displaySessionID(for: eventSessionID)
+        var state = sessionStates[displayID] ?? SessionRuntimeState()
+        mutation(&state)
+        sessionStates[displayID] = state
+        if sessionID == eventSessionID || displaySessionID(for: sessionID ?? "") == displayID {
+            _ = restoreSessionState(displayID: displayID, runtimeID: eventSessionID)
+        }
+    }
+
     /// Create a new session on the gateway.
     func createSession() async {
         guard let client = gatewayClient else {
@@ -134,12 +198,18 @@ final class ChatViewModel: ObservableObject {
         do {
             let sid = try await client.createSession()
             NSLog("[HermesNative] ChatViewModel createSession succeeded sid=\(sid)")
+            snapshotCurrentSessionState()
             self.sessionID = sid
             self.createGeneration += 1
             self.isSessionReady = true
             self.messages = []
             self.activeToolCalls = [:]
+            self.pendingApproval = nil
+            self.streamingMessageID = nil
+            self.isStreaming = false
+            self.avatarState = .idle
             self.error = nil
+            snapshotCurrentSessionState()
 
             await applyEphemeralPrompt(for: sid, using: client)
         } catch {
@@ -148,8 +218,12 @@ final class ChatViewModel: ObservableObject {
         isCreatingSession = false
     }
 
-    /// Resume an existing session by key, replacing the current chat state.
+    /// Resume an existing session by key, replacing the currently visible chat state.
+    /// Existing live state for the previously selected session is snapshotted first,
+    /// so switching away from an active reasoning/tool turn does not discard it.
     func resumeSession(key: String) async {
+        snapshotCurrentSessionState()
+
         guard let client = gatewayClient else {
             self.error = "No gateway client"
             return
@@ -158,17 +232,42 @@ final class ChatViewModel: ObservableObject {
             self.error = "Not connected to gateway"
             return
         }
+
+        let cachedBeforeResume = sessionStates[key]
+
         do {
             let result = try await client.resumeSession(key: key)
-            self.sessionID = result.sessionID
-            self.isSessionReady = true
-            self.activeToolCalls = [:]
-            self.isStreaming = false
-            self.avatarState = .idle
-            self.error = nil
+            stableSessionByGatewayID[result.sessionID] = key
+            gatewayIDByStableSession[key] = result.sessionID
 
-            // Parse history messages from the gateway
-            self.messages = Self.parseHistoryMessages(result.messages)
+            let parsedMessages = Self.parseHistoryMessages(result.messages)
+            if !parsedMessages.isEmpty {
+                sessionStates[key] = SessionRuntimeState(
+                    messages: parsedMessages,
+                    isStreaming: false,
+                    isSessionReady: true,
+                    sessionTitle: cachedBeforeResume?.sessionTitle ?? sessionTitle
+                )
+            } else if cachedBeforeResume == nil, let cachedMessages = ChatHistoryStore.shared.loadMessages(forSession: key) {
+                sessionStates[key] = SessionRuntimeState(
+                    messages: cachedMessages,
+                    isStreaming: false,
+                    isSessionReady: true
+                )
+            }
+
+            if !restoreSessionState(displayID: key, runtimeID: result.sessionID) {
+                self.sessionID = result.sessionID
+                self.isSessionReady = true
+                self.messages = []
+                self.activeToolCalls = [:]
+                self.pendingApproval = nil
+                self.isStreaming = false
+                self.streamingMessageID = nil
+                self.avatarState = .idle
+                self.error = nil
+                snapshotCurrentSessionState()
+            }
 
             await applyEphemeralPrompt(for: result.sessionID, using: client)
         } catch {
@@ -277,6 +376,7 @@ final class ChatViewModel: ObservableObject {
 
         // Persist user message immediately
         saveHistory()
+        snapshotCurrentSessionState()
 
         // Prepare streaming assistant message
         let assistantMessage = ChatMessage(
@@ -286,6 +386,7 @@ final class ChatViewModel: ObservableObject {
         )
         streamingMessageID = assistantMessage.id
         messages.append(assistantMessage)
+        snapshotCurrentSessionState()
 
         do {
             try await client.submitPrompt(sessionID: sid, text: text)
@@ -362,53 +463,216 @@ final class ChatViewModel: ObservableObject {
     func saveHistory() {
         guard let sid = sessionID, !messages.isEmpty else { return }
         ChatHistoryStore.shared.saveMessages(messages, forSession: sid)
+        let displayID = displaySessionID(for: sid)
+        if displayID != sid {
+            ChatHistoryStore.shared.saveMessages(messages, forSession: displayID)
+        }
     }
 
     /// Load messages from local disk for a session (instant, no network).
     func loadLocalHistory(sessionID: String) {
+        snapshotCurrentSessionState()
+        if restoreSessionState(displayID: sessionID) {
+            return
+        }
         if let cached = ChatHistoryStore.shared.loadMessages(forSession: sessionID) {
             self.messages = cached
-            self.sessionID = sessionID
+            self.sessionID = runtimeSessionID(for: sessionID)
             self.isSessionReady = true
+            self.isStreaming = false
+            self.streamingMessageID = nil
+            self.activeToolCalls = [:]
+            snapshotCurrentSessionState()
         }
     }
 
     /// Delete local history for a session.
     func deleteLocalHistory(sessionID: String) {
         ChatHistoryStore.shared.deleteMessages(forSession: sessionID)
+        sessionStates.removeValue(forKey: sessionID)
     }
+
+#if DEBUG
+    @discardableResult
+    func createLocalTestSession(id: String) -> String {
+        snapshotCurrentSessionState()
+        sessionID = id
+        messages = []
+        isStreaming = false
+        isSessionReady = true
+        pendingApproval = nil
+        activeToolCalls = [:]
+        error = nil
+        avatarState = .idle
+        sessionTitle = "New Chat"
+        streamingMessageID = nil
+        snapshotCurrentSessionState()
+        return id
+    }
+
+    func switchToLocalTestSession(id: String) {
+        snapshotCurrentSessionState()
+        _ = restoreSessionState(displayID: id, runtimeID: runtimeSessionID(for: id))
+    }
+
+    func applyTestEvent(_ event: GatewayEvent, sessionID: String) {
+        applySessionEvent(event, to: sessionID)
+    }
+#endif
 
     // MARK: - Event Handling
 
-    private func shouldApplyEvent(sessionID eventSessionID: String?, event: GatewayEvent) -> Bool {
+    private func shouldApplyGlobalEvent(_ event: GatewayEvent) -> Bool {
         switch event {
         case .gatewayReady, .backgroundComplete, .skinChanged, .voiceTranscript, .voiceStatus:
             return true
         default:
+            return false
+        }
+    }
+
+    private func applySessionEvent(_ event: GatewayEvent, to eventSessionID: String) {
+        let displayID = displaySessionID(for: eventSessionID)
+        var state = sessionStates[displayID] ?? SessionRuntimeState()
+
+        if event.isLiveTurnEvent && !state.isStreaming {
+            switch event {
+            case .messageStart:
+                break
+            default:
+                let reason = "late live-turn event after stream ended"
+                NSLog("[HermesNative] ChatViewModel ignored late live event after stream ended: \(event.debugName)")
+                gatewayClient?.recordDroppedEvent(event, sessionID: eventSessionID, reason: reason)
+                return
+            }
+        }
+
+        switch event {
+        case .sessionInfo(let info):
+            currentModel = info.model
+            state.isSessionReady = true
+
+        case .messageStart:
+            state.isStreaming = true
+            state.avatarState = .speaking
+            if state.streamingMessageID == nil {
+                let assistantMessage = ChatMessage(role: .assistant, content: "", isStreaming: true)
+                state.streamingMessageID = assistantMessage.id
+                state.messages.append(assistantMessage)
+            }
+
+        case .messageDelta(let text, _):
+            if let msgID = state.streamingMessageID,
+               let idx = state.messages.firstIndex(where: { $0.id == msgID }) {
+                state.messages[idx].content += text
+            }
+
+        case .messageComplete(payload: let payload):
+            guard let msgID = state.streamingMessageID,
+                  let idx = state.messages.firstIndex(where: { $0.id == msgID }) else {
+                state.activeToolCalls = [:]
+                break
+            }
+            state.messages[idx].content = payload.text
+            state.messages[idx].isStreaming = false
+            state.messages[idx].usage = payload.usage
+            state.messages[idx].status = payload.status
+            state.messages[idx].reasoning = payload.reasoning
+            state.messages[idx].toolCalls = Array(state.activeToolCalls.values)
+            state.activeToolCalls = [:]
+            state.isStreaming = false
+            state.streamingMessageID = nil
+            state.avatarState = .idle
+
+        case .toolStart(payload: let payload):
+            state.avatarState = .toolUse
+            state.activeToolCalls[payload.toolID] = ToolCallRecord(
+                id: payload.toolID,
+                name: payload.name,
+                context: payload.context
+            )
+
+        case .toolComplete(payload: let payload):
+            if var record = state.activeToolCalls[payload.toolID] {
+                record.summary = payload.summary
+                record.durationSeconds = payload.durationSeconds
+                record.inlineDiff = payload.inlineDiff
+                record.isComplete = true
+                state.activeToolCalls[payload.toolID] = record
+            }
+
+        case .toolProgress(let name, let preview):
+            for (key, var record) in state.activeToolCalls where record.name == name && !record.isComplete {
+                record.context = preview
+                state.activeToolCalls[key] = record
+            }
+
+        case .reasoningDelta(let text):
+            if state.avatarState != .toolUse { state.avatarState = .thinking }
+            if let idx = state.messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
+                state.messages[idx].reasoning = (state.messages[idx].reasoning ?? "") + text
+            }
+
+        case .thinkingDelta(let text):
+            if state.avatarState != .toolUse { state.avatarState = .thinking }
+            if let idx = state.messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
+                let existing = state.messages[idx].reasoning ?? ""
+                let separator = existing.isEmpty ? "" : "\n"
+                state.messages[idx].reasoning = existing + separator + text
+            }
+
+        case .approvalRequest(payload: let payload):
+            state.pendingApproval = payload
+
+        case .error(let message):
+            state.error = message
+            state.isStreaming = false
+            state.avatarState = .error
+
+        case .statusUpdate, .toolGenerating, .reasoningAvailable,
+             .gatewayReady, .skinChanged, .backgroundComplete,
+             .clarifyRequest, .sudoRequest, .secretRequest,
+             .voiceTranscript, .voiceStatus,
+             .subagentSpawnRequested, .subagentStart, .subagentComplete,
+             .subagentTool, .subagentProgress, .subagentThinking:
             break
         }
 
-        guard let eventSessionID, !eventSessionID.isEmpty else {
-            return true
+        sessionStates[displayID] = state
+        if displaySessionID(for: sessionID ?? "") == displayID {
+            _ = restoreSessionState(displayID: displayID, runtimeID: eventSessionID)
         }
-        guard let current = sessionID, !current.isEmpty else {
-            return false
+
+        if case .messageComplete(let payload) = event {
+            ChatHistoryStore.shared.saveMessages(state.messages, forSession: eventSessionID)
+            if displayID != eventSessionID {
+                ChatHistoryStore.shared.saveMessages(state.messages, forSession: displayID)
+            }
+            #if !DEBUG
+            NotificationService.shared.notifyResponseComplete(
+                sessionTitle: state.sessionTitle,
+                preview: payload.text.truncated(to: 80),
+                sessionID: eventSessionID
+            )
+            #endif
+        } else if case .approvalRequest(let payload) = event {
+            #if !DEBUG
+            NotificationService.shared.notifyApproval(
+                sessionTitle: state.sessionTitle,
+                command: payload.command,
+                sessionID: eventSessionID
+            )
+            #endif
         }
-        return eventSessionID == current
     }
 
     private func handleEvent(_ event: GatewayEvent, eventSessionID: String?) {
-        guard shouldApplyEvent(sessionID: eventSessionID, event: event) else {
-            let reason = "session mismatch current=\(sessionID ?? "nil")"
-            NSLog("[HermesNative] ChatViewModel ignored event for session=\(eventSessionID ?? "nil") current=\(sessionID ?? "nil") event=\(event.debugName)")
-            gatewayClient?.recordDroppedEvent(event, sessionID: eventSessionID, reason: reason)
+        if let eventSessionID, !eventSessionID.isEmpty {
+            applySessionEvent(event, to: eventSessionID)
             return
         }
 
-        if event.isLiveTurnEvent && !isStreaming {
-            let reason = "late live-turn event after stream ended"
-            NSLog("[HermesNative] ChatViewModel ignored late live event after stream ended: \(event.debugName)")
-            gatewayClient?.recordDroppedEvent(event, sessionID: eventSessionID, reason: reason)
+        guard shouldApplyGlobalEvent(event) || sessionID != nil else {
             return
         }
 

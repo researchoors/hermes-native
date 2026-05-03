@@ -1,0 +1,75 @@
+import Testing
+import Foundation
+@testable import HermesNative
+
+@Suite("ChatViewModel multi-session switching")
+struct ChatViewModelMultiSessionTests {
+    @Test("events for an actively running session keep updating while another session is selected")
+    @MainActor
+    func runningSessionContinuesWhileAnotherSessionIsSelected() async {
+        let vm = ChatViewModel()
+
+        let first = vm.createLocalTestSession(id: "session-a")
+        vm.applyTestEvent(.messageStart, sessionID: first)
+        vm.applyTestEvent(.reasoningDelta(text: "thinking-a"), sessionID: first)
+        vm.applyTestEvent(.toolStart(payload: ToolStartPayload(toolID: "tool-a", name: "read_file", context: "opening file")), sessionID: first)
+
+        let second = vm.createLocalTestSession(id: "session-b")
+        #expect(vm.currentSessionID == second)
+        #expect(vm.messages.isEmpty)
+
+        vm.applyTestEvent(.reasoningDelta(text: " still-thinking-a"), sessionID: first)
+        vm.applyTestEvent(.toolComplete(payload: ToolCompletePayload(
+            toolID: "tool-a",
+            name: "read_file",
+            summary: "read file complete",
+            durationSeconds: 1.2,
+            inlineDiff: nil,
+            todos: nil
+        )), sessionID: first)
+        vm.applyTestEvent(.messageDelta(text: "answer-a", rendered: nil), sessionID: first)
+
+        #expect(vm.currentSessionID == second)
+        #expect(vm.messages.isEmpty)
+
+        vm.switchToLocalTestSession(id: first)
+        #expect(vm.currentSessionID == first)
+        #expect(vm.isStreaming)
+        #expect(vm.messages.count == 1)
+        #expect(vm.messages[0].reasoning == "thinking-a still-thinking-a")
+        #expect(vm.messages[0].content == "answer-a")
+        #expect(vm.activeToolCalls.count == 1)
+        #expect(vm.activeToolCalls["tool-a"]?.isComplete == true)
+    }
+
+    @Test("completing a background running session preserves selected foreground session")
+    @MainActor
+    func backgroundCompletionDoesNotStealForegroundSelection() async {
+        let vm = ChatViewModel()
+
+        let first = vm.createLocalTestSession(id: "session-a")
+        vm.applyTestEvent(.messageStart, sessionID: first)
+        vm.applyTestEvent(.reasoningDelta(text: "reasoning"), sessionID: first)
+        let second = vm.createLocalTestSession(id: "session-b")
+
+        vm.applyTestEvent(.messageComplete(payload: MessageCompletePayload(
+            text: "done-a",
+            status: "complete",
+            usage: nil,
+            reasoning: "final reasoning",
+            rendered: nil,
+            warning: nil
+        )), sessionID: first)
+
+        #expect(vm.currentSessionID == second)
+        #expect(vm.messages.isEmpty)
+
+        vm.switchToLocalTestSession(id: first)
+        #expect(vm.currentSessionID == first)
+        #expect(!vm.isStreaming)
+        #expect(vm.messages.count == 1)
+        #expect(vm.messages[0].content == "done-a")
+        #expect(vm.messages[0].status == "complete")
+        #expect(vm.messages[0].reasoning == "final reasoning")
+    }
+}
