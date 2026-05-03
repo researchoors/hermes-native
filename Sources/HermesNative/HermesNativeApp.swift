@@ -37,15 +37,10 @@ struct MacWindowConfigurator: NSViewRepresentable {
     private func configure(window: NSWindow?) {
         guard let window else { return }
 
-        window.titlebarAppearsTransparent = false
+        window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        // Keep a normal titled/closable/resizable window. Do NOT use
-        // fullSizeContentView here: on current macOS/SwiftUI builds the app's
-        // full-bleed sidebar content can cover the titlebar control container,
-        // making the traffic lights disappear even when their isHidden flags are
-        // false. A normal titlebar is the boring reliable fix.
-        window.styleMask.insert([.titled, .closable, .miniaturizable, .resizable])
-        window.styleMask.remove([.borderless, .fullSizeContentView])
+        window.styleMask.insert([.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+        window.styleMask.remove(.borderless)
         window.isMovableByWindowBackground = true
         window.backgroundColor = NSColor(Theme.background)
 
