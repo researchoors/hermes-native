@@ -161,8 +161,11 @@ struct ChatView: View {
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 18)
-                    .frame(maxWidth: .infinity, alignment: .bottom)
-                    .background(Color.clear)
+                    // Keep the macOS composer overlay's hit-test region tight to
+                    // the visible form. A full-width transparent frame here can
+                    // continue intercepting clicks after NSTextField resigns
+                    // focus, making the sidebar/session list feel dead.
+                    .frame(maxWidth: 808, alignment: .bottom)
                     #endif
                 }
                 .background(activeSkin.background)
