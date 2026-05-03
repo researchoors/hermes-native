@@ -12,6 +12,7 @@ struct SessionListView: View {
     var onMissionControl: ((String) -> Void)?
     var onCreateSession: (() -> Void)?
     var onOpenPanel: (() -> Void)?
+    var onOpenSkills: (() -> Void)?
     var onToggleSidebar: (() -> Void)?
 
     @State private var mySessionsCollapsed = false
@@ -347,6 +348,15 @@ struct SessionListView: View {
                     accessibilityID: "panelToggleButton",
                     isPrimary: false,
                     action: { onOpenPanel?() }
+                )
+
+                sidebarHeaderButton(
+                    icon: "books.vertical",
+                    title: "Skills",
+                    accessibilityLabel: "Open Skills",
+                    accessibilityID: "skillsButton",
+                    isPrimary: false,
+                    action: { onOpenSkills?() }
                 )
             }
         }

@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var missionControlSessionID: String?
     @State private var observerSession: Session?
     @State private var showCronSheet = false
+    @State private var showSkillsSheet = false
     @State private var showGatewayDebugSheet = false
     @State private var selectedTab = 0
     @State private var isCreatingSession = false
@@ -88,6 +89,13 @@ struct ContentView: View {
                 Label("Cron", systemImage: "clock.badge.checkmark")
             }
             .tag(1)
+
+            SkillsView()
+                .environmentObject(gatewayClientWrapper)
+                .tabItem {
+                    Label("Skills", systemImage: "books.vertical")
+                }
+                .tag(2)
         }
     }
 
@@ -102,6 +110,9 @@ struct ContentView: View {
                 },
                 onOpenPanel: {
                     showCronSheet = true
+                },
+                onOpenSkills: {
+                    showSkillsSheet = true
                 },
                 onToggleSidebar: nil
             )
@@ -196,6 +207,11 @@ struct ContentView: View {
                     .presentationDetents([.large])
             }
         }
+        .sheet(isPresented: $showSkillsSheet) {
+            SkillsView()
+                .environmentObject(gatewayClientWrapper)
+                .presentationDetents([.large])
+        }
     }
 
     #endif
@@ -213,6 +229,11 @@ struct ContentView: View {
                         #endif
                 }
                 .frame(minWidth: 500, minHeight: 400)
+            }
+            .sheet(isPresented: $showSkillsSheet) {
+                SkillsView()
+                    .environmentObject(gatewayClientWrapper)
+                    .frame(minWidth: 900, minHeight: 640)
             }
             .sheet(isPresented: $showGatewayDebugSheet) {
                 GatewayDebugPanelView(client: gatewayClientWrapper.client)
@@ -233,6 +254,9 @@ struct ContentView: View {
                 },
                 onOpenPanel: {
                     showCronSheet = true
+                },
+                onOpenSkills: {
+                    showSkillsSheet = true
                 },
                 onToggleSidebar: {
                     toggleSidebarColumn()

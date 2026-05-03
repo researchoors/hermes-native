@@ -470,6 +470,72 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
 
     // MARK: - Convenience Methods
 
+    func listSkills() async throws -> [SkillSummary] {
+        let response = try await call("skills.list")
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let result = response.result?.dictionaryValue else { return [] }
+        return result["skills"]?.arrayValue?.compactMap { item in
+            guard let d = item.dictionaryValue else { return nil }
+            return SkillSummary.from(d)
+        } ?? []
+    }
+
+    func skillTree() async throws -> [SkillFileNode] {
+        let response = try await call("skills.tree")
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let result = response.result?.dictionaryValue else { return [] }
+        return result["roots"]?.arrayValue?.compactMap { item in
+            guard let d = item.dictionaryValue else { return nil }
+            return SkillFileNode.from(d)
+        } ?? []
+    }
+
+    func getSkill(skillID: String, filePath: String? = nil) async throws -> SkillDocument {
+        var params: [String: AnyCodable] = ["skill_id": AnyCodable(skillID)]
+        if let filePath {
+            params["file_path"] = AnyCodable(filePath)
+        }
+        let response = try await call("skills.get", params: params)
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let result = response.result?.dictionaryValue,
+              let document = SkillDocument.from(result) else {
+            throw GatewayError.invalidResponse("missing skill document in skills.get response")
+        }
+        return document
+    }
+
+    func skillGraph() async throws -> SkillGraph {
+        let response = try await call("skills.graph")
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let result = response.result?.dictionaryValue else { return .empty }
+        return SkillGraph.from(result)
+    }
+
+    @discardableResult
+    func updateSkill(skillID: String, content: String) async throws -> SkillSummary {
+        let response = try await call("skills.update", params: [
+            "skill_id": AnyCodable(skillID),
+            "content": AnyCodable(content),
+        ])
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let result = response.result?.dictionaryValue,
+              let skillDict = result["skill"]?.dictionaryValue,
+              let skill = SkillSummary.from(skillDict) else {
+            throw GatewayError.invalidResponse("missing skill in skills.update response")
+        }
+        return skill
+    }
+
     /// Create a new agent session.
     func createSession(cols: Int = 120) async throws -> String {
         let response = try await call("session.create", params: ["cols": AnyCodable(cols)])
