@@ -242,10 +242,6 @@ struct ContentView: View {
                 .environmentObject(chatViewModel)
                 .environmentObject(gatewayClientWrapper)
                 .navigationTitle("")
-                #if os(macOS)
-                .toolbar(.hidden, for: .windowToolbar)
-                .toolbarBackground(.hidden, for: .windowToolbar)
-                #endif
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
@@ -257,8 +253,6 @@ struct ContentView: View {
         }
         #if os(macOS)
         .navigationSplitViewStyle(.balanced)
-        .toolbar(.hidden, for: .windowToolbar)
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         #endif

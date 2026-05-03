@@ -238,9 +238,7 @@ struct ChatView: View {
         }
         #if os(macOS)
         .navigationTitle("")
-        .toolbar(.hidden, for: .windowToolbar)
-        .toolbarBackground(.hidden, for: .windowToolbar)
-        .background(activeSkin.background.ignoresSafeArea())
+        .background(activeSkin.background)
         #else
         .navigationTitle(chatViewModel.sessionTitle)
         .navigationBarTitleDisplayMode(.inline)
