@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var missionControlSessionID: String?
     @State private var observerSession: Session?
     @State private var showCronSheet = false
+    @State private var showGatewayDebugSheet = false
     @State private var selectedTab = 0
     @State private var isCreatingSession = false
     @State private var sessionCreationError: String?
@@ -131,6 +132,16 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom) {
                 sessionCreationStatusBar
             }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showGatewayDebugSheet = true
+                    } label: {
+                        Image(systemName: "wave.3.right.circle")
+                    }
+                    .accessibilityLabel("Gateway Debug")
+                }
+            }
             .onOpenURL { url in
                 guard url.scheme == "hermesnative", url.host == "new-session" else { return }
                 Task { await createAndSwitchToNewSession() }
@@ -204,6 +215,10 @@ struct ContentView: View {
                 }
                 .frame(minWidth: 500, minHeight: 400)
             }
+            .sheet(isPresented: $showGatewayDebugSheet) {
+                GatewayDebugPanelView(client: gatewayClientWrapper.client)
+                    .frame(minWidth: 560, minHeight: 620)
+            }
     }
 
     // MARK: - Session + Chat Layout
@@ -225,6 +240,17 @@ struct ContentView: View {
                 .environmentObject(chatViewModel)
                 .environmentObject(gatewayClientWrapper)
                 .navigationTitle("Sessions")
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        Button {
+                            showGatewayDebugSheet = true
+                        } label: {
+                            Image(systemName: "wave.3.right.circle")
+                        }
+                        .help("Gateway Debug")
+                        .accessibilityLabel("Gateway Debug")
+                    }
+                }
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
@@ -287,6 +313,14 @@ struct ContentView: View {
                 .environmentObject(gatewayClientWrapper)
                 #if os(iOS)
                 .presentationDetents([.large])
+                #endif
+        }
+        .sheet(isPresented: $showGatewayDebugSheet) {
+            GatewayDebugPanelView(client: gatewayClientWrapper.client)
+                #if os(iOS)
+                .presentationDetents([.large])
+                #else
+                .frame(minWidth: 560, minHeight: 620)
                 #endif
         }
     }
