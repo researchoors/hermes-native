@@ -98,6 +98,9 @@ struct ContentView: View {
                 },
                 onCreateSession: {
                     Task { await createAndSwitchToNewSession() }
+                },
+                onOpenPanel: {
+                    showCronSheet = true
                 }
             )
             .environmentObject(sessionList)
@@ -176,6 +179,13 @@ struct ContentView: View {
                 sessionList.activeSessionID = nil
             }
         }
+        .sheet(isPresented: $showCronSheet) {
+            NavigationStack {
+                CronListView()
+                    .environmentObject(gatewayClientWrapper)
+                    .presentationDetents([.large])
+            }
+        }
     }
 
     #endif
@@ -184,15 +194,6 @@ struct ContentView: View {
 
     private var macLayout: some View {
         sessionChatLayout
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showCronSheet = true
-                    } label: {
-                        Image(systemName: "clock.badge.checkmark")
-                    }
-                }
-            }
             .sheet(isPresented: $showCronSheet) {
                 NavigationStack {
                     CronListView()
@@ -215,20 +216,15 @@ struct ContentView: View {
                 },
                 onCreateSession: {
                     Task { await createAndSwitchToNewSession() }
+                },
+                onOpenPanel: {
+                    showCronSheet = true
                 }
             )
                 .environmentObject(sessionList)
                 .environmentObject(chatViewModel)
                 .environmentObject(gatewayClientWrapper)
                 .navigationTitle("Sessions")
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("New Session") {
-                            Task { await createAndSwitchToNewSession() }
-                        }
-                        .accessibilityIdentifier("newSessionButton")
-                    }
-                }
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
