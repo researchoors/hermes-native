@@ -204,10 +204,10 @@ struct ContentView: View {
     // MARK: - macOS Layout (NavigationSplitView + Cron sheet)
 
     private var macLayout: some View {
-        sessionChatLayout
-            .safeAreaInset(edge: .top, spacing: 0) {
-                macTopChromeRow
-            }
+        VStack(spacing: 0) {
+            macTopChromeRow
+            sessionChatLayout
+        }
             .sheet(isPresented: $showCronSheet) {
                 NavigationStack {
                     CronListView()
@@ -319,8 +319,6 @@ struct ContentView: View {
         }
         #if os(macOS)
         .navigationSplitViewStyle(.balanced)
-        .toolbar(.hidden, for: .windowToolbar)
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         #endif

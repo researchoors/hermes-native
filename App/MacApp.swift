@@ -23,7 +23,8 @@ struct HermesNativeAppMac: App {
                 .environmentObject(gatewayClientWrapper)
                 .background(MacWindowConfigurator())
         }
-        .windowStyle(.hiddenTitleBar)
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .defaultSize(width: 900, height: 700)
 
         Settings {
