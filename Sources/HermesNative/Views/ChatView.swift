@@ -34,6 +34,16 @@ struct ChatView: View {
         chatViewModel.messages.contains { $0.role == .assistant } || chatViewModel.isStreaming
     }
 
+    private var transcriptBottomPadding: CGFloat {
+        #if os(macOS)
+        if !chatViewModel.isSessionReady { return 260 }
+        if chatViewModel.pendingApproval != nil { return 190 }
+        return 132
+        #else
+        return chatViewModel.pendingApproval == nil ? 92 : 160
+        #endif
+    }
+
     /// Current avatar expression based on streaming state
     private var currentAvatarExpression: CharacterExpression {
         if chatViewModel.isStreaming {
@@ -51,6 +61,10 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(macOS)
+            titlebarClearance
+            #endif
+
             // Toolbar
             chatToolbar
 
@@ -58,41 +72,66 @@ struct ChatView: View {
 
             // Message list
             ScrollViewReader { proxy in
-                ScrollView {
-                    GeometryReader { viewport in
-                        Color.clear.preference(
-                            key: ChatViewportHeightKey.self,
-                            value: viewport.size.height
-                        )
-                    }
-                    .frame(height: 0)
+                ZStack(alignment: .bottom) {
+                    activeSkin.background
+                        .ignoresSafeArea()
 
-                    ZStack(alignment: .topLeading) {
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(Array(chatViewModel.messages.enumerated()), id: \.element.id) { index, message in
-                                let msgs = chatViewModel.messages
-                                // Next message in same role group?
-                                let nextIsSameRole = index < msgs.count - 1 &&
-                                    msgs[index + 1].role == message.role
-                                let isLastInGroup = !nextIsSameRole
+                    ScrollView {
+                        GeometryReader { viewport in
+                            Color.clear.preference(
+                                key: ChatViewportHeightKey.self,
+                                value: viewport.size.height
+                            )
+                        }
+                        .frame(height: 0)
 
-                                // Timestamp: only on the last message in a consecutive same-role group
-                                let showTimestamp = isLastInGroup
+                        ZStack(alignment: .topLeading) {
+                            LazyVStack(alignment: .leading, spacing: 2) {
+                                ForEach(Array(chatViewModel.messages.enumerated()), id: \.element.id) { index, message in
+                                    let msgs = chatViewModel.messages
+                                    // Next message in same role group?
+                                    let nextIsSameRole = index < msgs.count - 1 &&
+                                        msgs[index + 1].role == message.role
+                                    let isLastInGroup = !nextIsSameRole
 
-                                skinProvider.messageBubble(
-                                    message: {
-                                        var m = message
-                                        m.showAvatar = false
-                                        m.showTimestamp = showTimestamp
-                                        return m
-                                    }(),
-                                    persona: personaManager.activePersona
-                                )
-                                .id(message.id)
-                                // Report the latest assistant turn's bottom edge so the
-                                // singleton avatar can travel through the conversation.
-                                .background {
-                                    if message.role == .assistant {
+                                    // Timestamp: only on the last message in a consecutive same-role group
+                                    let showTimestamp = isLastInGroup
+
+                                    skinProvider.messageBubble(
+                                        message: {
+                                            var m = message
+                                            m.showAvatar = false
+                                            m.showTimestamp = showTimestamp
+                                            return m
+                                        }(),
+                                        persona: personaManager.activePersona
+                                    )
+                                    .id(message.id)
+                                    // Report the latest assistant turn's bottom edge so the
+                                    // singleton avatar can travel through the conversation.
+                                    .background {
+                                        if message.role == .assistant {
+                                            GeometryReader { geo in
+                                                Color.clear.preference(
+                                                    key: LatestBotTurnYKey.self,
+                                                    value: max(0, geo.frame(in: .named("chatContent")).maxY - 52)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Streaming panel — skin-provided
+                                if chatViewModel.isStreaming {
+                                    skinProvider.streamingPanel(
+                                        state: chatViewModel.avatarState,
+                                        activeToolCalls: chatViewModel.activeToolCalls,
+                                        personaName: personaManager.activePersona.name,
+                                        accentColor: personaManager.activePersona.accentColor
+                                    )
+                                    .id("streaming-status")
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                                    .background {
                                         GeometryReader { geo in
                                             Color.clear.preference(
                                                 key: LatestBotTurnYKey.self,
@@ -102,97 +141,66 @@ struct ChatView: View {
                                     }
                                 }
                             }
+                            .padding(.leading, messageLeadingPadding)
+                            .padding(.trailing, 16)
+                            .padding(.top, 8)
+                            .padding(.bottom, transcriptBottomPadding)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                            // Streaming panel — skin-provided
-                            if chatViewModel.isStreaming {
-                                skinProvider.streamingPanel(
-                                    state: chatViewModel.avatarState,
-                                    activeToolCalls: chatViewModel.activeToolCalls,
-                                    personaName: personaManager.activePersona.name,
-                                    accentColor: personaManager.activePersona.accentColor
+                            // ── Singleton traveling avatar ──
+                            // Exactly one avatar element. Animated Y tracks the latest bot turn,
+                            // matching Claude Code's bottom-left traveling assistant marker.
+                            // The avatar is part of the Dark Manga presentation only; TUI skin
+                            // should stay terminal-native and sprite-free.
+                            if activeSkin == .darkManga && hasBotContent {
+                                FloatingAvatarView(
+                                    expression: currentAvatarExpression,
+                                    persona: personaManager.activePersona
                                 )
-                                .id("streaming-status")
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                                .background {
-                                    GeometryReader { geo in
-                                        Color.clear.preference(
-                                            key: LatestBotTurnYKey.self,
-                                            value: max(0, geo.frame(in: .named("chatContent")).maxY - 52)
-                                        )
-                                    }
+                                .offset(y: avatarY)
+                                .padding(.leading, 16)
+                            }
+                        }
+                        .coordinateSpace(name: "chatContent")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .background(activeSkin.background)
+                    #if os(iOS)
+                    .scrollDismissesKeyboard(.interactively)
+                    #endif
+                    .onPreferenceChange(LatestBotTurnYKey.self) { y in
+                        if let y = y {
+                            Task { @MainActor in
+                                withAnimation(.easeInOut(duration: 0.4)) {
+                                    avatarY = y
                                 }
                             }
                         }
-                        .padding(.leading, messageLeadingPadding)
-                        .padding(.trailing, 16)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        // ── Singleton traveling avatar ──
-                        // Exactly one avatar element. Animated Y tracks the latest bot turn,
-                        // matching Claude Code's bottom-left traveling assistant marker.
-                        // The avatar is part of the Dark Manga presentation only; TUI skin
-                        // should stay terminal-native and sprite-free.
-                        if activeSkin == .darkManga && hasBotContent {
-                            FloatingAvatarView(
-                                expression: currentAvatarExpression,
-                                persona: personaManager.activePersona
-                            )
-                            .offset(y: avatarY)
-                            .padding(.leading, 16)
+                    }
+                    .onPreferenceChange(ChatViewportHeightKey.self) { height in
+                        if !hasBotContent {
+                            avatarY = max(0, height - 72)
                         }
                     }
-                    .coordinateSpace(name: "chatContent")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .background(activeSkin.background)
-                #if os(iOS)
-                .scrollDismissesKeyboard(.interactively)
-                #endif
-                .onPreferenceChange(LatestBotTurnYKey.self) { y in
-                    if let y = y {
-                        withAnimation(.easeInOut(duration: 0.4)) {
-                            avatarY = y
+                    .onChange(of: chatViewModel.messages.count) { _, _ in
+                        scrollToBottom(proxy: proxy)
+                    }
+                    .onChange(of: chatViewModel.messages.last?.content) { _, _ in
+                        scrollToBottom(proxy: proxy)
+                    }
+                    .onChange(of: chatViewModel.avatarState) { _, _ in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo("streaming-status", anchor: .bottom)
                         }
                     }
-                }
-                .onPreferenceChange(ChatViewportHeightKey.self) { height in
-                    if !hasBotContent {
-                        avatarY = max(0, height - 72)
-                    }
-                }
-                .onChange(of: chatViewModel.messages.count) { _, _ in
-                    scrollToBottom(proxy: proxy)
-                }
-                .onChange(of: chatViewModel.messages.last?.content) { _, _ in
-                    scrollToBottom(proxy: proxy)
-                }
-                .onChange(of: chatViewModel.avatarState) { _, _ in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("streaming-status", anchor: .bottom)
-                    }
-                }
-            }
 
-            Divider()
-
-            // Approval sheet (if pending)
-            if chatViewModel.pendingApproval != nil {
-                ApprovalBanner()
-                    .environmentObject(chatViewModel)
-            }
-
-            // Input bar
-            ChatInputBar()
-                .environmentObject(chatViewModel)
-
-            // Debug log (always visible while not session-ready)
-            if !chatViewModel.isSessionReady {
-                DebugLogPanel(wrapper: gatewayClientWrapper)
+                    bottomOverlay
+                }
             }
         }
         #if os(macOS)
         .frame(minWidth: 600, minHeight: 400)
+        .background(activeSkin.background)
         #endif
         #if os(iOS)
         .sheet(isPresented: $showSettings) {
@@ -213,6 +221,15 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
     }
+
+    #if os(macOS)
+    private var titlebarClearance: some View {
+        Color.clear
+            .frame(height: 28)
+            .frame(maxWidth: .infinity)
+            .background(activeSkin.background)
+    }
+    #endif
 
     private var chatToolbar: some View {
         HStack {
@@ -319,6 +336,40 @@ struct ChatView: View {
             .environmentObject(personaManager)
     }
     #endif
+
+    private var bottomOverlay: some View {
+        VStack(spacing: 8) {
+            if chatViewModel.pendingApproval != nil {
+                ApprovalBanner()
+                    .environmentObject(chatViewModel)
+            }
+
+            if !chatViewModel.isSessionReady {
+                DebugLogPanel(wrapper: gatewayClientWrapper)
+            }
+
+            ChatInputBar()
+                .environmentObject(chatViewModel)
+                #if os(macOS)
+                .frame(maxWidth: 760)
+                .padding(.horizontal, 24)
+                #endif
+        }
+        .padding(.bottom, 18)
+        #if os(macOS)
+        .padding(.top, 18)
+        .frame(maxWidth: .infinity, alignment: .bottom)
+        .background(
+            LinearGradient(
+                colors: [activeSkin.background.opacity(0), activeSkin.background.opacity(0.92)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        #else
+        .background(.bar)
+        #endif
+    }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
         if let lastMsg = chatViewModel.messages.last {
@@ -436,12 +487,19 @@ struct ChatInputBar: View {
     @EnvironmentObject var personaManager: PersonaManager
     @FocusState private var isInputFocused: Bool
 
+    private var canSend: Bool {
+        !chatViewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !chatViewModel.isStreaming
+    }
+
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .center, spacing: 10) {
             TextField("Message \(personaManager.activePersona.name)…", text: $chatViewModel.inputText, axis: .vertical)
                 .accessibilityIdentifier("chatInput")
                 .textFieldStyle(.plain)
-                .lineLimit(1...8)
+                .lineLimit(1...6)
+                .font(.body)
+                .padding(.vertical, 8)
+                .frame(minHeight: 36, alignment: .center)
                 .focused($isInputFocused)
                 .onSubmit {
                     Task { await chatViewModel.submitPrompt() }
@@ -450,18 +508,35 @@ struct ChatInputBar: View {
             Button {
                 Task { await chatViewModel.submitPrompt() }
             } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(chatViewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || chatViewModel.isStreaming ? .gray : Color.accentColor)
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(canSend ? Theme.primary : Theme.tertiary)
+                    .frame(width: 30, height: 30)
+                    .background(canSend ? Theme.accent : Theme.border, in: Circle())
             }
             .accessibilityLabel("Send")
             .accessibilityIdentifier("sendButton")
-            .disabled(chatViewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || chatViewModel.isStreaming)
+            .disabled(!canSend)
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.bar)
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        #if os(macOS)
+        .background(Theme.surface.opacity(0.98), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 10)
+        #else
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .padding(.horizontal, 12)
+        #endif
     }
 }
 

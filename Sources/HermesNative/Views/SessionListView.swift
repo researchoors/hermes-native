@@ -11,6 +11,8 @@ struct SessionListView: View {
     /// Called on long-press with the session ID to open Mission Control.
     var onMissionControl: ((String) -> Void)?
     var onCreateSession: (() -> Void)?
+    var onOpenPanel: (() -> Void)?
+    var onToggleSidebar: (() -> Void)?
 
     @State private var mySessionsCollapsed = false
     @State private var cronSessionsCollapsed = false
@@ -34,9 +36,25 @@ struct SessionListView: View {
     }
 
     var body: some View {
-        List(selection: $sessionList.activeSessionID) {
-            // My Sessions
-            Section {
+        ZStack(alignment: .topLeading) {
+            Theme.background
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                #if os(macOS)
+                sidebarToolbarRow
+                    .frame(height: 40)
+                #endif
+
+                sidebarHeader
+
+                Rectangle()
+                    .fill(Theme.border)
+                    .frame(height: 1)
+
+                List(selection: $sessionList.activeSessionID) {
+                // My Sessions
+                Section {
                 if !mySessionsCollapsed {
                     if mySessions.isEmpty {
                         VStack(spacing: 8) {
@@ -61,6 +79,7 @@ struct SessionListView: View {
                                 isActive: session.id == chatViewModel.currentSessionID,
                                 isOwned: true
                             )
+                            .sessionListRowStyle(isActive: session.id == sessionList.activeSessionID)
                             .tag(session.id)
                             .contextMenu {
                                 Button {
@@ -131,6 +150,7 @@ struct SessionListView: View {
                                 isOwned: true,
                                 isArchived: true
                             )
+                            .sessionListRowStyle(isActive: session.id == sessionList.activeSessionID)
                             .tag(session.id)
                             .contextMenu {
                                 Button {
@@ -193,6 +213,7 @@ struct SessionListView: View {
                                 isOwned: false,
                                 sessionStatus: session.status
                             )
+                            .sessionListRowStyle(isActive: session.id == sessionList.activeSessionID)
                             .tag(session.id)
                         }
                     }
@@ -230,6 +251,7 @@ struct SessionListView: View {
                                 isActive: session.id == chatViewModel.currentSessionID,
                                 isOwned: false
                             )
+                            .sessionListRowStyle(isActive: session.id == sessionList.activeSessionID)
                             .tag(session.id)
                         }
                     }
@@ -249,25 +271,125 @@ struct SessionListView: View {
                 }
             }
         }
-        #if os(macOS)
-        .listStyle(.sidebar)
-        #else
-        .listStyle(.insetGrouped)
-        #endif
-        .overlay {
-            if sessionList.sessions.isEmpty && !sessionList.isLoading {
-                emptyState
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Theme.background)
+                .overlay {
+                    if sessionList.sessions.isEmpty && !sessionList.isLoading {
+                        emptyState
+                    }
+                }
+                .refreshable {
+                    await sessionList.refreshSessions()
+                }
+                .task {
+                    await sessionList.refreshSessions()
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.background)
         }
-        .refreshable {
-            await sessionList.refreshSessions()
-        }
-        .task {
-            await sessionList.refreshSessions()
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .ignoresSafeArea(.container, edges: [.top, .bottom, .leading])
     }
 
     // MARK: - Helpers
+
+    #if os(macOS)
+    private var sidebarToolbarRow: some View {
+        HStack(alignment: .center, spacing: 0) {
+            // Reserve the traffic-light strip so the app-owned sidebar toggle
+            // sits on the same vertical center/baseline as the window controls.
+            Color.clear
+                .frame(width: 68, height: 28)
+
+            Button(action: { onToggleSidebar?() }) {
+                Image(systemName: "sidebar.left")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Toggle Sidebar")
+            .accessibilityIdentifier("sidebarToggleButton")
+
+            Spacer(minLength: 0)
+        }
+        .frame(height: 28)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.background)
+    }
+    #endif
+
+    private var sidebarHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Sessions")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .textCase(.uppercase)
+                .foregroundStyle(Theme.tertiary)
+
+            HStack(spacing: 8) {
+                sidebarHeaderButton(
+                    icon: "plus",
+                    title: "New Session",
+                    accessibilityLabel: "New Session",
+                    accessibilityID: "newSessionButton",
+                    isPrimary: true,
+                    action: { onCreateSession?() }
+                )
+
+                sidebarHeaderButton(
+                    icon: "clock.badge.checkmark",
+                    title: "Cron",
+                    accessibilityLabel: "Open Cron Jobs",
+                    accessibilityID: "panelToggleButton",
+                    isPrimary: false,
+                    action: { onOpenPanel?() }
+                )
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.background)
+    }
+
+    private func sidebarHeaderButton(
+        icon: String,
+        title: String,
+        accessibilityLabel: String,
+        accessibilityID: String,
+        isPrimary: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+            }
+            .frame(height: 30)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: isPrimary ? .infinity : nil, alignment: .center)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isPrimary ? Theme.primary : Theme.secondary)
+        .background(isPrimary ? Theme.accent : Theme.surface)
+        .overlay {
+            Rectangle()
+                .stroke(isPrimary ? Theme.accent.opacity(0.65) : Theme.border, lineWidth: 1)
+        }
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityIdentifier(accessibilityID)
+    }
 
     private func collapsibleHeader(title: String, icon: String, count: Int, isCollapsed: Bool) -> some View {
         HStack(spacing: 6) {
@@ -306,6 +428,20 @@ struct SessionListView: View {
 }
 
 // MARK: - Session Row
+
+private extension View {
+    func sessionListRowStyle(isActive: Bool) -> some View {
+        self
+            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+            .listRowSeparator(.hidden)
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isActive ? Theme.accent.opacity(0.22) : Color.clear)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+            )
+    }
+}
 
 struct SessionRowView: View {
     let title: String
@@ -363,7 +499,10 @@ struct SessionRowView: View {
                     .foregroundStyle(.quaternary)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private var iconColor: Color {

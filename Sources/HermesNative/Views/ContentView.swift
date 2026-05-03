@@ -98,7 +98,11 @@ struct ContentView: View {
                 },
                 onCreateSession: {
                     Task { await createAndSwitchToNewSession() }
-                }
+                },
+                onOpenPanel: {
+                    showCronSheet = true
+                },
+                onToggleSidebar: nil
             )
             .environmentObject(sessionList)
             .environmentObject(chatViewModel)
@@ -176,6 +180,13 @@ struct ContentView: View {
                 sessionList.activeSessionID = nil
             }
         }
+        .sheet(isPresented: $showCronSheet) {
+            NavigationStack {
+                CronListView()
+                    .environmentObject(gatewayClientWrapper)
+                    .presentationDetents([.large])
+            }
+        }
     }
 
     #endif
@@ -184,15 +195,6 @@ struct ContentView: View {
 
     private var macLayout: some View {
         sessionChatLayout
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showCronSheet = true
-                    } label: {
-                        Image(systemName: "clock.badge.checkmark")
-                    }
-                }
-            }
             .sheet(isPresented: $showCronSheet) {
                 NavigationStack {
                     CronListView()
@@ -215,20 +217,21 @@ struct ContentView: View {
                 },
                 onCreateSession: {
                     Task { await createAndSwitchToNewSession() }
+                },
+                onOpenPanel: {
+                    showCronSheet = true
+                },
+                onToggleSidebar: {
+                    toggleSidebarColumn()
                 }
             )
                 .environmentObject(sessionList)
                 .environmentObject(chatViewModel)
                 .environmentObject(gatewayClientWrapper)
-                .navigationTitle("Sessions")
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("New Session") {
-                            Task { await createAndSwitchToNewSession() }
-                        }
-                        .accessibilityIdentifier("newSessionButton")
-                    }
-                }
+                .navigationTitle("")
+                #if os(macOS)
+                .toolbarBackground(.hidden, for: .windowToolbar)
+                #endif
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
@@ -237,9 +240,14 @@ struct ContentView: View {
                 .environmentObject(chatViewModel)
                 .environmentObject(gatewayClientWrapper)
                 .id(chatViewModel.currentSessionID)
+                #if os(macOS)
+                .toolbarBackground(.hidden, for: .windowToolbar)
+                #endif
         }
         #if os(macOS)
         .navigationSplitViewStyle(.balanced)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.background)
         #endif
         .onChange(of: sessionList.activeSessionID) { _, newID in
             handleSessionSelection(newID)
@@ -296,6 +304,14 @@ struct ContentView: View {
     }
 
     // MARK: - Session Selection
+
+    private func toggleSidebarColumn() {
+        #if os(macOS)
+        withAnimation(.easeInOut(duration: 0.18)) {
+            columnVisibility = (columnVisibility == .detailOnly) ? .automatic : .detailOnly
+        }
+        #endif
+    }
 
     private func pushOwnedSessionOnIOS(_ sessionID: String) {
         #if os(iOS)
