@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Root content view — TabView on iOS with "Sessions" + "Cron" tabs,
-/// NavigationSplitView on macOS with a toolbar button for Cron sheet.
+/// custom split layout on macOS with app-owned chrome.
 struct ContentView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sessionList: SessionListViewModel
@@ -11,7 +11,8 @@ struct ContentView: View {
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var isMacSidebarVisible = true
+    private let macSidebarWidth: CGFloat = 352
     @State private var missionControlSessionID: String?
     @State private var observerSession: Session?
     @State private var showCronSheet = false
@@ -201,54 +202,108 @@ struct ContentView: View {
 
     #endif
 
-    // MARK: - macOS Layout (NavigationSplitView + Cron sheet)
+    // MARK: - macOS Layout (custom split view + app-owned chrome)
 
     private var macLayout: some View {
         VStack(spacing: 0) {
             macTopChromeRow
-            sessionChatLayout
+            macSplitContent
         }
-            .sheet(isPresented: $showCronSheet) {
-                NavigationStack {
-                    CronListView()
-                        .environmentObject(gatewayClientWrapper)
-                        #if os(iOS)
-                        .presentationDetents([.large])
-                        #endif
-                }
-                .frame(minWidth: 500, minHeight: 400)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.background)
+        .sheet(isPresented: $showCronSheet) {
+            NavigationStack {
+                CronListView()
+                    .environmentObject(gatewayClientWrapper)
+                    #if os(iOS)
+                    .presentationDetents([.large])
+                    #endif
             }
-            .sheet(isPresented: $showGatewayDebugSheet) {
-                GatewayDebugPanelView(client: gatewayClientWrapper.client)
-                    .frame(minWidth: 560, minHeight: 620)
+            .frame(minWidth: 500, minHeight: 400)
+        }
+        .sheet(isPresented: $showGatewayDebugSheet) {
+            GatewayDebugPanelView(client: gatewayClientWrapper.client)
+                .frame(minWidth: 560, minHeight: 620)
+        }
+        .sheet(isPresented: Binding(
+            get: { missionControlSessionID != nil },
+            set: { if !$0 { missionControlSessionID = nil } }
+        )) {
+            if let sid = missionControlSessionID {
+                SessionExplorerView(sessionID: sid)
+                    .environmentObject(gatewayClientWrapper)
+                    .environmentObject(spawnTreeStore)
             }
+        }
+        .sheet(item: $observerSession, onDismiss: {
+            sessionList.activeSessionID = chatViewModel.currentSessionID
+        }) { session in
+            SessionObserverView(session: session)
+                .environmentObject(gatewayClientWrapper)
+        }
+        .onChange(of: sessionList.activeSessionID) { _, newID in
+            handleSessionSelection(newID)
+        }
+        .onChange(of: chatViewModel.sessionTitle) { oldTitle, newTitle in
+            updateSelectedSessionTitle(oldTitle: oldTitle, newTitle: newTitle)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .hermesSwitchToSession)) { notification in
+            switchToSession(from: notification)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            handleScenePhaseChange(newPhase)
+        }
+        .onChange(of: chatViewModel.currentSessionID) { _, newID in
+            NotificationService.shared.activeSessionID = newID
+        }
+        .onChange(of: chatViewModel.createGeneration) { _, _ in
+            guard let sid = chatViewModel.currentSessionID else { return }
+            sessionList.registerOwnedSession(shortHexID: sid)
+            if shouldSuppressNextCreateGenerationPush {
+                shouldSuppressNextCreateGenerationPush = false
+            } else {
+                pushOwnedSessionOnIOS(sid)
+            }
+        }
     }
 
-    // MARK: - Session + Chat Layout
-
     private var macTopChromeRow: some View {
-        GeometryReader { proxy in
-            let sidebarWidth = max(240, min(320, proxy.size.width * 0.28))
+        HStack(spacing: 0) {
             HStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    // Reserve native traffic light/titlebar area. The system
-                    // sidebar toggle remains the only toggle; this row just
-                    // restores a visible left toolbar band/baseline.
-                    Color.clear.frame(width: 88)
-                    Spacer(minLength: 0)
-                }
-                .frame(width: sidebarWidth, height: 40)
-                .background(Theme.background)
+                // Standard traffic lights occupy the first ~78pt of the hidden
+                // titlebar. Keep app controls out of that space.
+                Color.clear.frame(width: 78)
 
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isMacSidebarVisible.toggle()
+                    }
+                } label: {
+                    Image(systemName: isMacSidebarVisible ? "sidebar.left" : "sidebar.right")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Toggle Sidebar")
+                .accessibilityIdentifier("sidebarToggleButton")
+
+                Spacer(minLength: 0)
+            }
+            .frame(width: isMacSidebarVisible ? macSidebarWidth : 112, height: 40)
+            .background(Theme.background)
+
+            if isMacSidebarVisible {
                 Rectangle()
                     .fill(Theme.border)
                     .frame(width: 1, height: 40)
-
-                chatToolbarPills
-                    .padding(.leading, 12)
-                    .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .leading)
-                    .background(Theme.background)
             }
+
+            chatToolbarPills
+                .padding(.leading, 12)
+                .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .leading)
+                .background(Theme.background)
         }
         .frame(height: 40)
         .background(Theme.background)
@@ -291,95 +346,39 @@ struct ContentView: View {
         .frame(height: 40)
     }
 
-    private var sessionChatLayout: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SessionListView(
-                onMissionControl: { sessionID in
-                    openMissionControl(sessionID: sessionID)
-                },
-                onCreateSession: {
-                    Task { await createAndSwitchToNewSession() }
-                },
-                onOpenPanel: {
-                    showCronSheet = true
-                }
-            )
+    private var macSplitContent: some View {
+        HStack(spacing: 0) {
+            if isMacSidebarVisible {
+                SessionListView(
+                    onMissionControl: { sessionID in
+                        openMissionControl(sessionID: sessionID)
+                    },
+                    onCreateSession: {
+                        Task { await createAndSwitchToNewSession() }
+                    },
+                    onOpenPanel: {
+                        showCronSheet = true
+                    }
+                )
                 .environmentObject(sessionList)
                 .environmentObject(chatViewModel)
                 .environmentObject(gatewayClientWrapper)
-                .navigationTitle("")
-                #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
-        } detail: {
+                .frame(width: macSidebarWidth)
+                .transition(.move(edge: .leading).combined(with: .opacity))
+
+                Rectangle()
+                    .fill(Theme.border)
+                    .frame(width: 1)
+            }
+
             ChatView()
                 .environmentObject(chatViewModel)
                 .environmentObject(gatewayClientWrapper)
                 .id(chatViewModel.currentSessionID)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        #if os(macOS)
-        .navigationSplitViewStyle(.balanced)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
-        #endif
-        .onChange(of: sessionList.activeSessionID) { _, newID in
-            handleSessionSelection(newID)
-        }
-        .onChange(of: chatViewModel.sessionTitle) { oldTitle, newTitle in
-            updateSelectedSessionTitle(oldTitle: oldTitle, newTitle: newTitle)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .hermesSwitchToSession)) { notification in
-            switchToSession(from: notification)
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            handleScenePhaseChange(newPhase)
-        }
-        .onChange(of: chatViewModel.currentSessionID) { _, newID in
-            NotificationService.shared.activeSessionID = newID
-        }
-        .onChange(of: chatViewModel.createGeneration) { _, _ in
-            guard let sid = chatViewModel.currentSessionID else { return }
-            sessionList.registerOwnedSession(shortHexID: sid)
-            if shouldSuppressNextCreateGenerationPush {
-                shouldSuppressNextCreateGenerationPush = false
-            } else {
-                pushOwnedSessionOnIOS(sid)
-            }
-        }
-        // Mission Control sheet (for owned sessions)
-        .sheet(isPresented: Binding(
-            get: { missionControlSessionID != nil },
-            set: { if !$0 { missionControlSessionID = nil } }
-        )) {
-            if let sid = missionControlSessionID {
-                SessionExplorerView(sessionID: sid)
-                    .environmentObject(gatewayClientWrapper)
-                    .environmentObject(spawnTreeStore)
-                    #if os(iOS)
-                    .presentationDetents([.large])
-                    #endif
-            }
-        }
-        // Observer sheet (for non-owned sessions)
-        .sheet(item: $observerSession, onDismiss: {
-            // Reset selection so re-clicking the same "Other Session"
-            // fires onChange again. Re-select the active chat session.
-            sessionList.activeSessionID = chatViewModel.currentSessionID
-        }) { session in
-            SessionObserverView(session: session)
-                .environmentObject(gatewayClientWrapper)
-                #if os(iOS)
-                .presentationDetents([.large])
-                #endif
-        }
-        .sheet(isPresented: $showGatewayDebugSheet) {
-            GatewayDebugPanelView(client: gatewayClientWrapper.client)
-                #if os(iOS)
-                .presentationDetents([.large])
-                #else
-                .frame(minWidth: 560, minHeight: 620)
-                #endif
-        }
     }
 
     // MARK: - Session Selection
