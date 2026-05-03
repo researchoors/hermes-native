@@ -20,11 +20,12 @@ struct SessionListView: View {
 
     private var sidebarTopPadding: CGFloat {
         #if os(macOS)
-        // The background should fill under the hidden titlebar, but header
-        // controls must sit below the traffic lights/sidebar toggle.
+        // This header sits inside the sidebar panel, below the macOS traffic
+        // lights. The outer window/sidebar shell owns the full-bleed chrome;
+        // keep these controls comfortably below it instead of tucked under it.
         34
         #else
-        10
+        6
         #endif
     }
 
@@ -47,7 +48,7 @@ struct SessionListView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Theme.background
-                .ignoresSafeArea(.container, edges: [.top, .bottom, .leading])
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 sidebarHeader
@@ -271,9 +272,9 @@ struct SessionListView: View {
                 }
             }
         }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(Theme.background)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Theme.background)
                 .overlay {
                     if sessionList.sessions.isEmpty && !sessionList.isLoading {
                         emptyState
@@ -324,7 +325,7 @@ struct SessionListView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, sidebarTopPadding)
-        .padding(.bottom, 12)
+        .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.background)
     }
