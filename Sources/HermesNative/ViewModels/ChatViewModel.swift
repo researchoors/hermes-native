@@ -397,7 +397,16 @@ final class ChatViewModel: ObservableObject {
 
     private func handleEvent(_ event: GatewayEvent, eventSessionID: String?) {
         guard shouldApplyEvent(sessionID: eventSessionID, event: event) else {
+            let reason = "session mismatch current=\(sessionID ?? "nil")"
             NSLog("[HermesNative] ChatViewModel ignored event for session=\(eventSessionID ?? "nil") current=\(sessionID ?? "nil") event=\(event.debugName)")
+            gatewayClient?.recordDroppedEvent(event, sessionID: eventSessionID, reason: reason)
+            return
+        }
+
+        if event.isLiveTurnEvent && !isStreaming {
+            let reason = "late live-turn event after stream ended"
+            NSLog("[HermesNative] ChatViewModel ignored late live event after stream ended: \(event.debugName)")
+            gatewayClient?.recordDroppedEvent(event, sessionID: eventSessionID, reason: reason)
             return
         }
 
@@ -411,6 +420,7 @@ final class ChatViewModel: ObservableObject {
 
         case .messageStart:
             // Streaming begins — avatar is speaking
+            guard isStreaming else { break }
             avatarState = .speaking
 
         case .messageDelta(let text, _):
@@ -460,6 +470,7 @@ final class ChatViewModel: ObservableObject {
             }
 
         case .toolStart(payload: let payload):
+            guard isStreaming else { break }
             avatarState = .toolUse
             activeToolCalls[payload.toolID] = ToolCallRecord(
                 id: payload.toolID,
@@ -468,6 +479,7 @@ final class ChatViewModel: ObservableObject {
             )
 
         case .toolComplete(payload: let payload):
+            guard isStreaming else { break }
             if var record = activeToolCalls[payload.toolID] {
                 record.summary = payload.summary
                 record.durationSeconds = payload.durationSeconds
@@ -477,6 +489,7 @@ final class ChatViewModel: ObservableObject {
             }
 
         case .toolProgress(let name, let preview):
+            guard isStreaming else { break }
             // Update matching tool call's progress display
             for (key, var record) in activeToolCalls where record.name == name && !record.isComplete {
                 record.context = preview
@@ -488,6 +501,7 @@ final class ChatViewModel: ObservableObject {
 
         case .reasoningDelta(let text):
             // Thinking/reasoning — avatar thinks
+            guard isStreaming else { break }
             if avatarState != .toolUse { avatarState = .thinking }
             // Append to last assistant message's reasoning
             if let idx = messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
@@ -496,6 +510,7 @@ final class ChatViewModel: ObservableObject {
 
         case .thinkingDelta(let text):
             // Thinking — avatar thinks (unless tool is running)
+            guard isStreaming else { break }
             if avatarState != .toolUse { avatarState = .thinking }
             // Append to last assistant message's reasoning (thinking IS reasoning
             // from the model's perspective — e.g. GLM-5.1 fires thinking.delta

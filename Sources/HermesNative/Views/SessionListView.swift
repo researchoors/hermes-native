@@ -19,6 +19,16 @@ struct SessionListView: View {
     @State private var otherSessionsCollapsed = false
     @AppStorage("chatSkin") private var activeSkin: ChatSkin = .tui
 
+    private var sidebarTopPadding: CGFloat {
+        #if os(macOS)
+        // The app-owned toolbar row clears the hidden-titlebar traffic lights,
+        // so only a small gap is needed before the section label/actions.
+        8
+        #else
+        6
+        #endif
+    }
+
     private var mySessions: [Session] {
         sessionList.sessions.filter { $0.isOwned && !$0.isArchived }
     }
@@ -352,7 +362,7 @@ struct SessionListView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .padding(.top, sidebarTopPadding)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.background)
@@ -378,13 +388,16 @@ struct SessionListView: View {
             .frame(height: 30)
             .padding(.horizontal, 10)
             .frame(maxWidth: isPrimary ? .infinity : nil, alignment: .center)
-            .contentShape(Rectangle())
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
         .foregroundStyle(isPrimary ? Theme.primary : Theme.secondary)
-        .background(isPrimary ? Theme.accent : Theme.surface)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isPrimary ? Theme.accent : Theme.surface)
+        )
         .overlay {
-            Rectangle()
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(isPrimary ? Theme.accent.opacity(0.65) : Theme.border, lineWidth: 1)
         }
         .accessibilityLabel(accessibilityLabel)
