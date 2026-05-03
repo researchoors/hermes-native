@@ -39,14 +39,28 @@ struct MacWindowConfigurator: NSViewRepresentable {
 
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.styleMask.insert(.fullSizeContentView)
+        // Keep a normal titled/closable/resizable window. The hidden-titlebar
+        // SwiftUI style + full-size content view removes the title text/chrome
+        // band, but the standard traffic-light controls still require the
+        // standard titled window buttons to remain present and ordered front.
+        window.styleMask.insert([.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+        window.styleMask.remove(.borderless)
         window.isMovableByWindowBackground = true
         window.backgroundColor = NSColor(Theme.background)
 
         // Do not hide or remove the standard close/minimize/zoom buttons.
-        window.standardWindowButton(.closeButton)?.isHidden = false
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = false
-        window.standardWindowButton(.zoomButton)?.isHidden = false
+        for buttonType in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            if let button = window.standardWindowButton(buttonType) {
+                button.isHidden = false
+                button.alphaValue = 1
+                button.isEnabled = true
+                button.wantsLayer = true
+                button.layer?.zPosition = 10_000
+                button.superview?.isHidden = false
+                button.superview?.alphaValue = 1
+                button.superview?.addSubview(button, positioned: .above, relativeTo: nil)
+            }
+        }
     }
 }
 #endif
