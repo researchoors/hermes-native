@@ -189,10 +189,17 @@ struct ChatView: View {
                 .onChange(of: chatViewModel.messages.last?.content) { _, _ in
                     scrollToBottom(proxy: proxy)
                 }
+                .onChange(of: chatViewModel.messages.last?.reasoning) { _, _ in
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: chatViewModel.activeToolCalls.map { key, value in "\(key):\(value.isComplete):\(value.summary ?? value.context ?? "")" }.joined(separator: "|")) { _, _ in
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: chatViewModel.isStreaming) { _, streaming in
+                    if streaming { scrollToBottom(proxy: proxy) }
+                }
                 .onChange(of: chatViewModel.avatarState) { _, _ in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("streaming-status", anchor: .bottom)
-                    }
+                    scrollToBottom(proxy: proxy)
                 }
             }
 
@@ -367,13 +374,15 @@ struct ChatView: View {
     #endif
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
-        if let lastMsg = chatViewModel.messages.last {
-            withAnimation(.easeOut(duration: 0.15)) {
-                if chatViewModel.isStreaming {
-                    proxy.scrollTo("streaming-status", anchor: .bottom)
-                } else {
+        withAnimation(.easeOut(duration: 0.15)) {
+            if chatViewModel.isStreaming {
+                if chatViewModel.activeToolCalls.isEmpty, let lastMsg = chatViewModel.messages.last {
                     proxy.scrollTo(lastMsg.id, anchor: .bottom)
+                } else {
+                    proxy.scrollTo("streaming-status", anchor: .bottom)
                 }
+            } else if let lastMsg = chatViewModel.messages.last {
+                proxy.scrollTo(lastMsg.id, anchor: .bottom)
             }
         }
     }

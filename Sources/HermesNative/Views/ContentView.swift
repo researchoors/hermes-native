@@ -342,6 +342,18 @@ struct ContentView: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(.quaternary.opacity(0.6), in: Capsule())
+
+            if chatViewModel.isStreaming {
+                Button {
+                    Task { await chatViewModel.interrupt() }
+                } label: {
+                    Label("Stop", systemImage: "stop.fill")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .accessibilityIdentifier("stopButton")
+            }
         }
         .frame(height: 40)
     }
