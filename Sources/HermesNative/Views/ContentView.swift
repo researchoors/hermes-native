@@ -6,6 +6,7 @@ struct ContentView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sessionList: SessionListViewModel
     @EnvironmentObject var spawnTreeStore: SpawnTreeStore
+    @EnvironmentObject var personaManager: PersonaManager
     @StateObject private var chatViewModel = ChatViewModel()
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @Environment(\.scenePhase) private var scenePhase
@@ -18,6 +19,7 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var isCreatingSession = false
     @State private var sessionCreationError: String?
+    @AppStorage("chatSkin") private var activeSkin: ChatSkin = .tui
     @State private var wiredClient: GatewayClient?
     /// Suppresses selection-driven navigation/resume while New Session is already
     /// explicitly creating and pushing a chat. Without this, register/select can
@@ -102,8 +104,7 @@ struct ContentView: View {
                 },
                 onOpenPanel: {
                     showCronSheet = true
-                },
-                onToggleSidebar: nil
+                }
             )
             .environmentObject(sessionList)
             .environmentObject(chatViewModel)
@@ -204,6 +205,11 @@ struct ContentView: View {
 
     private var macLayout: some View {
         sessionChatLayout
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    chatToolbarPills
+                }
+            }
             .sheet(isPresented: $showCronSheet) {
                 NavigationStack {
                     CronListView()
@@ -222,6 +228,43 @@ struct ContentView: View {
 
     // MARK: - Session + Chat Layout
 
+    private var chatToolbarPills: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                personaManager.activePersona.bubbleAvatar(size: 22)
+                Text(personaManager.activePersona.name)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                Circle()
+                    .fill(chatViewModel.isStreaming ? Color.orange : Color.green)
+                    .frame(width: 6, height: 6)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.quaternary, in: Capsule())
+
+            HStack(spacing: 4) {
+                Image(systemName: activeSkin.icon)
+                    .font(.caption2)
+                Text(activeSkin.displayName)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.quaternary, in: Capsule())
+
+            Text(chatViewModel.currentModel.isEmpty ? "No model" : chatViewModel.currentModel)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(.quaternary.opacity(0.6), in: Capsule())
+        }
+        .frame(height: 40)
+    }
+
     private var sessionChatLayout: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SessionListView(
@@ -233,9 +276,6 @@ struct ContentView: View {
                 },
                 onOpenPanel: {
                     showCronSheet = true
-                },
-                onToggleSidebar: {
-                    toggleSidebarColumn()
                 }
             )
                 .environmentObject(sessionList)
@@ -316,15 +356,8 @@ struct ContentView: View {
         }
     }
 
-    private func toggleSidebarColumn() {
-        #if os(macOS)
-        withAnimation(.easeInOut(duration: 0.18)) {
-            columnVisibility = (columnVisibility == .detailOnly) ? .automatic : .detailOnly
-        }
-        #endif
-    }
-
     // MARK: - Session Selection
+
 
     private func pushOwnedSessionOnIOS(_ sessionID: String) {
         #if os(iOS)

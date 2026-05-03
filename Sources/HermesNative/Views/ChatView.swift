@@ -61,14 +61,10 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top toolbar row. On macOS this aligns with the sidebar-owned row
-            // and the system traffic lights in the transparent titlebar.
+            #if os(iOS)
             chatToolbar
-                #if os(macOS)
-                .frame(height: 40)
-                #endif
-
             Divider()
+            #endif
 
             // Message list
             ScrollViewReader { proxy in
@@ -163,9 +159,9 @@ struct ChatView: View {
                         ChatInputBar()
                             .environmentObject(chatViewModel)
                     }
-                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 18)
+                    .frame(maxWidth: .infinity, alignment: .bottom)
                     .background(Color.clear)
                     #endif
                 }
