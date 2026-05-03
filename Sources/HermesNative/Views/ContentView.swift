@@ -204,12 +204,10 @@ struct ContentView: View {
     // MARK: - macOS Layout (NavigationSplitView + Cron sheet)
 
     private var macLayout: some View {
-        sessionChatLayout
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    chatToolbarPills
-                }
-            }
+        VStack(spacing: 0) {
+            macTopChromeRow
+            sessionChatLayout
+        }
             .sheet(isPresented: $showCronSheet) {
                 NavigationStack {
                     CronListView()
@@ -227,6 +225,34 @@ struct ContentView: View {
     }
 
     // MARK: - Session + Chat Layout
+
+    private var macTopChromeRow: some View {
+        GeometryReader { proxy in
+            let sidebarWidth = max(240, min(320, proxy.size.width * 0.28))
+            HStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    // Reserve native traffic light/titlebar area. The system
+                    // sidebar toggle remains the only toggle; this row just
+                    // restores a visible left toolbar band/baseline.
+                    Color.clear.frame(width: 88)
+                    Spacer(minLength: 0)
+                }
+                .frame(width: sidebarWidth, height: 40)
+                .background(Theme.background)
+
+                Rectangle()
+                    .fill(Theme.border)
+                    .frame(width: 1, height: 40)
+
+                chatToolbarPills
+                    .padding(.leading, 12)
+                    .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .leading)
+                    .background(Theme.background)
+            }
+        }
+        .frame(height: 40)
+        .background(Theme.background)
+    }
 
     private var chatToolbarPills: some View {
         HStack(spacing: 8) {
