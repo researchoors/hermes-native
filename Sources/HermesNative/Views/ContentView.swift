@@ -355,8 +355,10 @@ struct ContentView: View {
 
             pushOwnedSessionOnIOS(newID)
 
+            chatViewModel.bindRuntimeSession(displayID: newID, runtimeID: rpcID)
+            spawnTreeStore.bindRuntimeSession(displayID: newID, runtimeID: rpcID)
+
             if rpcID == chatViewModel.currentSessionID {
-                spawnTreeStore.bindRuntimeSession(displayID: newID, runtimeID: rpcID)
                 return
             }
             chatViewModel.loadLocalHistory(sessionID: newID)
@@ -364,6 +366,7 @@ struct ContentView: View {
                 // session.resume expects the database-format ID.
                 await chatViewModel.resumeSession(key: newID)
                 if let runtimeID = chatViewModel.currentSessionID {
+                    chatViewModel.bindRuntimeSession(displayID: newID, runtimeID: runtimeID)
                     spawnTreeStore.bindRuntimeSession(displayID: newID, runtimeID: runtimeID)
                 }
             }
@@ -437,6 +440,7 @@ struct ContentView: View {
         pendingCreatedSessionID = sid
         sessionList.registerOwnedSession(shortHexID: sid)
         sessionList.selectSession(id: sid)
+        chatViewModel.bindRuntimeSession(displayID: sid, runtimeID: sid)
         spawnTreeStore.createTree(sessionID: sid)
         spawnTreeStore.bindRuntimeSession(displayID: sid, runtimeID: sid)
         pushOwnedSessionOnIOS(sid)

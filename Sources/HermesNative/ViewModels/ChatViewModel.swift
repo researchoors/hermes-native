@@ -142,6 +142,42 @@ final class ChatViewModel: ObservableObject {
         gatewayIDByStableSession[displayID] ?? displayID
     }
 
+    /// Bind the stable database ID shown by the session list to the runtime
+    /// gateway ID carried by live events. A newly-created session starts out
+    /// keyed only by its short runtime ID, then `session.title` later resolves
+    /// to a database ID. Without moving that cached runtime state, clicking
+    /// away from a live turn and back via the database ID restores an empty
+    /// history and makes the running session look like it disappeared.
+    func bindRuntimeSession(displayID: String, runtimeID: String) {
+        guard !displayID.isEmpty, !runtimeID.isEmpty else { return }
+        stableSessionByGatewayID[runtimeID] = displayID
+        gatewayIDByStableSession[displayID] = runtimeID
+
+        if displayID != runtimeID, let runtimeState = sessionStates.removeValue(forKey: runtimeID) {
+            if var displayState = sessionStates[displayID] {
+                // Preserve any locally visible state that is newer/richer than
+                // disk history, but prefer the live runtime stream fields.
+                displayState.messages = runtimeState.messages
+                displayState.isStreaming = runtimeState.isStreaming
+                displayState.streamingMessageID = runtimeState.streamingMessageID
+                displayState.pendingApproval = runtimeState.pendingApproval
+                displayState.activeToolCalls = runtimeState.activeToolCalls
+                displayState.avatarState = runtimeState.avatarState
+                displayState.error = runtimeState.error
+                sessionStates[displayID] = displayState
+            } else {
+                sessionStates[displayID] = runtimeState
+            }
+        }
+
+        if sessionID == runtimeID {
+            snapshotCurrentSessionState()
+            if !messages.isEmpty {
+                ChatHistoryStore.shared.saveMessages(messages, forSession: displayID)
+            }
+        }
+    }
+
     private func snapshotCurrentSessionState() {
         guard let sessionID else { return }
         let displayID = displaySessionID(for: sessionID)
@@ -513,6 +549,11 @@ final class ChatViewModel: ObservableObject {
     func switchToLocalTestSession(id: String) {
         snapshotCurrentSessionState()
         _ = restoreSessionState(displayID: id, runtimeID: runtimeSessionID(for: id))
+    }
+
+    var testCachedMessageCount: Int {
+        guard let sessionID else { return 0 }
+        return sessionStates[displaySessionID(for: sessionID)]?.messages.count ?? 0
     }
 
     func applyTestEvent(_ event: GatewayEvent, sessionID: String) {

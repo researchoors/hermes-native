@@ -42,6 +42,28 @@ struct ChatViewModelMultiSessionTests {
         #expect(vm.activeToolCalls["tool-a"]?.isComplete == true)
     }
 
+    @Test("runtime state follows database ID after session.title mapping")
+    @MainActor
+    func runtimeStateSurvivesStableIDMapping() async {
+        let vm = ChatViewModel()
+
+        let runtimeID = vm.createLocalTestSession(id: "runtime-a")
+        vm.applyTestEvent(.messageStart, sessionID: runtimeID)
+        vm.applyTestEvent(.messageDelta(text: "partial-a", rendered: nil), sessionID: runtimeID)
+
+        vm.bindRuntimeSession(displayID: "20260503_174500_runtimea", runtimeID: runtimeID)
+
+        let other = vm.createLocalTestSession(id: "session-b")
+        #expect(vm.currentSessionID == other)
+
+        vm.switchToLocalTestSession(id: "20260503_174500_runtimea")
+        #expect(vm.currentSessionID == runtimeID)
+        #expect(vm.isStreaming)
+        #expect(vm.messages.count == 1)
+        #expect(vm.messages[0].content == "partial-a")
+        #expect(vm.testCachedMessageCount == 1)
+    }
+
     @Test("completing a background running session preserves selected foreground session")
     @MainActor
     func backgroundCompletionDoesNotStealForegroundSelection() async {
