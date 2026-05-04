@@ -30,6 +30,8 @@ final class ChatViewModel: ObservableObject {
     @Published var currentModel: String = ""
     @Published var pendingApproval: ApprovalPayload?
     @Published var activeToolCalls: [String: ToolCallRecord] = [:] // tool_id → record
+    @Published var pendingImageAttachments: [ChatImageAttachment] = []
+    @Published var isEncodingImageAttachment: Bool = false
     @Published var error: String?
     @Published var avatarState: AvatarState = .idle
     @Published var sessionTitle: String = "New Chat"
@@ -261,18 +263,20 @@ final class ChatViewModel: ObservableObject {
     /// Send the current input text as a prompt.
     func submitPrompt() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, let client = gatewayClient, let sid = sessionID else { return }
+        let images = pendingImageAttachments
+        guard (!text.isEmpty || !images.isEmpty), let client = gatewayClient, let sid = sessionID else { return }
 
         inputText = ""
+        pendingImageAttachments = []
         isStreaming = true
 
         // Add user message to conversation
-        let userMessage = ChatMessage(role: .user, content: text)
+        let userMessage = ChatMessage(role: .user, content: text, imageAttachments: images)
         messages.append(userMessage)
 
         // Auto-title from first user message
         if messages.filter({ $0.role == .user }).count == 1 {
-            sessionTitle = String(text.prefix(60))
+            sessionTitle = text.isEmpty ? "Image prompt" : String(text.prefix(60))
         }
 
         // Persist user message immediately
@@ -288,11 +292,65 @@ final class ChatViewModel: ObservableObject {
         messages.append(assistantMessage)
 
         do {
-            try await client.submitPrompt(sessionID: sid, text: text)
+            try await client.submitPrompt(sessionID: sid, text: text, images: images)
         } catch {
             self.error = error.localizedDescription
             finishStreaming(status: "error")
         }
+    }
+
+    var canAttachImages: Bool {
+        Constants.enableLocalImageAttachments
+    }
+
+    var remainingImageAttachmentSlots: Int {
+        max(0, ImageEncoder.maxImagesPerMessage - pendingImageAttachments.count)
+    }
+
+    func addImageAttachment(data: Data, fileName: String) async {
+        guard canAttachImages else { return }
+        guard remainingImageAttachmentSlots > 0 else {
+            error = "You can attach up to \(ImageEncoder.maxImagesPerMessage) images per message."
+            return
+        }
+        isEncodingImageAttachment = true
+        defer { isEncodingImageAttachment = false }
+        do {
+            let image = try await ImageEncoder.encodeImage(data: data, fileName: fileName)
+            guard pendingImageAttachments.count < ImageEncoder.maxImagesPerMessage else {
+                error = "You can attach up to \(ImageEncoder.maxImagesPerMessage) images per message."
+                return
+            }
+            pendingImageAttachments.append(image)
+            error = nil
+        } catch {
+            self.error = "Image attachment failed: \(error.localizedDescription)"
+        }
+    }
+
+    func addImageAttachment(url: URL) async {
+        guard canAttachImages else { return }
+        guard remainingImageAttachmentSlots > 0 else {
+            error = "You can attach up to \(ImageEncoder.maxImagesPerMessage) images per message."
+            return
+        }
+        isEncodingImageAttachment = true
+        defer { isEncodingImageAttachment = false }
+        do {
+            let image = try await ImageEncoder.encodeImage(url: url)
+            guard pendingImageAttachments.count < ImageEncoder.maxImagesPerMessage else {
+                error = "You can attach up to \(ImageEncoder.maxImagesPerMessage) images per message."
+                return
+            }
+            pendingImageAttachments.append(image)
+            error = nil
+        } catch {
+            self.error = "Image attachment failed: \(error.localizedDescription)"
+        }
+    }
+
+    func removeImageAttachment(_ attachment: ChatImageAttachment) {
+        pendingImageAttachments.removeAll { $0.id == attachment.id }
     }
 
     /// Interrupt the current agent turn.

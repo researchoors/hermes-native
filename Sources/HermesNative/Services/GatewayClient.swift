@@ -608,14 +608,49 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
         }
     }
 
-    func submitPrompt(sessionID: String, text: String) async throws {
-        let response = try await call("prompt.submit", params: [
+    func submitPrompt(sessionID: String, text: String, images: [ChatImageAttachment] = []) async throws {
+        var params: [String: AnyCodable] = [
             "session_id": AnyCodable(sessionID),
             "text": AnyCodable(text),
-        ])
+        ]
+
+        if !images.isEmpty {
+            params["content"] = .array(promptContentBlocks(text: text, images: images))
+        }
+
+        let response = try await call("prompt.submit", params: params)
         if let error = response.error {
             throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
         }
+    }
+
+    private func promptContentBlocks(text: String, images: [ChatImageAttachment]) -> [AnyCodable] {
+        var blocks: [AnyCodable] = []
+        if !text.isEmpty {
+            blocks.append(.dictionary([
+                "type": AnyCodable("text"),
+                "text": AnyCodable(text),
+            ]))
+        }
+        blocks.append(contentsOf: images.map { image in
+            .dictionary([
+                "type": AnyCodable("image_url"),
+                "image_url": .dictionary([
+                    "url": AnyCodable(image.dataURL),
+                    "detail": AnyCodable("auto"),
+                ]),
+                "source": .dictionary([
+                    "type": AnyCodable("base64"),
+                    "media_type": AnyCodable(image.mimeType),
+                    "data": AnyCodable(image.dataBase64),
+                ]),
+                "mime_type": AnyCodable(image.mimeType),
+                "filename": AnyCodable(image.fileName),
+                "width": AnyCodable(image.width),
+                "height": AnyCodable(image.height),
+            ])
+        })
+        return blocks
     }
 
     func interrupt(sessionID: String) async throws {
