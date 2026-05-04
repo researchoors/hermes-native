@@ -401,6 +401,9 @@ final class ChatViewModel: ObservableObject {
         guard shouldApplyEvent(sessionID: eventSessionID, event: event) else {
             let reason = "session mismatch current=\(sessionID ?? "nil")"
             NSLog("[HermesNative] ChatViewModel ignored event for session=\(eventSessionID ?? "nil") current=\(sessionID ?? "nil") event=\(event.debugName)")
+            if case .messageComplete(let payload) = event {
+                notifyResponseCompleteIfNeeded(payload: payload, eventSessionID: eventSessionID)
+            }
             gatewayClient?.recordDroppedEvent(event, sessionID: eventSessionID, reason: reason)
             return
         }
@@ -462,14 +465,7 @@ final class ChatViewModel: ObservableObject {
             saveHistory()
 
             // Notify if app is backgrounded or this isn't the active session
-            let preview = payload.text.truncated(to: 80)
-            if let sid = sessionID {
-                NotificationService.shared.notifyResponseComplete(
-                    sessionTitle: sessionTitle,
-                    preview: preview,
-                    sessionID: sid
-                )
-            }
+            notifyResponseCompleteIfNeeded(payload: payload, eventSessionID: eventSessionID)
 
         case .toolStart(payload: let payload):
             guard isStreaming else { break }
@@ -578,5 +574,25 @@ final class ChatViewModel: ObservableObject {
         case .voiceTranscript, .voiceStatus:
             break
         }
+    }
+
+    private func notifyResponseCompleteIfNeeded(payload: MessageCompletePayload, eventSessionID: String?) {
+        guard payload.status == "complete" else { return }
+        let sid = eventSessionID ?? sessionID
+        guard let sid, !sid.isEmpty else { return }
+
+        let title: String
+        if sid == sessionID {
+            title = sessionTitle.isEmpty ? "Response complete" : sessionTitle
+        } else {
+            title = "Session \(sid.prefix(8))"
+        }
+
+        let preview = payload.text.isEmpty ? "Response complete" : payload.text.truncated(to: 80)
+        NotificationService.shared.notifyResponseComplete(
+            sessionTitle: title,
+            preview: preview,
+            sessionID: sid
+        )
     }
 }

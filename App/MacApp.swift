@@ -10,7 +10,7 @@ struct HermesNativeAppMac: App {
 
     init() {
         configureHermesNativeMacApplication()
-        requestHermesNativeNotificationAuthorization()
+        prepareHermesNativeNotifications()
     }
 
     var body: some Scene {

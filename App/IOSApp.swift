@@ -9,7 +9,7 @@ struct HermesNativeAppIOS: App {
     @StateObject private var gatewayClientWrapper = GatewayClientWrapper()
 
     init() {
-        requestHermesNativeNotificationAuthorization()
+        prepareHermesNativeNotifications()
     }
 
     var body: some Scene {
