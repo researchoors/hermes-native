@@ -35,6 +35,12 @@ final class ChatViewModel: ObservableObject {
     @Published var sessionTitle: String = "New Chat"
     @Published private(set) var createGeneration: Int = 0
 
+    /// Monotonic token for user-driven session switches/creates. Async resume
+    /// calls must check this before committing returned history; otherwise a
+    /// slower first resume can overwrite the newer selected session after rapid
+    /// sidebar clicks while another turn is streaming.
+    private var sessionSwitchGeneration = 0
+
     private struct SessionRuntimeState {
         var messages: [ChatMessage] = []
         var isStreaming: Bool = false
@@ -89,13 +95,20 @@ final class ChatViewModel: ObservableObject {
                     self?.error = nil
                 case .reconnecting:
                     self?.error = nil  // Clear errors — reconnect in progress
-                    self?.isStreaming = false
-                    self?.avatarState = .thinking
+                    // Do not mark the active turn as stopped during a transient
+                    // reconnect. The gateway agent may still be running, and
+                    // clearing isStreaming makes later frames look stale.
+                    if self?.isStreaming == true {
+                        self?.avatarState = .thinking
+                    }
                 case .error(let msg):
                     self?.error = msg
-                    self?.isSessionReady = false
-                    self?.isStreaming = false
-                    self?.avatarState = .error
+                    if self?.sessionID == nil {
+                        self?.isSessionReady = false
+                    }
+                    if self?.isStreaming == true {
+                        self?.avatarState = .error
+                    }
                 default:
                     break
                 }
@@ -133,6 +146,20 @@ final class ChatViewModel: ObservableObject {
 
     /// The session ID currently active in this chat view.
     var currentSessionID: String? { sessionID }
+
+    /// Test/debug hook for applying a gateway event exactly as the shared
+    /// WebSocket subscriber would receive it.
+    func receiveGatewayEventForTesting(_ event: GatewayEvent, sessionID: String?) {
+        handleEvent(event, eventSessionID: sessionID)
+    }
+
+    /// Link the active short-lived gateway ID with the stable database ID shown
+    /// in the sessions list. History is saved under both IDs so switching away
+    /// and back does not depend on which ID is current at that exact moment.
+    func bindCurrentGatewaySession(toStableSessionID stableID: String) {
+        guard let runtimeID = sessionID, !stableID.isEmpty else { return }
+        bindRuntimeSession(displayID: stableID, runtimeID: runtimeID)
+    }
 
     private func displaySessionID(for runtimeID: String) -> String {
         stableSessionByGatewayID[runtimeID] ?? runtimeID
@@ -254,25 +281,82 @@ final class ChatViewModel: ObservableObject {
         isCreatingSession = false
     }
 
+    /// Starts a user-visible switch immediately from local cache and returns a
+    /// generation token. Call `resumeSession(key:generation:)` to revalidate the
+    /// same selection from the gateway; stale generations are ignored.
+    @discardableResult
+    func beginSwitchToSession(key: String) -> Int {
+        snapshotCurrentSessionState()
+        sessionSwitchGeneration += 1
+        let generation = sessionSwitchGeneration
+
+        if restoreSessionState(displayID: key) {
+            return generation
+        }
+        if let cachedMessages = ChatHistoryStore.shared.loadMessages(forSession: key) {
+            self.messages = cachedMessages
+            self.sessionID = runtimeSessionID(for: key)
+            self.isSessionReady = true
+            self.isStreaming = false
+            self.streamingMessageID = nil
+            self.activeToolCalls = [:]
+            self.pendingApproval = nil
+            self.avatarState = .idle
+            self.error = nil
+            snapshotCurrentSessionState()
+            return generation
+        }
+
+        // Bind the selected session immediately, even before session.resume
+        // returns, so the previous streaming chat cannot keep owning the detail
+        // pane/composer during rapid sidebar clicks.
+        self.sessionID = runtimeSessionID(for: key)
+        self.messages = []
+        self.isSessionReady = true
+        self.isStreaming = false
+        self.streamingMessageID = nil
+        self.activeToolCalls = [:]
+        self.pendingApproval = nil
+        self.avatarState = .idle
+        self.error = nil
+        self.sessionTitle = "New Chat"
+        snapshotCurrentSessionState()
+        return generation
+    }
+
     /// Resume an existing session by key, replacing the currently visible chat state.
     /// Existing live state for the previously selected session is snapshotted first,
     /// so switching away from an active reasoning/tool turn does not discard it.
-    func resumeSession(key: String) async {
-        snapshotCurrentSessionState()
+    @discardableResult
+    func resumeSession(key: String) async -> Bool {
+        let generation = beginSwitchToSession(key: key)
+        return await resumeSession(key: key, generation: generation)
+    }
 
+    @discardableResult
+    func resumeSession(key: String, generation: Int) async -> Bool {
         guard let client = gatewayClient else {
-            self.error = "No gateway client"
-            return
+            if generation == sessionSwitchGeneration {
+                self.error = "No gateway client"
+            }
+            return false
         }
         guard case .connected = client.connectionState else {
-            self.error = "Not connected to gateway"
-            return
+            if generation == sessionSwitchGeneration {
+                self.error = "Not connected to gateway"
+            }
+            return false
         }
 
         let cachedBeforeResume = sessionStates[key]
 
         do {
             let result = try await client.resumeSession(key: key)
+            guard generation == sessionSwitchGeneration else {
+                NSLog("[HermesNative] ignoring stale resume for \(key) generation=\(generation) current=\(sessionSwitchGeneration)")
+                return false
+            }
+
             stableSessionByGatewayID[result.sessionID] = key
             gatewayIDByStableSession[key] = result.sessionID
 
@@ -319,8 +403,12 @@ final class ChatViewModel: ObservableObject {
             }
 
             await applyEphemeralPrompt(for: result.sessionID, using: client)
+            return true
         } catch {
-            self.error = "Session resume failed: \(error.localizedDescription)"
+            if generation == sessionSwitchGeneration {
+                self.error = "Session resume failed: \(error.localizedDescription)"
+            }
+            return false
         }
     }
 
@@ -410,6 +498,10 @@ final class ChatViewModel: ObservableObject {
     func submitPrompt() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, let client = gatewayClient, let sid = sessionID else { return }
+        guard !isStreaming && !isStopping else {
+            NSLog("[HermesNative] ChatViewModel submitPrompt ignored while streaming/stopping")
+            return
+        }
 
         inputText = ""
         isStreaming = true

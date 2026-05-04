@@ -480,10 +480,11 @@ struct ContentView: View {
             if rpcID == chatViewModel.currentSessionID {
                 return
             }
-            chatViewModel.loadLocalHistory(sessionID: newID)
+            let generation = chatViewModel.beginSwitchToSession(key: newID)
             Task {
                 // session.resume expects the database-format ID.
-                await chatViewModel.resumeSession(key: newID)
+                let resumed = await chatViewModel.resumeSession(key: newID, generation: generation)
+                guard resumed else { return }
                 if let runtimeID = chatViewModel.currentSessionID {
                     chatViewModel.bindRuntimeSession(displayID: newID, runtimeID: runtimeID)
                     spawnTreeStore.bindRuntimeSession(displayID: newID, runtimeID: runtimeID)
