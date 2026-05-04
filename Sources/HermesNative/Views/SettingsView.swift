@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var personaManager: PersonaManager
+    @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -62,6 +63,24 @@ struct SettingsView: View {
                             .textFieldStyle(.roundedBorder)
                             .font(.body)
                     }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Notifications")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+
+                        Toggle("Response complete", isOn: $settings.responseCompleteNotificationsEnabled)
+                        Text("Notify when a response finishes while the app is in the background or another session is active.")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Divider()
+
+                    capabilitiesSummary
 
                     Divider()
 
@@ -128,6 +147,30 @@ struct SettingsView: View {
     }
     #endif
 
+    private var capabilitiesSummary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(capabilitiesStore.capabilities.statusDisplay, systemImage: capabilitiesStore.isRefreshing ? "arrow.triangle.2.circlepath" : "checkmark.seal")
+                    .foregroundStyle(capabilitiesStore.isRefreshing ? Theme.warning : Theme.success)
+                Spacer()
+                Text("Version: \(capabilitiesStore.capabilities.versionDisplay)")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+
+            HStack(spacing: 8) {
+                CapabilityPill(title: "Image input", isEnabled: capabilitiesStore.hasImageInput)
+                CapabilityPill(title: "ACP image prompts", isEnabled: capabilitiesStore.hasACPImagePrompts)
+            }
+
+            if case .fallback(let reason) = capabilitiesStore.capabilities.source {
+                Text(reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     // MARK: - Shared Tab Content (macOS)
 
     #if os(macOS)
@@ -138,6 +181,17 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
                 SecureField("API Key", text: $settings.apiKey)
                     .textFieldStyle(.roundedBorder)
+            }
+
+            Section("Notifications") {
+                Toggle("Response complete", isOn: $settings.responseCompleteNotificationsEnabled)
+                Text("Notify when a response finishes while the app is in the background or another session is active.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Gateway Capabilities") {
+                capabilitiesSummary
             }
 
             Section {
@@ -229,4 +283,21 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
     #endif
+}
+
+private struct CapabilityPill: View {
+    let title: String
+    let isEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: isEnabled ? "checkmark.circle.fill" : "minus.circle")
+            Text(title)
+        }
+        .font(.caption2)
+        .foregroundStyle(isEnabled ? Theme.success : Theme.secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Theme.surfaceHover, in: Capsule())
+    }
 }

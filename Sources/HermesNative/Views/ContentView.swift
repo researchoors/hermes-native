@@ -7,7 +7,9 @@ struct ContentView: View {
     @EnvironmentObject var sessionList: SessionListViewModel
     @EnvironmentObject var spawnTreeStore: SpawnTreeStore
     @EnvironmentObject var personaManager: PersonaManager
+    @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @StateObject private var chatViewModel = ChatViewModel()
+    @StateObject private var activityInbox = ActivityInboxViewModel()
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @Environment(\.scenePhase) private var scenePhase
 
@@ -17,6 +19,7 @@ struct ContentView: View {
     @State private var observerSession: Session?
     @State private var showCronSheet = false
     @State private var showGatewayDebugSheet = false
+    @State private var showActivitySheet = false
     @State private var selectedTab = 0
     @State private var isCreatingSession = false
     @State private var sessionCreationError: String?
@@ -198,6 +201,14 @@ struct ContentView: View {
                     .presentationDetents([.large])
             }
         }
+        .sheet(isPresented: $showActivitySheet) {
+            ActivityInboxView(viewModel: activityInbox, onOpenSession: { sessionID in
+                showActivitySheet = false
+                selectedTab = 0
+                sessionList.selectSession(id: sessionID)
+            })
+            .presentationDetents([.large])
+        }
     }
 
     #endif
@@ -225,6 +236,13 @@ struct ContentView: View {
             GatewayDebugPanelView(client: gatewayClientWrapper.client)
                 .frame(minWidth: 560, minHeight: 620)
         }
+        .sheet(isPresented: $showActivitySheet) {
+            ActivityInboxView(viewModel: activityInbox, onOpenSession: { sessionID in
+                showActivitySheet = false
+                sessionList.selectSession(id: sessionID)
+            })
+            .frame(minWidth: 640, minHeight: 620)
+        }
         .sheet(isPresented: Binding(
             get: { missionControlSessionID != nil },
             set: { if !$0 { missionControlSessionID = nil } }
@@ -240,6 +258,22 @@ struct ContentView: View {
         }) { session in
             SessionObserverView(session: session)
                 .environmentObject(gatewayClientWrapper)
+        }
+        .overlay(alignment: .topTrailing) {
+            #if os(macOS)
+            Button {
+                showActivitySheet = true
+            } label: {
+                Label("Activity", systemImage: activityInbox.unreadCount > 0 ? "bell.badge.fill" : "bell")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Theme.primary)
+            .padding(.top, 10)
+            .padding(.trailing, 14)
+            .accessibilityLabel("Activity")
+            .accessibilityIdentifier("activityInboxButton")
+            #endif
         }
         .onChange(of: sessionList.activeSessionID) { _, newID in
             handleSelectionChangeAfterViewUpdate(newID)
@@ -386,6 +420,7 @@ struct ContentView: View {
             ChatView()
                 .environmentObject(chatViewModel)
                 .environmentObject(gatewayClientWrapper)
+                .environmentObject(capabilitiesStore)
                 .id(chatViewModel.currentSessionID)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
