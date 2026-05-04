@@ -6,13 +6,16 @@ import SwiftUI
 /// App inside another App (e.g. `HermesNativeApp().body`), because SwiftUI will
 /// access those StateObjects before the owner is installed and create transient
 /// instances.
-func prepareHermesNativeNotifications() {
-    _ = NotificationService.shared
+func requestHermesNativeNotificationAuthorization() {
+    Task { @MainActor in
+        _ = await NotificationService.shared.requestAuthorization()
+    }
 }
 
 #if os(macOS)
 import AppKit
 
+@MainActor
 func configureHermesNativeMacApplication() {
     NSApplication.shared.setActivationPolicy(.regular)
     NSApplication.shared.activate()
