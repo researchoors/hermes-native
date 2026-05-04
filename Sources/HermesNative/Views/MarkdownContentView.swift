@@ -61,8 +61,71 @@ struct MarkdownContentView: View {
     }
 
     private var blocks: [MarkdownBlock] {
-        MarkdownParser.parse(text)
+        MarkdownParseCache.shared.blocks(for: text)
     }
+}
+
+final class MarkdownParseCache: @unchecked Sendable {
+    static let shared = MarkdownParseCache()
+
+    private let lock = NSLock()
+    private var cachedInput: String = ""
+    private var cachedBlocks: [MarkdownBlock] = []
+    private var completedCache: [Int: [MarkdownBlock]] = [:]
+    private var completedOrder: [Int] = []
+    private let completedLimit = 32
+    #if DEBUG
+    private(set) var parseCount = 0
+    #endif
+
+    func blocks(for input: String) -> [MarkdownBlock] {
+        lock.lock()
+        if input == cachedInput {
+            let blocks = cachedBlocks
+            lock.unlock()
+            return blocks
+        }
+        let key = input.hashValue
+        if let blocks = completedCache[key], input.count > 2_400 {
+            cachedInput = input
+            cachedBlocks = blocks
+            lock.unlock()
+            return blocks
+        }
+        lock.unlock()
+
+        let parsed = MarkdownParser.parse(input)
+
+        lock.lock()
+        #if DEBUG
+        parseCount += 1
+        #endif
+        cachedInput = input
+        cachedBlocks = parsed
+        if input.count > 2_400 {
+            completedCache[key] = parsed
+            completedOrder.removeAll { $0 == key }
+            completedOrder.append(key)
+            while completedOrder.count > completedLimit {
+                let evicted = completedOrder.removeFirst()
+                completedCache.removeValue(forKey: evicted)
+            }
+        }
+        lock.unlock()
+        return parsed
+    }
+
+    #if DEBUG
+    func resetForTesting() {
+        lock.lock()
+        cachedInput = ""
+        cachedBlocks = []
+        completedCache = [:]
+        completedOrder = []
+        parseCount = 0
+        lock.unlock()
+    }
+    #endif
 }
 
 // MARK: - Block Types
@@ -883,6 +946,8 @@ struct InlineHTMLNSView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.lastLoadedHTML != html else { return }
+        context.coordinator.lastLoadedHTML = html
         webView.loadHTMLString(html, baseURL: nil)
     }
 }
@@ -908,12 +973,15 @@ struct InlineHTMLUIView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.lastLoadedHTML != html else { return }
+        context.coordinator.lastLoadedHTML = html
         webView.loadHTMLString(html, baseURL: nil)
     }
 }
 #endif
 
 final class HTMLNavigationDelegate: NSObject, WKNavigationDelegate {
+    var lastLoadedHTML: String?
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,

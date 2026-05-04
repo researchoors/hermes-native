@@ -13,8 +13,14 @@ struct LongResponseView: View {
     @State private var showOverview = true
     @State private var compactMode = false
 
+    @State private var cachedDocumentText: String = ""
+    @State private var cachedDocument: LongResponseDocument?
+
     private var document: LongResponseDocument {
-        LongResponseDocument(markdown: text)
+        if cachedDocumentText == text, let cachedDocument {
+            return cachedDocument
+        }
+        return LongResponseDocumentCache.shared.document(for: text)
     }
 
     private var shouldEnhance: Bool {
@@ -22,10 +28,20 @@ struct LongResponseView: View {
     }
 
     var body: some View {
-        if shouldEnhance {
-            enhancedBody
-        } else {
-            MarkdownContentView(text: text, isStreaming: isStreaming)
+        Group {
+            if shouldEnhance {
+                enhancedBody
+            } else {
+                MarkdownContentView(text: text, isStreaming: isStreaming)
+            }
+        }
+        .task(id: text) {
+            guard !isStreaming else { return }
+            let parsed = LongResponseDocumentCache.shared.document(for: text)
+            await MainActor.run {
+                cachedDocumentText = text
+                cachedDocument = parsed
+            }
         }
     }
 
@@ -252,7 +268,56 @@ private struct LongResponseTinyButtonStyle: ButtonStyle {
 
 // MARK: - Document Model
 
-private struct LongResponseDocument {
+final class LongResponseDocumentCache: @unchecked Sendable {
+    static let shared = LongResponseDocumentCache()
+
+    private let lock = NSLock()
+    private var cache: [Int: LongResponseDocument] = [:]
+    private var order: [Int] = []
+    private let limit = 24
+    #if DEBUG
+    private(set) var parseCount = 0
+    #endif
+
+    func document(for markdown: String) -> LongResponseDocument {
+        let key = markdown.hashValue
+        lock.lock()
+        if let cached = cache[key] {
+            order.removeAll { $0 == key }
+            order.append(key)
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let parsed = LongResponseDocument(markdown: markdown)
+
+        lock.lock()
+        #if DEBUG
+        parseCount += 1
+        #endif
+        cache[key] = parsed
+        order.append(key)
+        while order.count > limit {
+            let evicted = order.removeFirst()
+            cache.removeValue(forKey: evicted)
+        }
+        lock.unlock()
+        return parsed
+    }
+
+    #if DEBUG
+    func resetForTesting() {
+        lock.lock()
+        cache = [:]
+        order = []
+        parseCount = 0
+        lock.unlock()
+    }
+    #endif
+}
+
+struct LongResponseDocument {
     let markdown: String
     let sections: [LongResponseSection]
     let headings: [LongResponseHeading]
@@ -361,13 +426,13 @@ private struct LongResponseDocument {
     }
 }
 
-private struct LongResponseHeading: Identifiable {
+struct LongResponseHeading: Identifiable {
     let id: Int
     let level: Int
     let title: String
 }
 
-private struct LongResponseSection: Identifiable {
+struct LongResponseSection: Identifiable {
     let id: Int
     let level: Int
     let title: String

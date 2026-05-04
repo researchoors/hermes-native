@@ -16,6 +16,7 @@ struct ChatView: View {
     @State private var showSettings = false
     #endif
     @State private var avatarY: CGFloat = 0
+    @State private var pendingScrollTask: Task<Void, Never>?
 
     /// The active skin — change this to swap the entire visual personality
     @AppStorage("chatSkin") private var activeSkin: ChatSkin = .tui
@@ -196,22 +197,23 @@ struct ChatView: View {
                     }
                 }
                 .onChange(of: chatViewModel.messages.count) { _, _ in
-                    scrollToBottom(proxy: proxy)
+                    scheduleScrollToBottom(proxy: proxy, reason: "message-count")
                 }
-                .onChange(of: chatViewModel.messages.last?.content) { _, _ in
-                    scrollToBottom(proxy: proxy)
+                .onChange(of: latestMessageRenderKey) { _, _ in
+                    scheduleScrollToBottom(proxy: proxy, reason: "message-content")
                 }
-                .onChange(of: chatViewModel.messages.last?.reasoning) { _, _ in
-                    scrollToBottom(proxy: proxy)
-                }
-                .onChange(of: chatViewModel.activeToolCalls.map { key, value in "\(key):\(value.isComplete):\(value.summary ?? value.context ?? "")" }.joined(separator: "|")) { _, _ in
-                    scrollToBottom(proxy: proxy)
+                .onChange(of: activeToolCallRenderKey) { _, _ in
+                    scheduleScrollToBottom(proxy: proxy, reason: "tool-state")
                 }
                 .onChange(of: chatViewModel.isStreaming) { _, streaming in
-                    if streaming { scrollToBottom(proxy: proxy) }
+                    if streaming { scheduleScrollToBottom(proxy: proxy, reason: "streaming") }
                 }
                 .onChange(of: chatViewModel.avatarState) { _, _ in
-                    scrollToBottom(proxy: proxy)
+                    scheduleScrollToBottom(proxy: proxy, reason: "avatar-state")
+                }
+                .onDisappear {
+                    pendingScrollTask?.cancel()
+                    pendingScrollTask = nil
                 }
             }
 
@@ -403,6 +405,38 @@ struct ChatView: View {
             .environmentObject(capabilitiesStore)
     }
     #endif
+
+    private var latestMessageRenderKey: String {
+        guard let last = chatViewModel.messages.last else { return "none" }
+        // Bucket text length so token-by-token deltas do not force a full
+        // scroll/layout pass for every tiny chunk. Content still renders as it
+        // streams; auto-scroll is just coalesced to reduce main-thread pressure
+        // on long sessions.
+        let contentBucket = last.content.count / 256
+        let reasoningBucket = (last.reasoning?.count ?? 0) / 256
+        return "\(last.id.uuidString):\(contentBucket):\(reasoningBucket):\(last.isStreaming)"
+    }
+
+    private var activeToolCallRenderKey: String {
+        chatViewModel.activeToolCalls
+            .sorted { $0.key < $1.key }
+            .map { key, value in
+                let contextBucket = (value.summary ?? value.context ?? "").count / 256
+                return "\(key):\(value.isComplete):\(contextBucket)"
+            }
+            .joined(separator: "|")
+    }
+
+    private func scheduleScrollToBottom(proxy: ScrollViewProxy, reason: String) {
+        _ = reason
+        pendingScrollTask?.cancel()
+        let delay: UInt64 = chatViewModel.isStreaming ? 120_000_000 : 20_000_000
+        pendingScrollTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: delay)
+            guard !Task.isCancelled else { return }
+            scrollToBottom(proxy: proxy)
+        }
+    }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.15)) {
