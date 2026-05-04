@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject var sessionList: SessionListViewModel
     @EnvironmentObject var spawnTreeStore: SpawnTreeStore
     @EnvironmentObject var personaManager: PersonaManager
+    @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @StateObject private var chatViewModel = ChatViewModel()
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @Environment(\.scenePhase) private var scenePhase
@@ -46,18 +47,19 @@ struct ContentView: View {
                 OnboardingView()
                     .environmentObject(gatewayClientWrapper)
                     .environmentObject(chatViewModel)
+                    .environmentObject(capabilitiesStore)
             }
         }
         .task {
             if settings.isConfigured && (!settings.needsCFAuth || settings.cfAuthCookie != nil) {
-                _ = await gatewayClientWrapper.connectIfNeeded(using: settings)
+                await connectAndRefreshCapabilities()
                 wireUpClient()
             }
         }
         .onChange(of: settings.isConfigured) { _, configured in
             if configured && (!settings.needsCFAuth || settings.cfAuthCookie != nil) {
                 Task {
-                    await gatewayClientWrapper.connect(using: settings)
+                    await connectAndRefreshCapabilities()
                     wireUpClient()
                 }
             }
@@ -65,7 +67,7 @@ struct ContentView: View {
         .onChange(of: settings.cfAuthCookie) { _, cookie in
             if cookie != nil && settings.isConfigured {
                 Task {
-                    await gatewayClientWrapper.connect(using: settings)
+                    await connectAndRefreshCapabilities()
                     wireUpClient()
                 }
             }
@@ -130,6 +132,7 @@ struct ContentView: View {
                 ChatView()
                     .environmentObject(chatViewModel)
                     .environmentObject(gatewayClientWrapper)
+                    .environmentObject(capabilitiesStore)
                     .id(chatViewModel.currentSessionID)
             }
             .safeAreaInset(edge: .bottom) {
@@ -386,6 +389,7 @@ struct ContentView: View {
             ChatView()
                 .environmentObject(chatViewModel)
                 .environmentObject(gatewayClientWrapper)
+                .environmentObject(capabilitiesStore)
                 .id(chatViewModel.currentSessionID)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -439,7 +443,7 @@ struct ContentView: View {
 
             pushOwnedSessionOnIOS(newID)
 
-            chatViewModel.bindRuntimeSession(displayID: newID, runtimeID: rpcID)
+            chatViewModel.bindCurrentGatewaySession(toStableSessionID: newID)
             spawnTreeStore.bindRuntimeSession(displayID: newID, runtimeID: rpcID)
 
             if rpcID == chatViewModel.currentSessionID {
@@ -450,7 +454,7 @@ struct ContentView: View {
                 // session.resume expects the database-format ID.
                 await chatViewModel.resumeSession(key: newID)
                 if let runtimeID = chatViewModel.currentSessionID {
-                    chatViewModel.bindRuntimeSession(displayID: newID, runtimeID: runtimeID)
+                    chatViewModel.bindCurrentGatewaySession(toStableSessionID: newID)
                     spawnTreeStore.bindRuntimeSession(displayID: newID, runtimeID: runtimeID)
                 }
             }
@@ -524,7 +528,7 @@ struct ContentView: View {
         pendingCreatedSessionID = sid
         sessionList.registerOwnedSession(shortHexID: sid)
         sessionList.selectSession(id: sid)
-        chatViewModel.bindRuntimeSession(displayID: sid, runtimeID: sid)
+        chatViewModel.bindCurrentGatewaySession(toStableSessionID: sid)
         spawnTreeStore.createTree(sessionID: sid)
         spawnTreeStore.bindRuntimeSession(displayID: sid, runtimeID: sid)
         pushOwnedSessionOnIOS(sid)
@@ -542,6 +546,16 @@ struct ContentView: View {
     }
 
     // MARK: - Wiring
+
+    @MainActor
+    private func connectAndRefreshCapabilities() async {
+        let connected = await gatewayClientWrapper.connectIfNeeded(using: settings)
+        if connected {
+            await capabilitiesStore.refresh(using: gatewayClientWrapper.client)
+        } else {
+            capabilitiesStore.reset(reason: "Gateway is not connected")
+        }
+    }
 
     private func wireUpClient(_ client: GatewayClient? = nil) {
         let client = client ?? gatewayClientWrapper.client
