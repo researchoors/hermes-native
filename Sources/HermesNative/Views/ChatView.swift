@@ -77,6 +77,12 @@ struct ChatView: View {
             // Message list
             ScrollViewReader { proxy in
                 ZStack(alignment: .bottom) {
+                    #if os(macOS)
+                    MacScrollViewIntrospection()
+                        .frame(width: 0, height: 0)
+                        .allowsHitTesting(false)
+                    #endif
+
                     ScrollView {
                         GeometryReader { viewport in
                             Color.clear.preference(
@@ -174,7 +180,9 @@ struct ChatView: View {
                     #endif
                 }
                 .background(activeSkin.background)
-                #if os(iOS)
+                #if os(macOS)
+                .scrollIndicators(.hidden, axes: .horizontal)
+                #else
                 .scrollDismissesKeyboard(.interactively)
                 #endif
                 .onPreferenceChange(LatestBotTurnYKey.self) { y in
@@ -521,6 +529,11 @@ struct ChatInputBar: View {
         .onDrop(of: [UTType.image.identifier, UTType.fileURL.identifier], isTargeted: nil, perform: handleDrop)
         .onPasteCommand(of: [.image]) { providers in
             _ = handleDrop(providers: providers)
+        }
+        .background {
+            MacScrollViewIntrospection()
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
         }
         #else
         VStack(alignment: .leading, spacing: 8) {
