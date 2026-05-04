@@ -12,6 +12,7 @@ struct ChatView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @EnvironmentObject var personaManager: PersonaManager
+    @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @State private var showPersonaPicker = false
     @State private var showSkinPicker = false
     #if os(iOS)
@@ -381,6 +382,7 @@ struct ChatView: View {
         SettingsView()
             .environmentObject(settings)
             .environmentObject(personaManager)
+            .environmentObject(capabilitiesStore)
     }
     #endif
 
