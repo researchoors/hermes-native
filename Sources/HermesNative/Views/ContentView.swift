@@ -380,7 +380,7 @@ struct ContentView: View {
                 spawnTreeStore.bindRuntimeSession(displayID: newID, runtimeID: rpcID)
                 return
             }
-            chatViewModel.loadLocalHistory(sessionID: newID)
+            chatViewModel.prepareForPriorSessionSelection(sessionID: newID)
             Task {
                 // session.resume expects the database-format ID.
                 await chatViewModel.resumeSession(key: newID)

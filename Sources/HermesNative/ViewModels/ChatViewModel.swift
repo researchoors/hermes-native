@@ -158,22 +158,62 @@ final class ChatViewModel: ObservableObject {
             self.error = "Not connected to gateway"
             return
         }
+
+        let cachedBeforeResume = ChatHistoryStore.shared.loadMessages(forSession: key)
         do {
             let result = try await client.resumeSession(key: key)
             self.sessionID = result.sessionID
             self.isSessionReady = true
             self.activeToolCalls = [:]
             self.isStreaming = false
+            self.streamingMessageID = nil
+            self.pendingApproval = nil
             self.avatarState = .idle
             self.error = nil
 
-            // Parse history messages from the gateway
-            self.messages = Self.parseHistoryMessages(result.messages)
+            // Prefer parsed gateway history, but don't blank the UI when an old
+            // gateway/session shape returns no parseable messages. Keep local
+            // cache as a fallback and mirror any loaded messages under the new
+            // runtime ID used by prompt/tool RPCs.
+            let parsedGatewayMessages = Self.parseHistoryMessages(result.messages)
+            if !parsedGatewayMessages.isEmpty {
+                self.messages = parsedGatewayMessages
+                ChatHistoryStore.shared.saveMessages(parsedGatewayMessages, forSession: key)
+            } else if let cachedBeforeResume {
+                self.messages = cachedBeforeResume
+            } else {
+                self.messages = []
+            }
+
+            if !self.messages.isEmpty {
+                ChatHistoryStore.shared.saveMessages(self.messages, forSession: result.sessionID)
+            }
 
             await applyEphemeralPrompt(for: result.sessionID, using: client)
         } catch {
             self.error = "Session resume failed: \(error.localizedDescription)"
         }
+    }
+
+    /// Prepare the visible chat for a user-selected prior session before the
+    /// network resume finishes. Returns true when local history was available.
+    @discardableResult
+    func prepareForPriorSessionSelection(sessionID: String) -> Bool {
+        if loadLocalHistory(sessionID: sessionID) {
+            return true
+        }
+
+        self.sessionID = sessionID
+        self.messages = []
+        self.isSessionReady = true
+        self.isStreaming = false
+        self.streamingMessageID = nil
+        self.activeToolCalls = [:]
+        self.pendingApproval = nil
+        self.avatarState = .idle
+        self.error = nil
+        self.sessionTitle = "New Chat"
+        return false
     }
 
     private func applyEphemeralPrompt(for sessionID: String, using client: GatewayClient) async {
@@ -202,22 +242,24 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Parse gateway history messages into ChatMessage array.
-    /// Gateway format: {"role": "user"|"assistant"|"tool", "text": "...", "name": "...", "context": "..."}
+    /// Gateway history has used a few shapes over time: direct `text`, `content`,
+    /// OpenAI-style `content`, and tool fields nested under `context`/`result`.
+    /// Be permissive here so old sessions do not render as an empty chat on iOS.
     private static func parseHistoryMessages(_ rawMessages: [[String: AnyCodable]]) -> [ChatMessage] {
         var messages: [ChatMessage] = []
         var currentToolCalls: [ToolCallRecord] = []
 
         for raw in rawMessages {
-            guard let roleStr = raw["role"]?.stringValue else { continue }
+            guard let roleStr = raw["role"]?.stringValue?.lowercased() else { continue }
 
             switch roleStr {
-            case "user":
-                let text = raw["text"]?.stringValue ?? ""
+            case "user", "human":
+                let text = historyText(from: raw)
                 guard !text.isEmpty else { continue }
                 messages.append(ChatMessage(role: .user, content: text))
 
-            case "assistant":
-                // Flush any pending tool calls before this assistant message
+            case "assistant", "ai", "model":
+                // Flush any pending tool calls before this assistant message.
                 if !currentToolCalls.isEmpty {
                     if let lastIdx = messages.lastIndex(where: { $0.role == .assistant }) {
                         messages[lastIdx].toolCalls = currentToolCalls
@@ -225,28 +267,38 @@ final class ChatViewModel: ObservableObject {
                     currentToolCalls = []
                 }
 
-                let text = raw["text"]?.stringValue ?? ""
+                let text = historyText(from: raw)
                 guard !text.isEmpty else { continue }
-                messages.append(ChatMessage(role: .assistant, content: text, status: "complete"))
+                let reasoning = raw["reasoning"]?.stringValue ?? raw["thinking"]?.stringValue
+                messages.append(ChatMessage(role: .assistant, content: text, reasoning: reasoning, status: "complete"))
 
-            case "tool":
-                let name = raw["name"]?.stringValue ?? "tool"
-                let context = raw["context"]?.stringValue
-                let toolID = "hist_\(messages.count)"
+            case "tool", "function":
+                let name = raw["name"]?.stringValue
+                    ?? raw["tool_name"]?.stringValue
+                    ?? raw["function_name"]?.stringValue
+                    ?? "tool"
+                let context = historyText(from: raw)
+                let toolID = raw["tool_id"]?.stringValue
+                    ?? raw["id"]?.stringValue
+                    ?? "hist_\(messages.count)_\(currentToolCalls.count)"
                 currentToolCalls.append(ToolCallRecord(
                     id: toolID,
                     name: name,
-                    context: context,
-                    summary: context,
+                    context: context.isEmpty ? nil : context,
+                    summary: context.isEmpty ? nil : context,
                     isComplete: true
                 ))
+
+            case "system":
+                // System prompts are not chat transcript messages.
+                continue
 
             default:
                 break
             }
         }
 
-        // Flush remaining tool calls
+        // Flush remaining tool calls.
         if !currentToolCalls.isEmpty {
             if let lastIdx = messages.lastIndex(where: { $0.role == .assistant }) {
                 messages[lastIdx].toolCalls = currentToolCalls
@@ -254,6 +306,41 @@ final class ChatViewModel: ObservableObject {
         }
 
         return messages
+    }
+
+    private static func historyText(from raw: [String: AnyCodable]) -> String {
+        for key in ["text", "content", "message", "output", "result", "context"] {
+            if let text = raw[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                return text
+            }
+        }
+
+        // Some OpenAI-compatible histories store content as arrays like
+        // [{"type":"text", "text":"..."}]. Join text-like fields rather than
+        // dropping the entire message.
+        if let parts = raw["content"]?.arrayValue {
+            let text = parts.compactMap { part -> String? in
+                if let text = part.stringValue {
+                    return text
+                }
+                guard let dict = part.dictionaryValue else { return nil }
+                return dict["text"]?.stringValue
+                    ?? dict["content"]?.stringValue
+                    ?? dict["output"]?.stringValue
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { return text }
+        }
+
+        if let arguments = raw["arguments"]?.dictionaryValue {
+            return arguments
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key): \($0.value.displayString)" }
+                .joined(separator: "\n")
+        }
+
+        return ""
     }
 
     // MARK: - User Input
@@ -365,12 +452,20 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Load messages from local disk for a session (instant, no network).
-    func loadLocalHistory(sessionID: String) {
-        if let cached = ChatHistoryStore.shared.loadMessages(forSession: sessionID) {
-            self.messages = cached
-            self.sessionID = sessionID
-            self.isSessionReady = true
+    @discardableResult
+    func loadLocalHistory(sessionID: String) -> Bool {
+        guard let cached = ChatHistoryStore.shared.loadMessages(forSession: sessionID) else {
+            return false
         }
+        self.messages = cached
+        self.sessionID = sessionID
+        self.isSessionReady = true
+        self.isStreaming = false
+        self.streamingMessageID = nil
+        self.activeToolCalls = [:]
+        self.pendingApproval = nil
+        self.avatarState = .idle
+        return true
     }
 
     /// Delete local history for a session.
