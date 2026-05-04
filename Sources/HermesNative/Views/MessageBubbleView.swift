@@ -35,6 +35,8 @@ struct MessageBubbleView: View {
                             .textSelection(.enabled)
                     }
 
+                    ImageAttachmentGrid(attachments: message.imageAttachments)
+
                     let attachments = MediaParser.extractAttachments(from: message.content)
                     if !attachments.isEmpty {
                         VStack(spacing: 4) {
@@ -97,6 +99,8 @@ struct MessageBubbleView: View {
                         }
                     }
 
+                    ImageAttachmentGrid(attachments: message.imageAttachments)
+
                     // File attachments from MEDIA: tags
                     let attachments = MediaParser.extractAttachments(from: message.content)
                     if !attachments.isEmpty {
@@ -148,6 +152,8 @@ struct MessageBubbleView: View {
                         LongResponseView(text: displayContent, isStreaming: message.isStreaming)
                     }
                 }
+
+                ImageAttachmentGrid(attachments: message.imageAttachments)
 
                 let attachments = MediaParser.extractAttachments(from: message.content)
                 if !attachments.isEmpty {

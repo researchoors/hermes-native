@@ -19,6 +19,8 @@ struct ChatMessage: Identifiable, Codable {
     var showTimestamp: Bool = false
     /// File attachments extracted from MEDIA: tags in the content.
     var attachments: [FileAttachment] = []
+    /// Images attached by the user and sent as multimodal prompt content.
+    var imageAttachments: [ChatImageAttachment] = []
 
     /// Content with MEDIA: lines stripped (for rendering in bubbles).
     var contentWithoutAttachments: String {
@@ -38,7 +40,8 @@ struct ChatMessage: Identifiable, Codable {
         toolCalls: [ToolCallRecord] = [],
         reasoning: String? = nil,
         usage: UsageInfo? = nil,
-        status: String? = nil
+        status: String? = nil,
+        imageAttachments: [ChatImageAttachment] = []
     ) {
         self.id = id
         self.role = role
@@ -48,6 +51,7 @@ struct ChatMessage: Identifiable, Codable {
         self.reasoning = reasoning
         self.usage = usage
         self.status = status
+        self.imageAttachments = imageAttachments
     }
 }
 

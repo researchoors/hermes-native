@@ -1,4 +1,8 @@
 import SwiftUI
+import UniformTypeIdentifiers
+#if os(iOS)
+import PhotosUI
+#endif
 
 /// Main chat interface — skin-aware layout.
 /// Delegates all visual rendering to the active ChatSkinProvider,
@@ -8,7 +12,6 @@ struct ChatView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @EnvironmentObject var personaManager: PersonaManager
-    @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @State private var showPersonaPicker = false
     @State private var showSkinPicker = false
     #if os(iOS)
@@ -370,7 +373,6 @@ struct ChatView: View {
         SettingsView()
             .environmentObject(settings)
             .environmentObject(personaManager)
-            .environmentObject(capabilitiesStore)
     }
     #endif
 
@@ -488,19 +490,24 @@ struct SkinPickerView: View {
 struct ChatInputBar: View {
     @EnvironmentObject var chatViewModel: ChatViewModel
     @EnvironmentObject var personaManager: PersonaManager
-    @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @FocusState private var isInputFocused: Bool
+    #if os(iOS)
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    #endif
 
     private var isSendDisabled: Bool {
-        chatViewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || chatViewModel.isStreaming
+        (chatViewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && chatViewModel.pendingImageAttachments.isEmpty) || chatViewModel.isStreaming
     }
 
     var body: some View {
         #if os(macOS)
-        HStack(alignment: .center, spacing: 10) {
-            imagePromptPlaceholder
-            inputField
-            sendButton
+        VStack(alignment: .leading, spacing: 8) {
+            attachmentPreviewStrip
+            HStack(alignment: .center, spacing: 10) {
+                attachButton
+                inputField
+                sendButton
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
@@ -511,29 +518,23 @@ struct ChatInputBar: View {
                 .stroke(Theme.border.opacity(0.9), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 8)
+        .onDrop(of: [UTType.image.identifier, UTType.fileURL.identifier], isTargeted: nil, perform: handleDrop)
+        .onPasteCommand(of: [.image]) { providers in
+            _ = handleDrop(providers: providers)
+        }
         #else
-        HStack(alignment: .bottom, spacing: 10) {
-            imagePromptPlaceholder
-            inputField
-            sendButton
+        VStack(alignment: .leading, spacing: 8) {
+            attachmentPreviewStrip
+            HStack(alignment: .bottom, spacing: 10) {
+                attachButton
+                inputField
+                sendButton
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.bar)
         #endif
-    }
-
-    @ViewBuilder
-    private var imagePromptPlaceholder: some View {
-        if capabilitiesStore.hasImageInput || capabilitiesStore.hasACPImagePrompts {
-            Image(systemName: "photo.badge.plus")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.secondary)
-                .frame(width: 28, height: 28)
-                .background(Theme.surfaceHover, in: Circle())
-                .accessibilityLabel("Image prompts supported")
-                .help("Image prompts are supported by this gateway. Attachments are not enabled in this build.")
-        }
     }
 
     private var inputField: some View {
@@ -560,6 +561,63 @@ struct ChatInputBar: View {
         #endif
     }
 
+    @ViewBuilder
+    private var attachmentPreviewStrip: some View {
+        if !chatViewModel.pendingImageAttachments.isEmpty || chatViewModel.isEncodingImageAttachment {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(chatViewModel.pendingImageAttachments) { attachment in
+                        ImageAttachmentThumbnail(attachment: attachment) {
+                            chatViewModel.removeImageAttachment(attachment)
+                        }
+                    }
+                    if chatViewModel.isEncodingImageAttachment {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 48, height: 48)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var attachButton: some View {
+        if chatViewModel.canAttachImages {
+            #if os(macOS)
+            Button {
+                openImagePanel()
+            } label: {
+                Image(systemName: "photo.badge.plus")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(width: 30, height: 30)
+                    .background(Theme.surfaceHover, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Attach image")
+            .disabled(chatViewModel.remainingImageAttachmentSlots == 0 || chatViewModel.isStreaming)
+            #elseif os(iOS)
+            PhotosPicker(
+                selection: $selectedPhotoItems,
+                maxSelectionCount: chatViewModel.remainingImageAttachmentSlots,
+                matching: .images
+            ) {
+                Image(systemName: "photo.badge.plus")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(width: 30, height: 30)
+                    .background(Theme.surfaceHover, in: Circle())
+            }
+            .disabled(chatViewModel.remainingImageAttachmentSlots == 0 || chatViewModel.isStreaming)
+            .onChange(of: selectedPhotoItems) { _, items in
+                handlePickedPhotos(items)
+            }
+            #endif
+        }
+    }
+
     private var sendButton: some View {
         Button {
             Task { await chatViewModel.submitPrompt() }
@@ -574,6 +632,106 @@ struct ChatInputBar: View {
         .accessibilityIdentifier("sendButton")
         .disabled(isSendDisabled)
         .buttonStyle(.plain)
+    }
+
+    #if os(macOS)
+    private func openImagePanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK {
+            let urls = Array(panel.urls.prefix(chatViewModel.remainingImageAttachmentSlots))
+            for url in urls {
+                Task { await chatViewModel.addImageAttachment(url: url) }
+            }
+        }
+    }
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        var accepted = false
+        for provider in providers.prefix(chatViewModel.remainingImageAttachmentSlots) {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                accepted = true
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    let url: URL?
+                    if let data = item as? Data {
+                        url = URL(dataRepresentation: data, relativeTo: nil)
+                    } else {
+                        url = item as? URL
+                    }
+                    if let url {
+                        Task { @MainActor in await chatViewModel.addImageAttachment(url: url) }
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                accepted = true
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                    if let data {
+                        Task { @MainActor in await chatViewModel.addImageAttachment(data: data, fileName: "Dropped Image.jpg") }
+                    }
+                }
+            }
+        }
+        return accepted
+    }
+    #else
+    private func handlePickedPhotos(_ items: [PhotosPickerItem]) {
+        for item in items.prefix(chatViewModel.remainingImageAttachmentSlots) {
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    await chatViewModel.addImageAttachment(data: data, fileName: "Photo.jpg")
+                }
+            }
+        }
+        selectedPhotoItems = []
+    }
+    #endif
+}
+
+private struct ImageAttachmentThumbnail: View {
+    let attachment: ChatImageAttachment
+    let onRemove: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                #if os(macOS)
+                if let data = Data(base64Encoded: attachment.thumbnailBase64), let image = NSImage(data: data) {
+                    Image(nsImage: image).resizable().scaledToFill()
+                } else {
+                    placeholder
+                }
+                #else
+                if let data = Data(base64Encoded: attachment.thumbnailBase64), let image = UIImage(data: data) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    placeholder
+                }
+                #endif
+            }
+            .frame(width: 52, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.border, lineWidth: 1))
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(Theme.primary, Color.black.opacity(0.65))
+            }
+            .buttonStyle(.plain)
+            .offset(x: 6, y: -6)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Attached image \(attachment.displayName)")
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Theme.surfaceHover)
+            .overlay(Image(systemName: "photo").foregroundStyle(Theme.secondary))
     }
 }
 

@@ -8,4 +8,5 @@ enum Constants {
     static let maxMessageLength = 1_000_000
     static let reconnectDelay: TimeInterval = 2.0
     static let maxReconnectDelay: TimeInterval = 30.0
+    static let enableLocalImageAttachments = true
 }

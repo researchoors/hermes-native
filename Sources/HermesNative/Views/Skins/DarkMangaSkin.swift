@@ -55,15 +55,20 @@ private struct DarkMangaMessageBubble: View {
             Spacer(minLength: 0)
 
             VStack(alignment: .trailing, spacing: 3) {
-                Text(message.content)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, Layout.bubblePaddingH)
-                    .padding(.vertical, Layout.bubblePaddingV)
-                    .background(
-                        Theme.accent.opacity(0.85),
-                        in: RoundedRectangle(cornerRadius: Layout.bubbleRadius)
-                    )
-                    .frame(maxWidth: 680, alignment: .trailing)
+                VStack(alignment: .trailing, spacing: 8) {
+                    if !message.content.isEmpty {
+                        Text(message.content)
+                            .foregroundStyle(.white)
+                    }
+                    ImageAttachmentGrid(attachments: message.imageAttachments)
+                }
+                .padding(.horizontal, Layout.bubblePaddingH)
+                .padding(.vertical, Layout.bubblePaddingV)
+                .background(
+                    Theme.accent.opacity(0.85),
+                    in: RoundedRectangle(cornerRadius: Layout.bubbleRadius)
+                )
+                .frame(maxWidth: 680, alignment: .trailing)
 
                 if message.showTimestamp {
                     Text(message.timestamp, style: .time)
