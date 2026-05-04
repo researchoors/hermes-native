@@ -211,7 +211,24 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
             debugSnapshot.recentEvents.removeLast(debugSnapshot.recentEvents.count - 40)
         }
         if direction == .error {
+            debugSnapshot.lastErrorAt = record.timestamp
             debugSnapshot.lastError = detail.isEmpty ? name : detail
+        }
+        if direction == .dropped {
+            let reason = detail.isEmpty ? "unspecified" : detail
+            if let index = debugSnapshot.droppedEventReasons.firstIndex(where: { $0.reason == reason }) {
+                debugSnapshot.droppedEventReasons[index].count += 1
+                debugSnapshot.droppedEventReasons[index].lastAt = record.timestamp
+            } else {
+                debugSnapshot.droppedEventReasons.insert(
+                    GatewayDebugSnapshot.DroppedEventReason(reason: reason, count: 1, lastAt: record.timestamp),
+                    at: 0
+                )
+            }
+            debugSnapshot.droppedEventReasons.sort { $0.lastAt > $1.lastAt }
+            if debugSnapshot.droppedEventReasons.count > 12 {
+                debugSnapshot.droppedEventReasons.removeLast(debugSnapshot.droppedEventReasons.count - 12)
+            }
         }
         refreshDebugSnapshot()
     }
@@ -633,6 +650,66 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
         }
     }
 
+
+
+    // MARK: - Activity Inbox RPCs
+
+    func listActivityItems(limit: Int = 100, includeRead: Bool = true, includeDismissed: Bool = false) async throws -> [ActivityItem] {
+        let response = try await call("activity.list", params: [
+            "limit": AnyCodable(limit),
+            "include_read": AnyCodable(includeRead),
+            "include_dismissed": AnyCodable(includeDismissed),
+        ])
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let result = response.result?.dictionaryValue,
+              let itemsArray = result["items"]?.arrayValue else {
+            return []
+        }
+        return itemsArray.compactMap { $0.dictionaryValue.flatMap(ActivityItem.from) }
+    }
+
+    func markActivityRead(activityID: String, read: Bool = true) async throws -> ActivityItem {
+        let response = try await call("activity.mark_read", params: [
+            "activity_id": AnyCodable(activityID),
+            "read": AnyCodable(read),
+        ])
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let activity = response.result?.dictionaryValue?["activity"]?.dictionaryValue.flatMap(ActivityItem.from) else {
+            throw GatewayError.invalidResponse("missing activity in activity.mark_read response")
+        }
+        return activity
+    }
+
+    func dismissActivity(activityID: String) async throws -> ActivityItem {
+        let response = try await call("activity.dismiss", params: [
+            "activity_id": AnyCodable(activityID)
+        ])
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let activity = response.result?.dictionaryValue?["activity"]?.dictionaryValue.flatMap(ActivityItem.from) else {
+            throw GatewayError.invalidResponse("missing activity in activity.dismiss response")
+        }
+        return activity
+    }
+
+    func getActivityArtifact(artifactID: String) async throws -> ActivityArtifactContent {
+        let response = try await call("activity.artifacts.get", params: [
+            "artifact_id": AnyCodable(artifactID)
+        ])
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let artifact = response.result?.dictionaryValue?["artifact"]?.dictionaryValue.flatMap(ActivityArtifactContent.from) else {
+            throw GatewayError.invalidResponse("missing artifact in activity.artifacts.get response")
+        }
+        return artifact
+    }
+
     func submitPrompt(sessionID: String, text: String) async throws {
         let response = try await call("prompt.submit", params: [
             "session_id": AnyCodable(sessionID),
@@ -898,16 +975,14 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
         continuation?.resume(returning: response)
     }
 
-    /// Thread-safe removal of a pending request continuation (safe from async contexts).
-    private nonisolated func removePendingRequest(id: Int) -> CheckedContinuation<JSONRPCResponse, Error>? {
-        MainActor.assumeIsolated {
-            pendingRequestsLock.lock()
-            let continuation = pendingRequests.removeValue(forKey: id)
-            pendingRequestMethods.removeValue(forKey: id)
-            pendingRequestsLock.unlock()
-            refreshDebugSnapshot()
-            return continuation
-        }
+    /// Thread-safe removal of a pending request continuation.
+    private func removePendingRequest(id: Int) -> CheckedContinuation<JSONRPCResponse, Error>? {
+        pendingRequestsLock.lock()
+        let continuation = pendingRequests.removeValue(forKey: id)
+        pendingRequestMethods.removeValue(forKey: id)
+        pendingRequestsLock.unlock()
+        refreshDebugSnapshot()
+        return continuation
     }
 
     // MARK: - URLSessionWebSocketDelegate

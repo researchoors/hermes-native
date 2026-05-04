@@ -9,6 +9,7 @@ struct ContentView: View {
     @EnvironmentObject var personaManager: PersonaManager
     @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @StateObject private var chatViewModel = ChatViewModel()
+    @StateObject private var activityInbox = ActivityInboxViewModel()
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @Environment(\.scenePhase) private var scenePhase
 
@@ -17,6 +18,7 @@ struct ContentView: View {
     @State private var missionControlSessionID: String?
     @State private var observerSession: Session?
     @State private var showCronSheet = false
+    @State private var showActivitySheet = false
     @State private var showGatewayDebugSheet = false
     @State private var selectedTab = 0
     @State private var isCreatingSession = false
@@ -93,6 +95,16 @@ struct ContentView: View {
                 Label("Cron", systemImage: "clock.badge.checkmark")
             }
             .tag(1)
+
+            ActivityInboxView(viewModel: activityInbox, onOpenSession: { sessionID in
+                selectedTab = 0
+                sessionList.selectSession(id: sessionID)
+            })
+            .tabItem {
+                Label("Activity", systemImage: activityInbox.unreadCount > 0 ? "bell.badge.fill" : "bell")
+            }
+            .badge(activityInbox.unreadCount)
+            .tag(2)
         }
     }
 
@@ -146,6 +158,15 @@ struct ContentView: View {
                         Image(systemName: "wave.3.right.circle")
                     }
                     .accessibilityLabel("Gateway Debug")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showActivitySheet = true
+                    } label: {
+                        Image(systemName: activityInbox.unreadCount > 0 ? "bell.badge.fill" : "bell")
+                    }
+                    .accessibilityLabel("Activity")
+                    .accessibilityIdentifier("activityInboxButton")
                 }
             }
             .onOpenURL { url in
@@ -201,6 +222,14 @@ struct ContentView: View {
                     .presentationDetents([.large])
             }
         }
+        .sheet(isPresented: $showActivitySheet) {
+            ActivityInboxView(viewModel: activityInbox, onOpenSession: { sessionID in
+                showActivitySheet = false
+                selectedTab = 0
+                sessionList.selectSession(id: sessionID)
+            })
+            .presentationDetents([.large])
+        }
     }
 
     #endif
@@ -223,6 +252,13 @@ struct ContentView: View {
                     #endif
             }
             .frame(minWidth: 500, minHeight: 400)
+        }
+        .sheet(isPresented: $showActivitySheet) {
+            ActivityInboxView(viewModel: activityInbox, onOpenSession: { sessionID in
+                showActivitySheet = false
+                sessionList.selectSession(id: sessionID)
+            })
+            .frame(minWidth: 640, minHeight: 620)
         }
         .sheet(isPresented: $showGatewayDebugSheet) {
             GatewayDebugPanelView(client: gatewayClientWrapper.client)
@@ -293,6 +329,21 @@ struct ContentView: View {
                 .accessibilityIdentifier("sidebarToggleButton")
 
                 Spacer(minLength: 0)
+
+                Button {
+                    showActivitySheet = true
+                } label: {
+                    Image(systemName: activityInbox.unreadCount > 0 ? "bell.badge.fill" : "bell")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.primary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Activity")
+                .accessibilityIdentifier("activityInboxButton")
+                .padding(.trailing, 10)
+
             }
             .frame(width: isMacSidebarVisible ? macSidebarWidth : 112, height: 40)
             .background(Theme.background)
@@ -449,10 +500,11 @@ struct ContentView: View {
             if rpcID == chatViewModel.currentSessionID {
                 return
             }
-            chatViewModel.loadLocalHistory(sessionID: newID)
+            let generation = chatViewModel.beginSwitchToSession(key: newID)
             Task {
                 // session.resume expects the database-format ID.
-                await chatViewModel.resumeSession(key: newID)
+                let resumed = await chatViewModel.resumeSession(key: newID, generation: generation)
+                guard resumed else { return }
                 if let runtimeID = chatViewModel.currentSessionID {
                     chatViewModel.bindCurrentGatewaySession(toStableSessionID: newID)
                     spawnTreeStore.bindRuntimeSession(displayID: newID, runtimeID: runtimeID)
@@ -562,9 +614,11 @@ struct ContentView: View {
         chatViewModel.setGatewayClient(client)
         sessionList.setGatewayClient(client)
         spawnTreeStore.subscribe(to: client)
+        activityInbox.setGatewayClient(client)
 
         Task {
             await sessionList.refreshSessions()
+            await activityInbox.refresh()
             if chatViewModel.isSessionReady, let sid = chatViewModel.currentSessionID {
                 if chatViewModel.messages.isEmpty {
                     chatViewModel.loadLocalHistory(sessionID: sid)

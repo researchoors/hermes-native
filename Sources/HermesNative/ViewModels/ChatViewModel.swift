@@ -484,15 +484,8 @@ final class ChatViewModel: ObservableObject {
             self.sessionTitle = "New Chat"
             self.snapshotCurrentSession()
 
-            // Inject the app's formatting prompt so the model uses mermaid + rich markdown
-            if let personaSuffix = personaManager?.activePersona.systemPromptSuffix,
-               !personaSuffix.isEmpty {
-                // Merge persona suffix with app formatting prompt
-                let combined = Self.appFormattingPrompt + "\n\n" + personaSuffix
-                try? await client.setEphemeralPrompt(sessionID: sid, prompt: combined)
-            } else {
-                try? await client.setEphemeralPrompt(sessionID: sid, prompt: Self.appFormattingPrompt)
-            }
+            // Inject the app's formatting prompt so the model uses mermaid + rich markdown.
+            await applyEphemeralPrompt(for: sid, using: client)
         } catch {
             self.error = "Session create failed: \(error.localizedDescription)"
         }
@@ -601,9 +594,14 @@ final class ChatViewModel: ObservableObject {
             self.activeToolCalls = [:]
             self.isStreaming = false
             self.streamingMessageID = nil
+            self.pendingApproval = nil
             self.avatarState = .idle
             self.error = nil
 
+            // Prefer parsed gateway history, but don't blank the UI when an old
+            // gateway/session shape returns no parseable messages. Keep local
+            // cache as a fallback and mirror any loaded messages under the new
+            // runtime ID used by prompt/tool RPCs.
             let parsedGatewayMessages = Self.parseHistoryMessages(result.messages)
             if !parsedGatewayMessages.isEmpty {
                 self.messages = parsedGatewayMessages
@@ -614,6 +612,7 @@ final class ChatViewModel: ObservableObject {
                 self.messages = []
             }
 
+
             // Keep an immediate local copy under the new short hex ID too, because
             // live prompt/tool RPCs use that ID until session.title resolves again.
             if !self.messages.isEmpty {
@@ -623,7 +622,7 @@ final class ChatViewModel: ObservableObject {
 
             // Re-inject the app's formatting prompt on resume. Do not let this
             // later RPC overwrite state for a newer selection.
-            try? await client.setEphemeralPrompt(sessionID: result.sessionID, prompt: Self.appFormattingPrompt)
+            await applyEphemeralPrompt(for: result.sessionID, using: client)
             return true
         } catch {
             if generation == sessionSwitchGeneration {
@@ -633,6 +632,16 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    private func applyEphemeralPrompt(for sessionID: String, using client: GatewayClient) async {
+        var prompt = Self.appFormattingPrompt
+        if let personaManager,
+           !personaManager.usesAgentDefault,
+           let personaSuffix = personaManager.activePersona.systemPromptSuffix,
+           !personaSuffix.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            prompt += "\n\n" + personaSuffix
+        }
+        try? await client.setEphemeralPrompt(sessionID: sessionID, prompt: prompt)
+    }
     /// Load history for the current session (for reconnects where resume isn't used).
     func loadSessionHistory() async {
         guard let client = gatewayClient, let sid = sessionID else { return }
@@ -954,6 +963,11 @@ final class ChatViewModel: ObservableObject {
 
         guard shouldApplyEvent(sessionID: eventSessionID, event: event) else {
             NSLog("[HermesNative] ChatViewModel ignored event for session=\(eventSessionID ?? "nil") current=\(sessionID ?? "nil") event=\(event.debugName)")
+            let reason = "session mismatch current=\(sessionID ?? "nil")"
+            if case .messageComplete(let payload) = event {
+                notifyResponseCompleteIfNeeded(payload: payload, eventSessionID: eventSessionID)
+            }
+            gatewayClient?.recordDroppedEvent(event, sessionID: eventSessionID, reason: reason)
             return
         }
 
@@ -971,7 +985,7 @@ final class ChatViewModel: ObservableObject {
         }
 
         switch event {
-        case .gatewayReady:
+        case .gatewayReady, .activityCreated, .activityUpdated:
             break
 
         case .messageStart:
@@ -1024,14 +1038,7 @@ final class ChatViewModel: ObservableObject {
             snapshotCurrentSession()
 
             // Notify if app is backgrounded or this isn't the active session
-            let preview = payload.text.truncated(to: 80)
-            if let sid = sessionID {
-                NotificationService.shared.notifyResponseComplete(
-                    sessionTitle: sessionTitle,
-                    preview: preview,
-                    sessionID: sid
-                )
-            }
+            notifyResponseCompleteIfNeeded(payload: payload, eventSessionID: eventSessionID)
 
         case .toolStart(payload: let payload):
             avatarState = .toolUse
@@ -1137,5 +1144,25 @@ final class ChatViewModel: ObservableObject {
         }
 
         snapshotCurrentSession()
+    }
+
+    private func notifyResponseCompleteIfNeeded(payload: MessageCompletePayload, eventSessionID: String?) {
+        guard payload.status == "complete" else { return }
+        let sid = eventSessionID ?? sessionID
+        guard let sid, !sid.isEmpty else { return }
+
+        let title: String
+        if sid == sessionID {
+            title = sessionTitle.isEmpty ? "Response complete" : sessionTitle
+        } else {
+            title = "Session \(sid.prefix(8))"
+        }
+
+        let preview = payload.text.isEmpty ? "Response complete" : payload.text.truncated(to: 80)
+        NotificationService.shared.notifyResponseComplete(
+            sessionTitle: title,
+            preview: preview,
+            sessionID: sid
+        )
     }
 }
