@@ -12,6 +12,7 @@ struct ChatView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @EnvironmentObject var personaManager: PersonaManager
+    @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @State private var showPersonaPicker = false
     @State private var showSkinPicker = false
     @State private var showGatewayDebug = false
@@ -245,9 +246,16 @@ struct ChatView: View {
         }
         .onAppear {
             chatViewModel.personaManager = personaManager
+            chatViewModel.supportsGatewayImageInput = capabilitiesStore.hasImageInput
             // Do NOT auto-create session here — ContentView owns session lifecycle.
             // This .onAppear fires every time the view is recreated (session switch),
             // which was causing duplicate session creation.
+        }
+        .onReceive(capabilitiesStore.$capabilities) { capabilities in
+            chatViewModel.supportsGatewayImageInput = capabilities.hasImageInput
+            if !chatViewModel.canAttachImages {
+                chatViewModel.clearImageAttachments()
+            }
         }
         #if os(macOS)
         .navigationTitle("")

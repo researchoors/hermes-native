@@ -6,6 +6,7 @@ import SwiftUI
 /// App inside another App (e.g. `HermesNativeApp().body`), because SwiftUI will
 /// access those StateObjects before the owner is installed and create transient
 /// instances.
+@MainActor
 func prepareHermesNativeNotifications() {
     _ = NotificationService.shared
 }

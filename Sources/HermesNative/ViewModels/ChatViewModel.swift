@@ -299,8 +299,10 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    var supportsGatewayImageInput: Bool = false
+
     var canAttachImages: Bool {
-        Constants.enableLocalImageAttachments
+        Constants.enableLocalImageAttachments && supportsGatewayImageInput
     }
 
     var remainingImageAttachmentSlots: Int {
@@ -351,6 +353,11 @@ final class ChatViewModel: ObservableObject {
 
     func removeImageAttachment(_ attachment: ChatImageAttachment) {
         pendingImageAttachments.removeAll { $0.id == attachment.id }
+    }
+
+    func clearImageAttachments() {
+        pendingImageAttachments.removeAll()
+        isEncodingImageAttachment = false
     }
 
     /// Interrupt the current agent turn.
