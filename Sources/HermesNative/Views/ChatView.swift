@@ -61,25 +61,15 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top toolbar row. On macOS this aligns with the sidebar-owned row
-            // and the system traffic lights in the transparent titlebar.
+            #if os(iOS)
             chatToolbar
-                #if os(macOS)
-                .frame(height: 40)
-                #endif
-
             Divider()
+            #endif
 
             // Message list
             ScrollViewReader { proxy in
                 ZStack(alignment: .bottom) {
-                    #if os(macOS)
-                    MacScrollViewIntrospection()
-                        .frame(width: 0, height: 0)
-                        .allowsHitTesting(false)
-                    #endif
-
-                    ScrollView {
+                    ScrollView(showsIndicators: false) {
                         GeometryReader { viewport in
                             Color.clear.preference(
                                 key: ChatViewportHeightKey.self,
@@ -169,16 +159,20 @@ struct ChatView: View {
                         ChatInputBar()
                             .environmentObject(chatViewModel)
                     }
-                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 18)
-                    .background(Color.clear)
+                    // Keep the macOS composer overlay's hit-test region tight to
+                    // the visible form. A full-width transparent frame here can
+                    // continue intercepting clicks after NSTextField resigns
+                    // focus, making the sidebar/session list feel dead.
+                    .frame(maxWidth: 808, alignment: .bottom)
                     #endif
                 }
                 .background(activeSkin.background)
                 #if os(macOS)
-                .scrollIndicators(.hidden, axes: .horizontal)
-                #else
+                .scrollIndicators(.hidden)
+                #endif
+                #if os(iOS)
                 .scrollDismissesKeyboard(.interactively)
                 #endif
                 .onPreferenceChange(LatestBotTurnYKey.self) { y in
@@ -201,10 +195,17 @@ struct ChatView: View {
                 .onChange(of: chatViewModel.messages.last?.content) { _, _ in
                     scrollToBottom(proxy: proxy)
                 }
+                .onChange(of: chatViewModel.messages.last?.reasoning) { _, _ in
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: chatViewModel.activeToolCalls.map { key, value in "\(key):\(value.isComplete):\(value.summary ?? value.context ?? "")" }.joined(separator: "|")) { _, _ in
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: chatViewModel.isStreaming) { _, streaming in
+                    if streaming { scrollToBottom(proxy: proxy) }
+                }
                 .onChange(of: chatViewModel.avatarState) { _, _ in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("streaming-status", anchor: .bottom)
-                    }
+                    scrollToBottom(proxy: proxy)
                 }
             }
 
@@ -246,9 +247,7 @@ struct ChatView: View {
         }
         #if os(macOS)
         .navigationTitle("")
-        .toolbar(.hidden, for: .windowToolbar)
-        .toolbarBackground(.hidden, for: .windowToolbar)
-        .background(activeSkin.background.ignoresSafeArea())
+        .background(activeSkin.background)
         #else
         .navigationTitle(chatViewModel.sessionTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -381,13 +380,15 @@ struct ChatView: View {
     #endif
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
-        if let lastMsg = chatViewModel.messages.last {
-            withAnimation(.easeOut(duration: 0.15)) {
-                if chatViewModel.isStreaming {
-                    proxy.scrollTo("streaming-status", anchor: .bottom)
-                } else {
+        withAnimation(.easeOut(duration: 0.15)) {
+            if chatViewModel.isStreaming {
+                if chatViewModel.activeToolCalls.isEmpty, let lastMsg = chatViewModel.messages.last {
                     proxy.scrollTo(lastMsg.id, anchor: .bottom)
+                } else {
+                    proxy.scrollTo("streaming-status", anchor: .bottom)
                 }
+            } else if let lastMsg = chatViewModel.messages.last {
+                proxy.scrollTo(lastMsg.id, anchor: .bottom)
             }
         }
     }
@@ -515,11 +516,6 @@ struct ChatInputBar: View {
                 .stroke(Theme.border.opacity(0.9), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 8)
-        .background {
-            MacScrollViewIntrospection()
-                .frame(width: 0, height: 0)
-                .allowsHitTesting(false)
-        }
         #else
         HStack(alignment: .bottom, spacing: 10) {
             inputField
