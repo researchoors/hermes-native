@@ -160,6 +160,7 @@ struct ChatView: View {
 
                         ChatInputBar()
                             .environmentObject(chatViewModel)
+                            .id(chatViewModel.currentSessionID ?? "no-session")
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 18)
@@ -531,17 +532,23 @@ struct ChatInputBar: View {
         HStack(alignment: .center, spacing: 10) {
             imagePromptPlaceholder
             inputField
+                .frame(maxWidth: .infinity, alignment: .leading)
             sendButton
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .frame(maxWidth: 760)
+        .frame(width: 760)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Theme.border.opacity(0.9), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 8)
+        // Force a fresh NSTextField host when session identity changes. SwiftUI
+        // can otherwise reuse a bridged AppKit text field across rapid
+        // session switches while another turn is streaming, leaving only the
+        // intrinsic text rect focusable instead of the full composer.
+        .id(chatViewModel.currentSessionID ?? "no-session")
         #else
         HStack(alignment: .bottom, spacing: 10) {
             imagePromptPlaceholder
@@ -573,7 +580,8 @@ struct ChatInputBar: View {
             .accessibilityIdentifier("chatInput")
             .textFieldStyle(.plain)
             .font(.system(size: 15, weight: .regular))
-            .frame(minHeight: 32, alignment: .center)
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            .contentShape(Rectangle())
             .focused($isInputFocused)
             .onSubmit {
                 Task { await chatViewModel.submitPrompt() }
