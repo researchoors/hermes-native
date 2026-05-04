@@ -82,6 +82,7 @@
 		8060C4164F4FA40B50846E7D /* GatewayDebugSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0648368C04972EB1614B4374 /* GatewayDebugSnapshot.swift */; };
 		82DD829EDC65638DC04ED1BD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3D7AE79773431722873482 /* Theme.swift */; };
 		87955D6459C1CF9D37CBD5C2 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57621A872836514CD5BC0F5B /* ChatView.swift */; };
+		88BC754D533A8988EC7E5ECE /* HermesNativeMultiSessionStressUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E8A26FD44FDB5F75E805CDF /* HermesNativeMultiSessionStressUITests.swift */; };
 		8ACAEB144EAF1FE5B9BE9F49 /* SpawnTreeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD22626EF26E6FC0FBA9589 /* SpawnTreeStore.swift */; };
 		8B8E8ACA1D442FE6695072BD /* AttachmentChipView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93ABC37DAEF78165B9F9173C /* AttachmentChipView.swift */; };
 		8E74DC3A495E0BBA739D1664 /* ActivityItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80C19CE5657AD3FD6547FC3D /* ActivityItem.swift */; };
@@ -195,6 +196,7 @@
 		742C42FB4508D2508FF94A82 /* ChatSkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSkin.swift; sourceTree = "<group>"; };
 		769BBB3BE6C0F8FD9A10A6CF /* JSONRPCResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONRPCResponse.swift; sourceTree = "<group>"; };
 		77A49E74E10C41B44D3C49C8 /* ActivityInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityInboxView.swift; sourceTree = "<group>"; };
+		7E8A26FD44FDB5F75E805CDF /* HermesNativeMultiSessionStressUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesNativeMultiSessionStressUITests.swift; sourceTree = "<group>"; };
 		7FA16F415470C4A20A1155A3 /* SessionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListViewModel.swift; sourceTree = "<group>"; };
 		80C19CE5657AD3FD6547FC3D /* ActivityItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityItem.swift; sourceTree = "<group>"; };
 		82587B61F3E0F931D857D35F /* HermesNativeVisionDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesNativeVisionDemoUITests.swift; sourceTree = "<group>"; };
@@ -412,6 +414,7 @@
 			isa = PBXGroup;
 			children = (
 				6C633B4D795C9824FB4B54E5 /* HermesNativeGatewayConnectionUITests.swift */,
+				7E8A26FD44FDB5F75E805CDF /* HermesNativeMultiSessionStressUITests.swift */,
 				968F70307942ABE375AE4CC9 /* HermesNativeOfflineSmokeUITests.swift */,
 				FE1B098714AA8CADED2118F6 /* HermesNativeSmokeUITests.swift */,
 				82587B61F3E0F931D857D35F /* HermesNativeVisionDemoUITests.swift */,
@@ -667,6 +670,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0A5ED4D2B4B0DA8E1883CA48 /* HermesNativeGatewayConnectionUITests.swift in Sources */,
+				88BC754D533A8988EC7E5ECE /* HermesNativeMultiSessionStressUITests.swift in Sources */,
 				CD36367200E4AC47BEF6E9D4 /* HermesNativeOfflineSmokeUITests.swift in Sources */,
 				949710C0980DCAAF18C1BD89 /* HermesNativeSmokeUITests.swift in Sources */,
 				B5327CFB026788C047E6C4D7 /* HermesNativeVisionDemoUITests.swift in Sources */,
@@ -757,6 +761,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -917,6 +922,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

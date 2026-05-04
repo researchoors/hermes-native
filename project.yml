@@ -24,6 +24,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.researchoors.HermesNative.UITests
         TEST_TARGET_NAME: HermesNative-iOS
+        GENERATE_INFOPLIST_FILE: YES
 
   HermesNative-macOS:
     type: application
