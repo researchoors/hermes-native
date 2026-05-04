@@ -485,7 +485,16 @@ final class ChatViewModel: ObservableObject {
             self.snapshotCurrentSession()
 
             // Inject the app's formatting prompt so the model uses mermaid + rich markdown.
-            await applyEphemeralPrompt(for: sid, using: client)
+            // Do this asynchronously after publishing the ready session so compact
+            // iOS navigation can push to ChatView immediately. The local-Hermes
+            // UI smoke test only needs the session shell/input; blocking here on
+            // prompt customization can leave the Sessions screen stuck on
+            // “Connecting…” until the test times out if the gateway/model path is
+            // slow or unavailable.
+            Task { [weak self, weak client] in
+                guard let self, let client else { return }
+                await self.applyEphemeralPrompt(for: sid, using: client)
+            }
         } catch {
             self.error = "Session create failed: \(error.localizedDescription)"
         }
