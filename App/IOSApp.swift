@@ -10,7 +10,7 @@ struct HermesNativeAppIOS: App {
     @StateObject private var capabilitiesStore = HermesCapabilitiesStore()
 
     init() {
-        requestHermesNativeNotificationAuthorization()
+        prepareHermesNativeNotifications()
     }
 
     var body: some Scene {

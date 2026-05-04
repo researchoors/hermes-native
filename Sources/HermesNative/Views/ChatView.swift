@@ -14,6 +14,7 @@ struct ChatView: View {
     @EnvironmentObject var personaManager: PersonaManager
     @State private var showPersonaPicker = false
     @State private var showSkinPicker = false
+    @State private var showGatewayDebug = false
     #if os(iOS)
     @State private var showSettings = false
     #endif
@@ -234,6 +235,14 @@ struct ChatView: View {
             dismissKeyboard()
         }
         #endif
+        .sheet(isPresented: $showGatewayDebug) {
+            GatewayDebugPanelView(client: gatewayClientWrapper.client)
+                #if os(iOS)
+                .presentationDetents([.large])
+                #else
+                .frame(minWidth: 560, minHeight: 620)
+                #endif
+        }
         .onAppear {
             chatViewModel.personaManager = personaManager
             // Do NOT auto-create session here — ContentView owns session lifecycle.
@@ -320,6 +329,16 @@ struct ChatView: View {
                 .background(.quaternary.opacity(0.6), in: Capsule())
 
             Spacer()
+
+            Button {
+                showGatewayDebug = true
+            } label: {
+                Label("Debug Connection", systemImage: "wave.3.right.circle")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.accent)
+            .accessibilityLabel("Debug Connection")
 
             #if os(iOS)
             Button {
