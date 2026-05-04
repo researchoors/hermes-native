@@ -8,6 +8,7 @@ struct ChatView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @EnvironmentObject var personaManager: PersonaManager
+    @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @State private var showPersonaPicker = false
     @State private var showSkinPicker = false
     @State private var showGatewayDebug = false
@@ -74,6 +75,12 @@ struct ChatView: View {
             // Message list
             ScrollViewReader { proxy in
                 ZStack(alignment: .bottom) {
+                    #if os(macOS)
+                    MacScrollViewIntrospection()
+                        .frame(width: 0, height: 0)
+                        .allowsHitTesting(false)
+                    #endif
+
                     ScrollView {
                         GeometryReader { viewport in
                             Color.clear.preference(
@@ -171,7 +178,9 @@ struct ChatView: View {
                     #endif
                 }
                 .background(activeSkin.background)
-                #if os(iOS)
+                #if os(macOS)
+                .scrollIndicators(.hidden, axes: .horizontal)
+                #else
                 .scrollDismissesKeyboard(.interactively)
                 #endif
                 .onPreferenceChange(LatestBotTurnYKey.self) { y in
@@ -388,6 +397,7 @@ struct ChatView: View {
         SettingsView()
             .environmentObject(settings)
             .environmentObject(personaManager)
+            .environmentObject(capabilitiesStore)
     }
     #endif
 
@@ -505,6 +515,7 @@ struct SkinPickerView: View {
 struct ChatInputBar: View {
     @EnvironmentObject var chatViewModel: ChatViewModel
     @EnvironmentObject var personaManager: PersonaManager
+    @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @FocusState private var isInputFocused: Bool
 
     private var isSendDisabled: Bool {
@@ -514,6 +525,7 @@ struct ChatInputBar: View {
     var body: some View {
         #if os(macOS)
         HStack(alignment: .center, spacing: 10) {
+            imagePromptPlaceholder
             inputField
             sendButton
         }
@@ -526,8 +538,14 @@ struct ChatInputBar: View {
                 .stroke(Theme.border.opacity(0.9), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 8)
+        .background {
+            MacScrollViewIntrospection()
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        }
         #else
         HStack(alignment: .bottom, spacing: 10) {
+            imagePromptPlaceholder
             inputField
             sendButton
         }
@@ -535,6 +553,19 @@ struct ChatInputBar: View {
         .padding(.vertical, 10)
         .background(.bar)
         #endif
+    }
+
+    @ViewBuilder
+    private var imagePromptPlaceholder: some View {
+        if capabilitiesStore.hasImageInput || capabilitiesStore.hasACPImagePrompts {
+            Image(systemName: "photo.badge.plus")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.secondary)
+                .frame(width: 28, height: 28)
+                .background(Theme.surfaceHover, in: Circle())
+                .accessibilityLabel("Image prompts supported")
+                .help("Image prompts are supported by this gateway. Attachments are not enabled in this build.")
+        }
     }
 
     private var inputField: some View {
