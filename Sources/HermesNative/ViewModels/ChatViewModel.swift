@@ -62,6 +62,49 @@ final class ChatViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var isCreatingSession = false  // Guard against double-trigger
     private var isStopping = false
+    private var pendingVisibleEventFlush: Task<Void, Never>?
+    private var pendingVisibleMessageDelta = ""
+    private var pendingVisibleReasoningDelta = ""
+    private var pendingVisibleThinkingDelta = ""
+    private var perfEventCounts: [String: Int] = [:]
+    private var perfLastLog = Date()
+    private var perfFlushCount = 0
+    private var perfVisibleFlushLogCount = 0
+    private var perfWriteCount = 0
+    private let perfLoggingEnabled = ProcessInfo.processInfo.arguments.contains("--long-session-perf")
+
+    private var perfLogURL: URL? {
+        guard perfLoggingEnabled else { return nil }
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let directory = base.appendingPathComponent("hermes-native", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("long-session-perf.log")
+    }
+
+    private func writePerfLog(_ line: String) {
+        guard perfLoggingEnabled else { return }
+        perfWriteCount += 1
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let fullLine = "\(timestamp) #\(perfWriteCount) \(line)\n"
+        NSLog("%@", fullLine)
+        guard let url = perfLogURL, let data = fullLine.data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: url.path),
+           let handle = try? FileHandle(forWritingTo: url) {
+            try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    private func writePerfSnapshot(_ label: String) {
+        guard perfLoggingEnabled else { return }
+        let last = messages.last
+        let counts = perfEventCounts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+        writePerfLog("[HermesNativePerf] snapshot=\(label) session=\(sessionID ?? "nil") messages=\(messages.count) streaming=\(isStreaming) content=\(last?.content.count ?? 0) reasoning=\(last?.reasoning?.count ?? 0) activeTools=\(activeToolCalls.count) flushes=\(perfFlushCount) pendingMessageBytes=\(pendingVisibleMessageDelta.count) pendingReasoningBytes=\(pendingVisibleReasoningDelta.count) pendingThinkingBytes=\(pendingVisibleThinkingDelta.count) \(counts)")
+    }
     weak var personaManager: PersonaManager?
 
     // MARK: - Setup
@@ -74,6 +117,8 @@ final class ChatViewModel: ObservableObject {
         guard gatewayClient !== client else { return }
 
         cancellables.removeAll()
+        pendingVisibleEventFlush?.cancel()
+        pendingVisibleEventFlush = nil
         gatewayClient = client
 
         // Subscribe to gateway events. Events are multiplexed over one app-level
@@ -685,6 +730,31 @@ final class ChatViewModel: ObservableObject {
     }
 #endif
 
+
+    private func appendThinkingTrace(_ text: String, kind: ThinkingBlock.Kind, to message: inout ChatMessage) {
+        if message.thinkingTrace == nil {
+            message.thinkingTrace = ThinkingTrace(isStreaming: message.isStreaming)
+        }
+        message.thinkingTrace?.append(text, kind: kind)
+    }
+
+    private func finishThinkingTrace(on message: inout ChatMessage, finalReasoning: String?) {
+        if let finalReasoning, !finalReasoning.isEmpty, message.thinkingTrace == nil {
+            message.thinkingTrace = ThinkingTrace(
+                blocks: [ThinkingBlock(kind: .reasoning, text: finalReasoning)],
+                isStreaming: false
+            )
+        }
+        message.thinkingTrace?.finish()
+        // Keep the legacy reasoning field populated for persistence/search and
+        // backward-compatible views, but the UI prefers the structured trace.
+        if let traceText = message.thinkingTrace?.fullText, !traceText.isEmpty {
+            message.reasoning = traceText
+        } else {
+            message.reasoning = finalReasoning
+        }
+    }
+
     // MARK: - Event Handling
 
     private func shouldApplyGlobalEvent(_ event: GatewayEvent) -> Bool {
@@ -693,6 +763,85 @@ final class ChatViewModel: ObservableObject {
             return true
         default:
             return false
+        }
+    }
+
+    private func recordPerfEvent(_ name: String, bytes: Int = 0) {
+        guard perfLoggingEnabled else { return }
+        perfEventCounts[name, default: 0] += 1
+        if bytes > 0 { perfEventCounts["\(name).bytes", default: 0] += bytes }
+        let now = Date()
+        guard now.timeIntervalSince(perfLastLog) >= 5 else { return }
+        perfLastLog = now
+        let counts = perfEventCounts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+        writePerfLog("[HermesNativePerf] visible session=\(sessionID ?? "nil") messages=\(messages.count) streaming=\(isStreaming) content=\(messages.last?.content.count ?? 0) reasoning=\(messages.last?.reasoning?.count ?? 0) activeTools=\(activeToolCalls.count) flushes=\(perfFlushCount) \(counts)")
+    }
+
+    private func appendPendingVisibleMessageDelta(_ text: String) {
+        recordPerfEvent("messageDelta", bytes: text.count)
+        pendingVisibleMessageDelta += text
+        scheduleVisibleEventFlush()
+    }
+
+    private func appendPendingVisibleReasoningDelta(_ text: String, separator: String = "") {
+        recordPerfEvent("reasoningDelta", bytes: text.count)
+        if !pendingVisibleReasoningDelta.isEmpty || !pendingVisibleThinkingDelta.isEmpty {
+            pendingVisibleReasoningDelta += separator
+        }
+        pendingVisibleReasoningDelta += text
+        scheduleVisibleEventFlush()
+    }
+
+    private func appendPendingVisibleThinkingDelta(_ text: String, separator: String = "") {
+        recordPerfEvent("thinkingDelta", bytes: text.count)
+        if !pendingVisibleThinkingDelta.isEmpty || !pendingVisibleReasoningDelta.isEmpty {
+            pendingVisibleThinkingDelta += separator
+        }
+        pendingVisibleThinkingDelta += text
+        scheduleVisibleEventFlush()
+    }
+
+    private func scheduleVisibleEventFlush() {
+        guard pendingVisibleEventFlush == nil else { return }
+        pendingVisibleEventFlush = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            flushPendingVisibleEventDeltas()
+        }
+    }
+
+    private func flushPendingVisibleEventDeltas() {
+        pendingVisibleEventFlush = nil
+        let messageDelta = pendingVisibleMessageDelta
+        let reasoningDelta = pendingVisibleReasoningDelta
+        let thinkingDelta = pendingVisibleThinkingDelta
+        pendingVisibleMessageDelta = ""
+        pendingVisibleReasoningDelta = ""
+        pendingVisibleThinkingDelta = ""
+
+        guard !messageDelta.isEmpty || !reasoningDelta.isEmpty || !thinkingDelta.isEmpty else { return }
+        perfFlushCount += 1
+        recordPerfEvent("visibleFlush")
+        if perfLoggingEnabled {
+            perfVisibleFlushLogCount += 1
+            if perfVisibleFlushLogCount <= 20 || perfVisibleFlushLogCount % 20 == 0 {
+                writePerfLog("[HermesNativePerf] flush=\(perfVisibleFlushLogCount) messageBytes=\(messageDelta.count) reasoningBytes=\(reasoningDelta.count) thinkingBytes=\(thinkingDelta.count) pendingMessages=\(messages.count)")
+            }
+        }
+
+        // Visible session-scoped events mirror deltas into the per-session
+        // runtime cache immediately, then restore the visible array on this
+        // coalesced cadence. In perf/live mode, reasoning-only updates stay in
+        // the structured trace cache and do not publish the transcript at all;
+        // the completed turn remains fully expandable after message.complete.
+        if ProcessInfo.processInfo.arguments.contains("--defer-streaming-transcript") {
+            snapshotCurrentSessionState()
+            return
+        }
+        if let current = sessionID {
+            let displayID = displaySessionID(for: current)
+            _ = restoreSessionState(displayID: displayID, runtimeID: current)
+        } else {
+            snapshotCurrentSessionState()
         }
     }
 
@@ -725,14 +874,25 @@ final class ChatViewModel: ObservableObject {
                 state.streamingMessageID = assistantMessage.id
                 state.messages.append(assistantMessage)
             }
+            if displaySessionID(for: sessionID ?? "") == displayID {
+                streamingMessageID = state.streamingMessageID
+            }
 
         case .messageDelta(let text, _):
             if let msgID = state.streamingMessageID,
                let idx = state.messages.firstIndex(where: { $0.id == msgID }) {
                 state.messages[idx].content += text
+                if displaySessionID(for: sessionID ?? "") == displayID {
+                    recordPerfEvent("sessionMessageDelta", bytes: text.count)
+                    pendingVisibleMessageDelta += text
+                    scheduleVisibleEventFlush()
+                }
             }
 
         case .messageComplete(payload: let payload):
+            if displaySessionID(for: sessionID ?? "") == displayID {
+                flushPendingVisibleEventDeltas()
+            }
             guard let msgID = state.streamingMessageID,
                   let idx = state.messages.firstIndex(where: { $0.id == msgID }) else {
                 state.activeToolCalls = [:]
@@ -742,7 +902,7 @@ final class ChatViewModel: ObservableObject {
             state.messages[idx].isStreaming = false
             state.messages[idx].usage = payload.usage
             state.messages[idx].status = payload.status
-            state.messages[idx].reasoning = payload.reasoning
+            finishThinkingTrace(on: &state.messages[idx], finalReasoning: payload.reasoning)
             state.messages[idx].toolCalls = Array(state.activeToolCalls.values)
             state.activeToolCalls = [:]
             state.isStreaming = false
@@ -776,11 +936,19 @@ final class ChatViewModel: ObservableObject {
             if state.avatarState != .toolUse { state.avatarState = .thinking }
             if let idx = state.messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
                 state.messages[idx].reasoning = (state.messages[idx].reasoning ?? "") + text
+                if displaySessionID(for: sessionID ?? "") == displayID {
+                    pendingVisibleReasoningDelta += text
+                    scheduleVisibleEventFlush()
+                }
             }
 
         case .thinkingDelta(let text):
             if state.avatarState != .toolUse { state.avatarState = .thinking }
-            if let idx = state.messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
+            if displaySessionID(for: sessionID ?? "") == displayID {
+                let existing = messages.last(where: { $0.role == .assistant && $0.isStreaming })?.reasoning ?? ""
+                let separator = existing.isEmpty ? "" : "\n"
+                appendPendingVisibleThinkingDelta(text, separator: separator)
+            } else if let idx = state.messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
                 let existing = state.messages[idx].reasoning ?? ""
                 let separator = existing.isEmpty ? "" : "\n"
                 state.messages[idx].reasoning = existing + separator + text
@@ -805,8 +973,35 @@ final class ChatViewModel: ObservableObject {
         }
 
         sessionStates[displayID] = state
+        let isVisibleCoalescedDelta: Bool
+        switch event {
+        case .messageDelta, .reasoningDelta, .thinkingDelta:
+            isVisibleCoalescedDelta = displaySessionID(for: sessionID ?? "") == displayID
+        default:
+            isVisibleCoalescedDelta = false
+        }
         if displaySessionID(for: sessionID ?? "") == displayID {
-            _ = restoreSessionState(displayID: displayID, runtimeID: eventSessionID)
+            if isVisibleCoalescedDelta {
+                if perfLoggingEnabled {
+                    // Live long-session/perf runs should not publish the whole
+                    // transcript for every token/reasoning frame. The flush task
+                    // restores visible state on a coalesced cadence.
+                } else {
+                    // Unit tests and normal non-perf paths keep immediate
+                    // visibility while still updating the same cached state.
+                    messages = state.messages
+                    isStreaming = state.isStreaming
+                    isSessionReady = state.isSessionReady
+                    pendingApproval = state.pendingApproval
+                    activeToolCalls = state.activeToolCalls
+                    error = state.error
+                    avatarState = state.avatarState
+                    sessionTitle = state.sessionTitle
+                    streamingMessageID = state.streamingMessageID
+                }
+            } else {
+                _ = restoreSessionState(displayID: displayID, runtimeID: eventSessionID)
+            }
         }
 
         if case .messageComplete(let payload) = event {
@@ -858,16 +1053,15 @@ final class ChatViewModel: ObservableObject {
             avatarState = .speaking
 
         case .messageDelta(let text, _):
+            recordPerfEvent("messageDelta", bytes: text.count)
             // Append streaming text to the current assistant message. Ignore
             // late deltas after an interrupt; the gateway can still drain one
             // in-flight turn after the UI has already stopped it locally.
             guard isStreaming else { break }
-            if let msgID = streamingMessageID,
-               let idx = messages.firstIndex(where: { $0.id == msgID }) {
-                messages[idx].content += text
-            }
+            appendPendingVisibleMessageDelta(text)
 
         case .messageComplete(payload: let payload):
+            flushPendingVisibleEventDeltas()
             // Finalize the assistant message. If the user already hit Stop,
             // `streamingMessageID` is nil; ignore the late completion so it
             // doesn't resurrect an interrupted turn in the UI.
@@ -881,7 +1075,7 @@ final class ChatViewModel: ObservableObject {
             messages[idx].isStreaming = false
             messages[idx].usage = payload.usage
             messages[idx].status = payload.status
-            messages[idx].reasoning = payload.reasoning
+            finishThinkingTrace(on: &messages[idx], finalReasoning: payload.reasoning)
             // Merge any accumulated tool calls into the message
             messages[idx].toolCalls = Array(activeToolCalls.values)
 
@@ -889,6 +1083,8 @@ final class ChatViewModel: ObservableObject {
             isStreaming = false
             streamingMessageID = nil
             avatarState = .idle
+
+            writePerfSnapshot("messageComplete")
 
             // Persist to local storage after each completed response
             saveHistory()
@@ -904,6 +1100,7 @@ final class ChatViewModel: ObservableObject {
             }
 
         case .toolStart(payload: let payload):
+            recordPerfEvent("toolStart")
             guard isStreaming else { break }
             avatarState = .toolUse
             activeToolCalls[payload.toolID] = ToolCallRecord(
@@ -913,6 +1110,7 @@ final class ChatViewModel: ObservableObject {
             )
 
         case .toolComplete(payload: let payload):
+            recordPerfEvent("toolComplete")
             guard isStreaming else { break }
             if var record = activeToolCalls[payload.toolID] {
                 record.summary = payload.summary
@@ -923,6 +1121,7 @@ final class ChatViewModel: ObservableObject {
             }
 
         case .toolProgress(let name, let preview):
+            recordPerfEvent("toolProgress", bytes: preview.count)
             guard isStreaming else { break }
             // Update matching tool call's progress display
             for (key, var record) in activeToolCalls where record.name == name && !record.isComplete {
@@ -937,10 +1136,7 @@ final class ChatViewModel: ObservableObject {
             // Thinking/reasoning — avatar thinks
             guard isStreaming else { break }
             if avatarState != .toolUse { avatarState = .thinking }
-            // Append to last assistant message's reasoning
-            if let idx = messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
-                messages[idx].reasoning = (messages[idx].reasoning ?? "") + text
-            }
+            appendPendingVisibleReasoningDelta(text)
 
         case .thinkingDelta(let text):
             // Thinking — avatar thinks (unless tool is running)
@@ -949,14 +1145,14 @@ final class ChatViewModel: ObservableObject {
             // Append to last assistant message's reasoning (thinking IS reasoning
             // from the model's perspective — e.g. GLM-5.1 fires thinking.delta
             // not reasoning.delta).  Show it live so the user sees progress.
-            if let idx = messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
-                let existing = messages[idx].reasoning ?? ""
-                // Add newline between chunks if we already have content and this
-                // isn't a continuation (thinking deltas from the gateway spinner
-                // are discrete status messages like "🤔 pondering...")
-                let separator = existing.isEmpty ? "" : "\n"
-                messages[idx].reasoning = existing + separator + text
+            let separator: String
+            if let idx = messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }),
+               messages[idx].reasoning?.isEmpty == false {
+                separator = "\n"
+            } else {
+                separator = ""
             }
+            appendPendingVisibleThinkingDelta(text, separator: separator)
 
         case .reasoningAvailable:
             break
@@ -979,6 +1175,7 @@ final class ChatViewModel: ObservableObject {
             self.error = message
             isStreaming = false
             avatarState = .error
+            writePerfSnapshot("error")
 
         case .skinChanged:
             break

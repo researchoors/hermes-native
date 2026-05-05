@@ -112,6 +112,7 @@
 		B7A2ACFD1E4703732703EE24 /* MacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41979884D456FA9522F47D6 /* MacApp.swift */; };
 		BAC17B3A35FCE50C20CC2BF4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F2B04CED033B45A8BC5F71F5 /* Assets.xcassets */; };
 		BC148807643E7DA972AF796F /* JSONRPCRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E22AF9B26D11278DD62B6 /* JSONRPCRequest.swift */; };
+		BCE9D9B9E72B88B4FDF26884 /* HermesNativeLongSessionPerfUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27E6937B77766E157EC161D /* HermesNativeLongSessionPerfUITests.swift */; };
 		C14E532CB0CE45CBB4B3EEA3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F2B04CED033B45A8BC5F71F5 /* Assets.xcassets */; };
 		C2EC3B58E28D3010EF444E86 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AF7C8FD90209C14BD37A45 /* NotificationService.swift */; };
 		C50238D57DB0F48A1064C65E /* SpawnNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7471C7C26357969AFAF4154 /* SpawnNode.swift */; };
@@ -228,6 +229,7 @@
 		EDC89BDA9F965E178C495B02 /* SessionObserverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionObserverView.swift; sourceTree = "<group>"; };
 		EDFF359835C2716C43ADF249 /* HermesNative-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "HermesNative-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		EF6C83FB177D450056599E65 /* PersonaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaManager.swift; sourceTree = "<group>"; };
+		F27E6937B77766E157EC161D /* HermesNativeLongSessionPerfUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesNativeLongSessionPerfUITests.swift; sourceTree = "<group>"; };
 		F2B04CED033B45A8BC5F71F5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F390CDDA5944A2B5F4776A05 /* HermesNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesNativeApp.swift; sourceTree = "<group>"; };
 		F48805BABC59EDB80428C1A0 /* SessionExplorerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionExplorerView.swift; sourceTree = "<group>"; };
@@ -414,6 +416,7 @@
 			isa = PBXGroup;
 			children = (
 				6C633B4D795C9824FB4B54E5 /* HermesNativeGatewayConnectionUITests.swift */,
+				F27E6937B77766E157EC161D /* HermesNativeLongSessionPerfUITests.swift */,
 				7E8A26FD44FDB5F75E805CDF /* HermesNativeMultiSessionStressUITests.swift */,
 				968F70307942ABE375AE4CC9 /* HermesNativeOfflineSmokeUITests.swift */,
 				FE1B098714AA8CADED2118F6 /* HermesNativeSmokeUITests.swift */,
@@ -670,6 +673,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0A5ED4D2B4B0DA8E1883CA48 /* HermesNativeGatewayConnectionUITests.swift in Sources */,
+				BCE9D9B9E72B88B4FDF26884 /* HermesNativeLongSessionPerfUITests.swift in Sources */,
 				88BC754D533A8988EC7E5ECE /* HermesNativeMultiSessionStressUITests.swift in Sources */,
 				CD36367200E4AC47BEF6E9D4 /* HermesNativeOfflineSmokeUITests.swift in Sources */,
 				949710C0980DCAAF18C1BD89 /* HermesNativeSmokeUITests.swift in Sources */,

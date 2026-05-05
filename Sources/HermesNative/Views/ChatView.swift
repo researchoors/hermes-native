@@ -83,7 +83,7 @@ struct ChatView: View {
 
                         ZStack(alignment: .topLeading) {
                             LazyVStack(alignment: .leading, spacing: 2) {
-                                ForEach(Array(chatViewModel.messages.enumerated()), id: \.element.id) { index, message in
+                                ForEach(renderedMessages, id: \.element.id) { index, message in
                                 let msgs = chatViewModel.messages
                                 // Next message in same role group?
                                 let nextIsSameRole = index < msgs.count - 1 &&
@@ -406,6 +406,15 @@ struct ChatView: View {
     }
     #endif
 
+    private var renderedMessages: [(offset: Int, element: ChatMessage)] {
+        let enumerated = Array(chatViewModel.messages.enumerated())
+        guard ProcessInfo.processInfo.arguments.contains("--virtualize-transcript") else {
+            return enumerated
+        }
+        let keepCount = chatViewModel.isStreaming ? 2 : 4
+        return Array(enumerated.suffix(keepCount))
+    }
+
     private var latestMessageRenderKey: String {
         guard let last = chatViewModel.messages.last else { return "none" }
         // Bucket text length so token-by-token deltas do not force a full
@@ -430,7 +439,7 @@ struct ChatView: View {
     private func scheduleScrollToBottom(proxy: ScrollViewProxy, reason: String) {
         _ = reason
         pendingScrollTask?.cancel()
-        let delay: UInt64 = chatViewModel.isStreaming ? 120_000_000 : 20_000_000
+        let delay: UInt64 = chatViewModel.isStreaming ? 500_000_000 : 20_000_000
         pendingScrollTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled else { return }
@@ -439,7 +448,7 @@ struct ChatView: View {
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.15)) {
+        let action = {
             if chatViewModel.isStreaming {
                 if chatViewModel.activeToolCalls.isEmpty, let lastMsg = chatViewModel.messages.last {
                     proxy.scrollTo(lastMsg.id, anchor: .bottom)
@@ -449,6 +458,13 @@ struct ChatView: View {
             } else if let lastMsg = chatViewModel.messages.last {
                 proxy.scrollTo(lastMsg.id, anchor: .bottom)
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--disable-animations") {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction, action)
+        } else {
+            withAnimation(.easeOut(duration: 0.15), action)
         }
     }
 }

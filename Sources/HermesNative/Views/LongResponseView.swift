@@ -28,14 +28,17 @@ struct LongResponseView: View {
     }
 
     var body: some View {
+        let _ = Self.recordRender(text: text, isStreaming: isStreaming)
         Group {
-            if shouldEnhance {
+            if isStreaming {
+                StreamingPlainTextView(text: text)
+            } else if shouldEnhance {
                 enhancedBody
             } else {
                 MarkdownContentView(text: text, isStreaming: isStreaming)
             }
         }
-        .task(id: text) {
+        .task(id: isStreaming ? "streaming" : text) {
             guard !isStreaming else { return }
             let parsed = LongResponseDocumentCache.shared.document(for: text)
             await MainActor.run {
@@ -94,6 +97,31 @@ struct LongResponseView: View {
         withAnimation(.easeInOut(duration: 0.18)) {
             collapsedHeadings.removeAll()
         }
+    }
+
+    private static var renderCount = 0
+    private static var lastLog = Date()
+
+    private static func recordRender(text: String, isStreaming: Bool) {
+        guard ProcessInfo.processInfo.arguments.contains("--long-session-perf") else { return }
+        renderCount += 1
+        let now = Date()
+        guard now.timeIntervalSince(lastLog) >= 5 else { return }
+        lastLog = now
+        NSLog("[HermesNativePerf] LongResponseView renders=\(renderCount) streaming=\(isStreaming) chars=\(text.count)")
+    }
+}
+
+private struct StreamingPlainTextView: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(.body, design: .monospaced))
+            .foregroundStyle(Theme.primary)
+            .textSelection(.enabled)
+            .lineSpacing(3)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
