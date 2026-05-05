@@ -52,6 +52,7 @@ jobs:
           API_SERVER_HOST: 127.0.0.1
           API_SERVER_PORT: ${{ env.HERMES_CI_PORT }}
           API_SERVER_KEY: ${{ env.HERMES_CI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           HERMES_QUIET: "1"
           HERMES_SKIP_MEMORY: "1"
           HERMES_DISABLE_MEMORY: "1"
@@ -82,7 +83,7 @@ jobs:
           echo $! > "$RUNNER_TEMP/hermes-api-server.pid"
 
           for i in {1..60}; do
-            if curl -fsS -H "Authorization: Bearer $API_SERVER_KEY" "http://127.0.0.1:${API_SERVER_PORT}/health" >/dev/null; then
+            if curl -fsS "http://127.0.0.1:${API_SERVER_PORT}/health" >/dev/null; then
               echo "Hermes API server is healthy"
               exit 0
             fi
@@ -155,6 +156,35 @@ jobs:
             -resultBundlePath "$RESULT_BUNDLE" \
             2>&1 | tee "$RUNNER_TEMP/ios-ui-local-gateway-smoke.log" | xcpretty
 
+
+      - name: Run local-Hermes long-session UI stress test
+        working-directory: hermes-native
+        env:
+          HERMES_NATIVE_GATEWAY_URL: ${{ env.HERMES_CI_URL }}
+          HERMES_NATIVE_API_KEY: ${{ env.HERMES_CI_API_KEY }}
+          API_SERVER_KEY: ${{ env.HERMES_CI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -o pipefail
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::notice::Skipping long-session UI stress test because OPENAI_API_KEY is not configured."
+            exit 0
+          fi
+
+          RESULT_BUNDLE="${RUNNER_TEMP}/HermesNativeLongSessionUITests.xcresult"
+
+          xcrun simctl boot "iPhone 16" 2>/dev/null || true
+          xcrun simctl bootstatus "iPhone 16" -b
+
+          xcodebuild test \
+            -project HermesNative.xcodeproj \
+            -scheme HermesNativeUITests \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -only-testing:HermesNativeUITests/HermesNativeLongSessionPerfUITests/testLongGrowingSessionComposerLatencyAndMemory \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            2>&1 | tee "$RUNNER_TEMP/ios-ui-long-session-stress.log" | xcpretty
+
       - name: Upload iOS simulator test artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -163,9 +193,11 @@ jobs:
           path: |
             ${{ runner.temp }}/HermesNativeOfflineUITests.xcresult
             ${{ runner.temp }}/HermesNativeLocalGatewayUITests.xcresult
+            ${{ runner.temp }}/HermesNativeLongSessionUITests.xcresult
             ${{ runner.temp }}/build-ios-simulator.log
             ${{ runner.temp }}/ios-ui-offline-smoke.log
             ${{ runner.temp }}/ios-ui-local-gateway-smoke.log
+            ${{ runner.temp }}/ios-ui-long-session-stress.log
             ${{ runner.temp }}/hermes-ci-home/logs/api-server.log
           if-no-files-found: ignore
           retention-days: 14
