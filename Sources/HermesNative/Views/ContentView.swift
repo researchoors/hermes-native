@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var isMacSidebarVisible = true
     private let macSidebarWidth: CGFloat = 352
     @State private var missionControlSessionID: String?
+    @State private var missionControlRuntimeSessionID: String?
     @State private var observerSession: Session?
     @State private var showCronSheet = false
     @State private var showGatewayDebugSheet = false
@@ -182,10 +183,10 @@ struct ContentView: View {
         // Mission Control sheet (for owned sessions)
         .sheet(isPresented: Binding(
             get: { missionControlSessionID != nil },
-            set: { if !$0 { missionControlSessionID = nil } }
+            set: { if !$0 { missionControlSessionID = nil; missionControlRuntimeSessionID = nil } }
         )) {
             if let sid = missionControlSessionID {
-                SessionExplorerView(sessionID: sid)
+                SessionExplorerView(sessionID: sid, runtimeSessionID: missionControlRuntimeSessionID)
                     .environmentObject(gatewayClientWrapper)
                     .environmentObject(spawnTreeStore)
                     .presentationDetents([.large])
@@ -247,10 +248,10 @@ struct ContentView: View {
         }
         .sheet(isPresented: Binding(
             get: { missionControlSessionID != nil },
-            set: { if !$0 { missionControlSessionID = nil } }
+            set: { if !$0 { missionControlSessionID = nil; missionControlRuntimeSessionID = nil } }
         )) {
             if let sid = missionControlSessionID {
-                SessionExplorerView(sessionID: sid)
+                SessionExplorerView(sessionID: sid, runtimeSessionID: missionControlRuntimeSessionID)
                     .environmentObject(gatewayClientWrapper)
                     .environmentObject(spawnTreeStore)
             }
@@ -578,6 +579,7 @@ struct ContentView: View {
         spawnTreeStore.bindRuntimeSession(displayID: sessionID, runtimeID: runtimeID)
         spawnTreeStore.setActive(sessionID: sessionID)
         missionControlSessionID = sessionID
+        missionControlRuntimeSessionID = runtimeID
     }
 
     // MARK: - Wiring
