@@ -19,7 +19,7 @@ struct MarkdownContentView: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .codeBlock(let language, let code):
-                    if language == "mermaid" {
+                    if MarkdownParser.isDiagramLanguage(language) {
                         MermaidDiagramView(mermaidCode: code)
                             .frame(minHeight: 120)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -27,7 +27,7 @@ struct MarkdownContentView: View {
                                 RoundedRectangle(cornerRadius: 10)
                                     .stroke(Theme.border, lineWidth: 0.5)
                             )
-                        OpenableBlockChip(label: "Open Diagram", language: "mermaid", content: code)
+                        OpenableBlockChip(label: "Open Diagram", language: language, content: code)
                     } else if MarkdownParser.isHTMLLanguage(language) {
                         HTMLBlockView(html: code)
                     } else {
@@ -291,6 +291,17 @@ struct MarkdownParser {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         return normalized == "html" || normalized == "htm"
+    }
+
+    static let diagramLanguages: Set<String> = [
+        "mermaid", "flowchart", "sequence", "sequencediagram", "statediagram",
+        "classdiagram", "erdiagram", "er", "gantt", "pie", "mindmap",
+        "timeline", "gitgraph", "sankey", "block", "quadrant", "radar",
+        "treemap", "xychart", "journey",
+    ]
+
+    static func isDiagramLanguage(_ language: String) -> Bool {
+        diagramLanguages.contains(language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 
     private static func isHorizontalRule(_ s: String) -> Bool {
@@ -902,7 +913,7 @@ struct OpenableBlockChip: View {
             isOpen = true
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: language == "mermaid" ? "arrow.up.left.and.arrow.down.right" : "safari")
+                Image(systemName: MarkdownParser.isDiagramLanguage(language) ? "arrow.up.left.and.arrow.down.right" : "safari")
                     .font(.system(size: 9, weight: .bold))
                 Text(label)
                     .font(.system(size: 11, weight: .semibold))
@@ -948,11 +959,11 @@ struct OpenableBlockSheet: View {
             VStack(spacing: 0) {
                 // Title bar
                 HStack(spacing: 10) {
-                    Image(systemName: language == "mermaid" ? "chart.bar.doc.horizontal" : "globe")
+                    Image(systemName: MarkdownParser.isDiagramLanguage(language) ? "chart.bar.doc.horizontal" : "globe")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Theme.accent)
 
-                    Text(language == "mermaid" ? "Diagram" : "Page")
+                    Text(MarkdownParser.isDiagramLanguage(language) ? "Diagram" : "Page")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Theme.primary)
 
@@ -977,7 +988,7 @@ struct OpenableBlockSheet: View {
 
                 // Content — WKWebView handles its own scrolling
                 Group {
-                    if language == "mermaid" {
+                    if MarkdownParser.isDiagramLanguage(language) {
                         MermaidDiagramView(mermaidCode: content, isInteractive: true)
                     } else {
                         InlineHTMLView(html: content)

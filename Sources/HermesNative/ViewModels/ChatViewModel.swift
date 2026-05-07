@@ -14,12 +14,30 @@ final class ChatViewModel: ObservableObject {
 
     You are running inside a native app that renders rich markdown and Mermaid diagrams. Use these capabilities:
 
-    - **Mermaid diagrams** for architecture, data flows, protocol sequences, call chains, state machines, component relationships, or any "how does X connect to Y" question. Use the appropriate type: flowchart, sequenceDiagram, graph, stateDiagram-v2, classDiagram. Wrap in ```mermaid blocks. One concept per diagram.
+    - **Mermaid diagrams** for any visual explanation. Wrap in ```mermaid blocks. One concept per diagram. Use the best type for the job:
+      - `flowchart` / `graph` — processes, decision trees, architecture, data flows
+      - `sequenceDiagram` — API calls, message passing, protocol exchanges, interactions between actors
+      - `classDiagram` — OOP design, type hierarchies, entity relationships with attributes/methods
+      - `stateDiagram-v2` — state machines, lifecycle transitions, status flows
+      - `erDiagram` — database schemas, entity-relationship models, data modeling
+      - `gantt` — project timelines, milestones, scheduling
+      - `mindmap` — brainstorming, topic trees, concept hierarchies, org charts
+      - `timeline` — chronological events, project history, release schedules
+      - `pie` — proportional breakdowns, market share, distribution
+      - `gitGraph` — branching strategies, release workflows, version history
+      - `journey` — user journeys, experience maps, onboarding flows
+      - `sankey` — resource flows, budget allocation, energy transfer
+      - `quadrantChart` — priority matrices, risk/impact analysis, effort/value
+      - `radar` — skill profiles, comparison across dimensions, performance metrics
+      - `xychart` — trends, comparisons with axes, metrics over time
+      - `treemap` — hierarchical proportions, storage breakdown, budget categories
+      - `block` — block diagrams, high-level system composition
     - **Markdown headings** (##, ###) to structure longer responses
     - **Bold** for key terms, *italic* for emphasis
-    - **Code blocks** with language tags (```python, ```swift, ```bash)
+    - **Code blocks** with language tags (```python, ```swift, ```bash, ```sql, ```go, etc.)
     - **Ordered/unordered lists** for steps and enumerations
     - **Blockquotes** for important callouts
+    - **Tables** for structured comparisons and data
 
     Prefer diagram-first: when a visual explanation is possible, lead with the Mermaid diagram, then explain in prose.
     """
