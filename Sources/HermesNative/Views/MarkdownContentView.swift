@@ -375,9 +375,11 @@ struct MarkdownParser {
 /// Falls back to plain text if parsing fails.
 struct MarkdownText: View {
     let text: String
+    var baseColor: Color?
 
-    init(text: String) {
+    init(text: String, baseColor: Color? = nil) {
         self.text = text
+        self.baseColor = baseColor
     }
 
     var body: some View {
@@ -388,24 +390,31 @@ struct MarkdownText: View {
 
     private func attributedSegments(_ segments: [InlineParser.Segment]) -> AttributedString {
         var result = AttributedString()
+        let textColor: Color = baseColor ?? Theme.primary
         for segment in segments {
             switch segment {
             case .text(let content):
                 if var parsed = try? AttributedString(markdown: content, options: inlineOptions) {
-                    stripSystemColors(&parsed)
+                    stripSystemColors(&parsed, to: textColor)
                     result.append(parsed)
                 } else {
-                    result.append(AttributedString(content))
+                    var attr = AttributedString(content)
+                    #if os(macOS)
+                    attr.foregroundColor = NSColor(textColor)
+                    #else
+                    attr.foregroundColor = UIColor(textColor)
+                    #endif
+                    result.append(attr)
                 }
             case .inlineCode(let code):
                 var codeAttr = AttributedString(code)
                 codeAttr.font = .system(size: 12, weight: .regular, design: .monospaced)
                 #if os(macOS)
                 codeAttr.backgroundColor = NSColor(Theme.surfaceHover)
-                codeAttr.foregroundColor = NSColor(Theme.primary)
+                codeAttr.foregroundColor = NSColor(Theme.accent)
                 #else
                 codeAttr.backgroundColor = UIColor(Theme.surfaceHover)
-                codeAttr.foregroundColor = UIColor(Theme.primary)
+                codeAttr.foregroundColor = UIColor(Theme.accent)
                 #endif
                 result.append(codeAttr)
             }
@@ -413,14 +422,14 @@ struct MarkdownText: View {
         return result
     }
 
-    private func stripSystemColors(_ attr: inout AttributedString) {
+    private func stripSystemColors(_ attr: inout AttributedString, to color: Color) {
         for i in attr.runs.indices {
             let run = attr.runs[i]
-            if run.foregroundColor != nil {
+            if run.foregroundColor != nil, run.backgroundColor == nil {
                 #if os(macOS)
-                attr[run.range].foregroundColor = NSColor(Theme.primary)
+                attr[run.range].foregroundColor = NSColor(color)
                 #else
-                attr[run.range].foregroundColor = UIColor(Theme.primary)
+                attr[run.range].foregroundColor = UIColor(color)
                 #endif
             }
         }
@@ -771,7 +780,7 @@ struct TableView: View {
 
     @ViewBuilder
     private func tableCell(text: String, width: CGFloat, isHeader: Bool) -> some View {
-        MarkdownText(text: text)
+        MarkdownText(text: text, baseColor: isHeader ? Theme.accent : nil)
             .font(isHeader
                 ? .system(size: 11, weight: .bold, design: .monospaced)
                 : .system(size: 12, weight: .regular)
