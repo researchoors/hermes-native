@@ -231,7 +231,7 @@
 		E1CB9DFBFC6F7CC67D8359F5 /* happy.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = happy.json; sourceTree = "<group>"; };
 		E5AF7C8FD90209C14BD37A45 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		E75C11A7DC7195F4353C93DA /* idle.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = idle.json; sourceTree = "<group>"; };
-		E996AFDAC3ACF6290E04567F /* HermesNative-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "HermesNative-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E996AFDAC3ACF6290E04567F /* HermesNative-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "HermesNative-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		EDC89BDA9F965E178C495B02 /* SessionObserverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionObserverView.swift; sourceTree = "<group>"; };
 		EDFF359835C2716C43ADF249 /* HermesNative-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "HermesNative-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		EF6C83FB177D450056599E65 /* PersonaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaManager.swift; sourceTree = "<group>"; };
@@ -544,12 +544,6 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
-					4C5636A071FF7F1F85058B29 = {
-						ProvisioningStyle = Manual;
-					};
-					50357E9A910E7A34C0E26F6C = {
-						ProvisioningStyle = Manual;
-					};
 					AE4CCD10646F59872D9448D5 = {
 						TestTargetID = 4C5636A071FF7F1F85058B29;
 					};
@@ -794,9 +788,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Apple Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 234327N47W;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSAppTransportSecurity_AllowsArbitraryLoads = YES;
@@ -812,6 +807,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.researchoors.HermesNative.iOS;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -955,10 +951,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Apple Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 234327N47W;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -967,6 +964,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.researchoors.HermesNative.macOS;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
