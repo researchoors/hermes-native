@@ -575,35 +575,35 @@ struct DiagramPreviewBlock: View {
     @State private var isOpen = false
 
     var body: some View {
-        Button {
-            isOpen = true
-        } label: {
-            VStack(spacing: 0) {
-                MermaidDiagramView(mermaidCode: mermaidCode)
-                    .frame(height: 180)
-                    .clipped()
+        VStack(spacing: 0) {
+            MermaidDiagramView(mermaidCode: mermaidCode)
+                .frame(height: 180)
+                .clipped()
+                .allowsHitTesting(false)
 
-                HStack(spacing: 6) {
-                    Image(systemName: "chart.bar.doc.horizontal")
-                        .font(.system(size: 10, weight: .semibold))
-                    Text("Open Diagram")
-                        .font(.system(size: 11, weight: .semibold))
-                    Spacer()
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 9, weight: .bold))
-                }
-                .foregroundStyle(Theme.accent)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Theme.accent.opacity(0.06))
+            HStack(spacing: 6) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Open Diagram")
+                    .font(.system(size: 11, weight: .semibold))
+                Spacer()
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 9, weight: .bold))
             }
+            .foregroundStyle(Theme.accent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Theme.accent.opacity(0.06))
         }
-        .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 10))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Theme.border, lineWidth: 0.5)
         )
+        .onTapGesture {
+            isOpen = true
+        }
         #if os(iOS)
         .fullScreenCover(isPresented: $isOpen) {
             OpenableBlockSheet(language: language, content: mermaidCode)
