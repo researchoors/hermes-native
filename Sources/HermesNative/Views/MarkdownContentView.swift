@@ -20,14 +20,7 @@ struct MarkdownContentView: View {
                 switch block {
                 case .codeBlock(let language, let code):
                     if MarkdownParser.isDiagramLanguage(language) {
-                        MermaidDiagramView(mermaidCode: code)
-                            .frame(minHeight: 120)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Theme.border, lineWidth: 0.5)
-                            )
-                        OpenableBlockChip(label: "Open Diagram", language: language, content: code)
+                        DiagramPreviewBlock(mermaidCode: code, language: language)
                     } else if MarkdownParser.isHTMLLanguage(language) {
                         HTMLBlockView(html: code)
                     } else {
@@ -376,10 +369,12 @@ struct MarkdownParser {
 struct MarkdownText: View {
     let text: String
     var baseColor: Color?
+    var baseFont: Font?
 
-    init(text: String, baseColor: Color? = nil) {
+    init(text: String, baseColor: Color? = nil, baseFont: Font? = nil) {
         self.text = text
         self.baseColor = baseColor
+        self.baseFont = baseFont
     }
 
     var body: some View {
@@ -391,11 +386,13 @@ struct MarkdownText: View {
     private func attributedSegments(_ segments: [InlineParser.Segment]) -> AttributedString {
         var result = AttributedString()
         let textColor: Color = baseColor ?? Theme.primary
+        let font: Font = baseFont ?? .system(size: 14)
         for segment in segments {
             switch segment {
             case .text(let content):
                 if var parsed = try? AttributedString(markdown: content, options: inlineOptions) {
                     stripSystemColors(&parsed, to: textColor)
+                    applyBaseFont(&parsed, font: font)
                     result.append(parsed)
                 } else {
                     var attr = AttributedString(content)
@@ -404,6 +401,7 @@ struct MarkdownText: View {
                     #else
                     attr.foregroundColor = UIColor(textColor)
                     #endif
+                    applyBaseFont(&attr, font: font)
                     result.append(attr)
                 }
             case .inlineCode(let code):
@@ -420,6 +418,14 @@ struct MarkdownText: View {
             }
         }
         return result
+    }
+
+    private func applyBaseFont(_ attr: inout AttributedString, font: Font) {
+        for i in attr.runs.indices {
+            if attr.runs[i].font == nil {
+                attr[attr.runs[i].range].font = font
+            }
+        }
     }
 
     private func stripSystemColors(_ attr: inout AttributedString, to color: Color) {
@@ -558,6 +564,59 @@ struct CodeBlockView: View {
 
     private var highlightedCode: AttributedString {
         CodeHighlighter.highlight(code, language: language)
+    }
+}
+
+// MARK: - Diagram Preview Block
+
+struct DiagramPreviewBlock: View {
+    let mermaidCode: String
+    let language: String
+    @State private var isOpen = false
+
+    var body: some View {
+        Button {
+            isOpen = true
+        } label: {
+            VStack(spacing: 0) {
+                MermaidDiagramView(mermaidCode: mermaidCode)
+                    .frame(height: 180)
+                    .clipped()
+
+                HStack(spacing: 6) {
+                    Image(systemName: "chart.bar.doc.horizontal")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Open Diagram")
+                        .font(.system(size: 11, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(Theme.accent)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Theme.accent.opacity(0.06))
+            }
+        }
+        .buttonStyle(.plain)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Theme.border, lineWidth: 0.5)
+        )
+        #if os(iOS)
+        .fullScreenCover(isPresented: $isOpen) {
+            OpenableBlockSheet(language: language, content: mermaidCode)
+        }
+        #else
+        .sheet(isPresented: $isOpen) {
+            OpenableBlockSheet(language: language, content: mermaidCode)
+                .frame(
+                    width: NSScreen.main?.visibleFrame.width ?? 1200,
+                    height: NSScreen.main?.visibleFrame.height ?? 800
+                )
+        }
+        #endif
     }
 }
 
@@ -780,12 +839,7 @@ struct TableView: View {
 
     @ViewBuilder
     private func tableCell(text: String, width: CGFloat, isHeader: Bool) -> some View {
-        MarkdownText(text: text, baseColor: isHeader ? Theme.accent : nil)
-            .font(isHeader
-                ? .system(size: 11, weight: .bold, design: .monospaced)
-                : .system(size: 12, weight: .regular)
-            )
-            .foregroundStyle(isHeader ? Theme.accent : Theme.primary)
+        MarkdownText(text: text, baseColor: isHeader ? Theme.accent : nil, baseFont: isHeader ? .system(size: 11, weight: .bold, design: .monospaced) : nil)
             .textSelection(.enabled)
             .lineLimit(nil)
             .multilineTextAlignment(isHeader ? .center : .leading)
