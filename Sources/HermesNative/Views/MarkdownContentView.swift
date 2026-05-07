@@ -611,7 +611,7 @@ struct DiagramPreviewBlock: View {
         #else
         .sheet(isPresented: $isOpen) {
             OpenableBlockSheet(language: language, content: mermaidCode)
-                .frame(minWidth: 700, minHeight: 500)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         #endif
     }
@@ -1022,10 +1022,7 @@ struct OpenableBlockChip: View {
         #else
         .sheet(isPresented: $isOpen) {
             OpenableBlockSheet(language: language, content: content)
-                .frame(
-                    width: NSScreen.main?.visibleFrame.width ?? 1200,
-                    height: NSScreen.main?.visibleFrame.height ?? 800
-                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         #endif
     }

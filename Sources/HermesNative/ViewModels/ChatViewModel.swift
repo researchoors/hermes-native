@@ -891,11 +891,14 @@ final class ChatViewModel: ObservableObject {
             snapshotCurrentSessionState()
             return
         }
-        if let current = sessionID {
-            let displayID = displaySessionID(for: current)
-            _ = restoreSessionState(displayID: displayID, runtimeID: current)
-        } else {
-            snapshotCurrentSessionState()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let current = self.sessionID {
+                let displayID = self.displaySessionID(for: current)
+                _ = self.restoreSessionState(displayID: displayID, runtimeID: current)
+            } else {
+                self.snapshotCurrentSessionState()
+            }
         }
     }
 
@@ -1036,23 +1039,9 @@ final class ChatViewModel: ObservableObject {
         }
         if displaySessionID(for: sessionID ?? "") == displayID {
             if isVisibleCoalescedDelta {
-                if perfLoggingEnabled {
-                    // Live long-session/perf runs should not publish the whole
-                    // transcript for every token/reasoning frame. The flush task
-                    // restores visible state on a coalesced cadence.
-                } else {
-                    // Unit tests and normal non-perf paths keep immediate
-                    // visibility while still updating the same cached state.
-                    messages = state.messages
-                    isStreaming = state.isStreaming
-                    isSessionReady = state.isSessionReady
-                    pendingApproval = state.pendingApproval
-                    activeToolCalls = state.activeToolCalls
-                    error = state.error
-                    avatarState = state.avatarState
-                    sessionTitle = state.sessionTitle
-                    streamingMessageID = state.streamingMessageID
-                }
+                // Coalesced delta events are published on a 500ms cadence via
+                // scheduleVisibleEventFlush() — do NOT publish immediately here
+                // or every token triggers a full SwiftUI re-render cycle.
             } else {
                 _ = restoreSessionState(displayID: displayID, runtimeID: eventSessionID)
             }
