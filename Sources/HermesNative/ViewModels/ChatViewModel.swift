@@ -580,7 +580,6 @@ final class ChatViewModel: ObservableObject {
 
     /// Send the current input text as a prompt.
     func submitPrompt() async {
-        await Task.yield()
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = pendingAttachments
         // Allow submit if there is text OR pending attachments
