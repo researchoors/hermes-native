@@ -369,21 +369,69 @@ struct MarkdownText: View {
     }
 
     var body: some View {
-        if let attributed = parseMarkdown(text) {
-            Text(attributed)
-                .textSelection(.enabled)
-        } else {
-            Text(text)
-                .textSelection(.enabled)
-        }
+        let segments = InlineParser.parse(text)
+        SwiftUI.Text(attributedSegments(segments))
+            .textSelection(.enabled)
     }
 
-    private func parseMarkdown(_ input: String) -> AttributedString? {
+    private func attributedSegments(_ segments: [InlineParser.Segment]) -> AttributedString {
+        var result = AttributedString()
+        for segment in segments {
+            switch segment {
+            case .text(let content):
+                if let parsed = try? AttributedString(markdown: content, options: inlineOptions) {
+                    result.append(parsed)
+                } else {
+                    result.append(AttributedString(content))
+                }
+            case .inlineCode(let code):
+                var codeAttr = AttributedString(code)
+                codeAttr.font = .system(size: 12, weight: .regular, design: .monospaced)
+                #if os(macOS)
+                codeAttr.backgroundColor = NSColor(Theme.surfaceHover)
+                codeAttr.foregroundColor = NSColor(Theme.accent)
+                #else
+                codeAttr.backgroundColor = UIColor(Theme.surfaceHover)
+                codeAttr.foregroundColor = UIColor(Theme.accent)
+                #endif
+                result.append(codeAttr)
+            }
+        }
+        return result
+    }
+
+    private var inlineOptions: AttributedString.MarkdownParsingOptions {
         var options = AttributedString.MarkdownParsingOptions()
         options.interpretedSyntax = .inlineOnlyPreservingWhitespace
         options.failurePolicy = .returnPartiallyParsedIfPossible
+        return options
+    }
+}
 
-        return try? AttributedString(markdown: input, options: options)
+private enum InlineParser {
+    enum Segment {
+        case text(String)
+        case inlineCode(String)
+    }
+
+    static func parse(_ input: String) -> [Segment] {
+        var segments: [Segment] = []
+        var current = input[...]
+        while let range = current.range(of: "`") {
+            let before = String(current[..<range.lowerBound])
+            if !before.isEmpty { segments.append(.text(before)) }
+            let afterBacktick = current[range.upperBound...]
+            if let endRange = afterBacktick.range(of: "`") {
+                let code = String(afterBacktick[..<endRange.lowerBound])
+                segments.append(.inlineCode(code))
+                current = afterBacktick[endRange.upperBound...]
+            } else {
+                segments.append(.text("`" + String(afterBacktick)))
+                current = ""
+            }
+        }
+        if !current.isEmpty { segments.append(.text(String(current))) }
+        return segments
     }
 }
 
