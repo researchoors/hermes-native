@@ -391,7 +391,8 @@ struct MarkdownText: View {
         for segment in segments {
             switch segment {
             case .text(let content):
-                if let parsed = try? AttributedString(markdown: content, options: inlineOptions) {
+                if var parsed = try? AttributedString(markdown: content, options: inlineOptions) {
+                    stripSystemColors(&parsed)
                     result.append(parsed)
                 } else {
                     result.append(AttributedString(content))
@@ -401,15 +402,28 @@ struct MarkdownText: View {
                 codeAttr.font = .system(size: 12, weight: .regular, design: .monospaced)
                 #if os(macOS)
                 codeAttr.backgroundColor = NSColor(Theme.surfaceHover)
-                codeAttr.foregroundColor = NSColor(Theme.accent)
+                codeAttr.foregroundColor = NSColor(Theme.primary)
                 #else
                 codeAttr.backgroundColor = UIColor(Theme.surfaceHover)
-                codeAttr.foregroundColor = UIColor(Theme.accent)
+                codeAttr.foregroundColor = UIColor(Theme.primary)
                 #endif
                 result.append(codeAttr)
             }
         }
         return result
+    }
+
+    private func stripSystemColors(_ attr: inout AttributedString) {
+        for i in attr.runs.indices {
+            let run = attr.runs[i]
+            if run.foregroundColor != nil {
+                #if os(macOS)
+                attr[run.range].foregroundColor = NSColor(Theme.primary)
+                #else
+                attr[run.range].foregroundColor = UIColor(Theme.primary)
+                #endif
+            }
+        }
     }
 
     private var inlineOptions: AttributedString.MarkdownParsingOptions {
