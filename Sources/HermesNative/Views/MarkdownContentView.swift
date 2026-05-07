@@ -611,10 +611,7 @@ struct DiagramPreviewBlock: View {
         #else
         .sheet(isPresented: $isOpen) {
             OpenableBlockSheet(language: language, content: mermaidCode)
-                .frame(
-                    width: NSScreen.main?.visibleFrame.width ?? 1200,
-                    height: NSScreen.main?.visibleFrame.height ?? 800
-                )
+                .frame(minWidth: 700, minHeight: 500)
         }
         #endif
     }
