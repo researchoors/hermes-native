@@ -29,15 +29,6 @@ struct ChatView: View {
     @FocusState private var isInputFocused: Bool
     #endif
 
-    /// On macOS, owns the chat input focus state at the ChatView level so that
-    /// a click anywhere in the detail pane (messages, padding, input card) can
-    /// restore focus to the text field.  This fixes the classic SwiftUI/AppKit
-    /// bridging issue where clicking the sidebar steals first-responder and
-    /// subsequent clicks on transparent padding regions never return it.
-    #if os(macOS)
-    @FocusState private var isInputFocused: Bool
-    #endif
-
     /// The active skin — change this to swap the entire visual personality
     @AppStorage("chatSkin") private var activeSkin: ChatSkin = .tui
 
