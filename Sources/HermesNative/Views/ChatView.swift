@@ -747,7 +747,7 @@ struct ChatInputBar: View {
             placeholder: "Message \(personaManager.activePersona.name)…",
             isFocused: isFocused,
             fieldRef: $inputFieldRef,
-            onSubmit: { DispatchQueue.main.async { Task { await chatViewModel.submitPrompt() } } },
+            onSubmit: { Task { await chatViewModel.submitPrompt() } },
             onImagePaste: { providers in handlePaste(providers: providers) }
         )
         .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
@@ -759,7 +759,7 @@ struct ChatInputBar: View {
             .lineLimit(1...8)
             .focused($isInputFocused)
             .onSubmit {
-                DispatchQueue.main.async { Task { await chatViewModel.submitPrompt() } }
+                Task { await chatViewModel.submitPrompt() }
             }
         #endif
     }
@@ -768,7 +768,7 @@ struct ChatInputBar: View {
 
     private var sendButton: some View {
         Button {
-            DispatchQueue.main.async { Task { await chatViewModel.submitPrompt() } }
+            Task { await chatViewModel.submitPrompt() }
         } label: {
             Image(systemName: "arrow.up")
                 .font(.system(size: 13, weight: .bold))
