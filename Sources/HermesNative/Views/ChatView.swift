@@ -20,6 +20,15 @@ struct ChatView: View {
     @State private var avatarY: CGFloat = 0
     @State private var pendingScrollTask: Task<Void, Never>?
 
+    /// On macOS, owns the chat input focus state at the ChatView level so that
+    /// a click anywhere in the detail pane (messages, padding, input card) can
+    /// restore focus to the text field.  This fixes the classic SwiftUI/AppKit
+    /// bridging issue where clicking the sidebar steals first-responder and
+    /// subsequent clicks on transparent padding regions never return it.
+    #if os(macOS)
+    @FocusState private var isInputFocused: Bool
+    #endif
+
     /// The active skin — change this to swap the entire visual personality
     @AppStorage("chatSkin") private var activeSkin: ChatSkin = .tui
 
@@ -163,7 +172,7 @@ struct ChatView: View {
                                 .padding(.horizontal, 24)
                         }
 
-                        ChatInputBar()
+                        ChatInputBar(isFocused: $isInputFocused)
                             .environmentObject(chatViewModel)
                             .id(chatViewModel.currentSessionID ?? "no-session")
                     }
@@ -179,6 +188,18 @@ struct ChatView: View {
                 .background(activeSkin.background)
                 #if os(macOS)
                 .scrollIndicators(.hidden)
+                // ── macOS focus-recovery (root fix) ──
+                // Clicking anywhere in the chat detail pane (messages area,
+                // padding zones, input card) should return focus to the input
+                // text field.  The @FocusState lives here at ChatView level so
+                // the entire ZStack's hit region is covered — not just the
+                // input card's contentShape.  Using simultaneousGesture ensures
+                // the ScrollView's native drag/select and the TextField's
+                // click→cursor placement still work.
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    TapGesture().onEnded { isInputFocused = true }
+                )
                 #endif
                 #if os(iOS)
                 .scrollDismissesKeyboard(.interactively)
@@ -575,7 +596,15 @@ struct ChatInputBar: View {
     @EnvironmentObject var chatViewModel: ChatViewModel
     @EnvironmentObject var personaManager: PersonaManager
     @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
+
+    /// On macOS, the focus binding is owned by ChatView so that clicks
+    /// anywhere in the detail pane can restore focus. On iOS the binding
+    /// is nil and ChatInputBar owns its own @FocusState internally.
+    #if os(macOS)
+    var isFocused: FocusState<Bool>.Binding
+    #else
     @FocusState private var isInputFocused: Bool
+    #endif
 
     #if os(iOS)
     @State private var selectedPhotosPickerItems: [PhotosPickerItem] = []
@@ -612,16 +641,6 @@ struct ChatInputBar: View {
             )
             .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 8)
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            // ── macOS focus-recovery ──
-            // After the bridged NSTextField resigns first-responder (e.g. user
-            // clicks the sidebar), SwiftUI's hit-test may still land on the
-            // card but the AppKit field editor won't reactivate.  A lightweight
-            // tap gesture on the card shell forces FocusState back to true so
-            // the text field becomes editable again.  Using simultaneousGesture
-            // ensures the TextField's own click→cursor placement still fires.
-            .simultaneousGesture(
-                TapGesture().onEnded { isInputFocused = true }
-            )
             .background {
                 MacScrollViewIntrospection()
                     .frame(width: 0, height: 0)
@@ -725,7 +744,7 @@ struct ChatInputBar: View {
             .font(.system(size: 15, weight: .regular))
             .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
             .contentShape(Rectangle())
-            .focused($isInputFocused)
+            .focused(isFocused)
             .onSubmit {
                 Task { await chatViewModel.submitPrompt() }
             }
