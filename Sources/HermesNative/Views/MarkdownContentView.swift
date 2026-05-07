@@ -441,14 +441,8 @@ struct CodeBlockView: View {
             .background(Theme.surface)
 
             // Code content
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundStyle(Theme.primary)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-            }
+            HighlightedCodeView(code: code, language: language)
+                .frame(minHeight: 40)
         }
         .background(Theme.background)
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -471,6 +465,137 @@ struct CodeBlockView: View {
         case "css": return .purple
         case "javascript", "js", "typescript", "ts": return .yellow
         default: return Theme.accent
+        }
+    }
+}
+
+// MARK: - Syntax-Highlighted Code View
+
+struct HighlightedCodeView: View {
+    let code: String
+    let language: String
+
+    var body: some View {
+        #if os(macOS)
+        HighlightedCodeNSView(code: code, language: language)
+        #else
+        HighlightedCodeUIView(code: code, language: language)
+        #endif
+    }
+}
+
+#if os(macOS)
+struct HighlightedCodeNSView: NSViewRepresentable {
+    let code: String
+    let language: String
+
+    func makeNSView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.defaultWebpagePreferences.allowsContentJavaScript = true
+        config.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.navigationDelegate = context.coordinator
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.lastCode != code || context.coordinator.lastLanguage != language else { return }
+        context.coordinator.lastCode = code
+        context.coordinator.lastLanguage = language
+        webView.loadHTMLString(buildHTML(code: code, language: language), baseURL: nil)
+    }
+
+    func makeCoordinator() -> CodeNavCoordinator { CodeNavCoordinator() }
+
+    private func buildHTML(code: String, language: String) -> String {
+        let escaped = code
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        let langAttr = language.isEmpty ? "" : " class=\"language-\(language)\""
+        return """
+        <!DOCTYPE html><html><head><meta charset="utf-8">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+        <style>
+            html, body { margin: 0; padding: 0; background: transparent; }
+            pre { margin: 0; padding: 10px 12px; background: transparent; }
+            code { font-family: 'SF Mono', 'Menlo', 'Monaco', monospace; font-size: 12px; line-height: 1.5; }
+        </style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+        </head><body>
+        <pre><code\(langAttr)>\(escaped)</code></pre>
+        <script>hljs.highlightAll();</script>
+        </body></html>
+        """
+    }
+}
+#else
+struct HighlightedCodeUIView: UIViewRepresentable {
+    let code: String
+    let language: String
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.defaultWebpagePreferences.allowsContentJavaScript = true
+        config.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+        webView.navigationDelegate = context.coordinator
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.lastCode != code || context.coordinator.lastLanguage != language else { return }
+        context.coordinator.lastCode = code
+        context.coordinator.lastLanguage = language
+        webView.loadHTMLString(buildHTML(code: code, language: language), baseURL: nil)
+    }
+
+    func makeCoordinator() -> CodeNavCoordinator { CodeNavCoordinator() }
+
+    private func buildHTML(code: String, language: String) -> String {
+        let escaped = code
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        let langAttr = language.isEmpty ? "" : " class=\"language-\(language)\""
+        return """
+        <!DOCTYPE html><html><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+        <style>
+            html, body { margin: 0; padding: 0; background: transparent; }
+            pre { margin: 0; padding: 10px 12px; background: transparent; white-space: pre-wrap; word-wrap: break-word; }
+            code { font-family: 'SF Mono', 'Menlo', monospace; font-size: 12px; line-height: 1.5; }
+        </style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+        </head><body>
+        <pre><code\(langAttr)>\(escaped)</code></pre>
+        <script>hljs.highlightAll();</script>
+        </body></html>
+        """
+    }
+}
+#endif
+
+final class CodeNavCoordinator: NSObject, WKNavigationDelegate {
+    var lastCode: String = ""
+    var lastLanguage: String = ""
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let js = "document.body.scrollHeight"
+        webView.evaluateJavaScript(js) { height, _ in
+            guard let h = height as? CGFloat, h > 0 else { return }
+            DispatchQueue.main.async {
+                webView.invalidateIntrinsicContentSize()
+                webView.frame.size.height = h
+                webView.invalidateIntrinsicContentSize()
+            }
         }
     }
 }
@@ -660,7 +785,7 @@ struct TableView: View {
 
     @ViewBuilder
     private func tableCell(text: String, width: CGFloat, isHeader: Bool) -> some View {
-        Text(text)
+        MarkdownText(text: text)
             .font(isHeader
                 ? .system(size: 11, weight: .bold, design: .monospaced)
                 : .system(size: 12, weight: .regular)
@@ -862,7 +987,7 @@ struct OpenableBlockSheet: View {
             VStack(spacing: 0) {
                 // Title bar
                 HStack(spacing: 10) {
-                    Image(systemName: language == "mermaid" ? "diagram" : "globe")
+                    Image(systemName: language == "mermaid" ? "chart.bar.doc.horizontal" : "globe")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Theme.accent)
 

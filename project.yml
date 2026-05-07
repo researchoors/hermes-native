@@ -34,11 +34,12 @@ targets:
       - path: App/MacApp.swift
     dependencies:
       - package: Lottie
+    entitlements:
+      path: HermesNative-macOS.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.researchoors.HermesNative.macOS
-        CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: "Apple Distribution"
+        CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
@@ -54,13 +55,14 @@ targets:
       - path: App/IOSApp.swift
     dependencies:
       - package: Lottie
+    entitlements:
+      path: HermesNative-iOS.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.researchoors.HermesNative.iOS
         SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
         SUPPORTS_MACCATALYST: NO
-        CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: "Apple Distribution"
+        CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
