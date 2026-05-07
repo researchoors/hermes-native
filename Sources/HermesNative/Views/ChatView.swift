@@ -26,6 +26,7 @@ struct ChatView: View {
     /// subsequent clicks on transparent padding regions never return it.
     #if os(macOS)
     @FocusState private var isInputFocused: Bool
+    @State private var inputFieldRef: FocusableTextField?
     #endif
 
     /// The active skin — change this to swap the entire visual personality
@@ -181,7 +182,7 @@ struct ChatView: View {
                                 .padding(.horizontal, 24)
                         }
 
-                        ChatInputBar(isFocused: $isInputFocused)
+                        ChatInputBar(isFocused: $isInputFocused, inputFieldRef: $inputFieldRef)
                             .environmentObject(chatViewModel)
                     }
                     .padding(.bottom, 18)
@@ -191,17 +192,13 @@ struct ChatView: View {
                 .background(activeSkin.background)
                 #if os(macOS)
                 .scrollIndicators(.hidden, axes: .horizontal)
-                // ── macOS focus-recovery (root fix) ──
-                // Clicking anywhere in the chat detail pane (messages area,
-                // padding zones, input card) should return focus to the input
-                // text field.  The @FocusState lives here at ChatView level so
-                // the entire ZStack's hit region is covered — not just the
-                // input card's contentShape.  Using simultaneousGesture ensures
-                // the ScrollView's native drag/select and the TextField's
-                // click→cursor placement still work.
-                .contentShape(Rectangle())
-                .simultaneousGesture(
-                    TapGesture().onEnded { isInputFocused = true }
+                // ── macOS focus-recovery (AppKit-level) ──
+                // ChatPaneClickMonitor uses NSEvent.addLocalMonitorForEvents
+                // to see mouse clicks before any SwiftUI gesture or AppKit view
+                // can consume them. It calls window.makeFirstResponder() directly
+                // on the NSTextField, bypassing SwiftUI's broken focus bridging.
+                .background(
+                    ChatPaneClickMonitor(textFieldRef: inputFieldRef)
                 )
                 #else
                 .scrollDismissesKeyboard(.interactively)
@@ -548,6 +545,7 @@ struct ChatInputBar: View {
     /// is nil and ChatInputBar owns its own @FocusState internally.
     #if os(macOS)
     var isFocused: FocusState<Bool>.Binding
+    @Binding var inputFieldRef: FocusableTextField?
     #else
     @FocusState private var isInputFocused: Bool
     #endif
@@ -635,67 +633,60 @@ struct ChatInputBar: View {
 
     // MARK: - Attach Button
 
-    @ViewBuilder
     private var attachButton: some View {
-        if capabilitiesStore.hasImageInput || capabilitiesStore.hasACPImagePrompts {
-            #if os(macOS)
-            Button {
-                showMacFilePicker()
-            } label: {
-                Image(systemName: "photo.badge.plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(Theme.surfaceHover, in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Attach image")
-            .help("Attach an image to your message")
-            #else
-            Menu {
-                PhotosPicker(
-                    "Photo Library",
-                    selection: $selectedPhotosPickerItems,
-                    maxSelectionCount: 5,
-                    matching: .images
-                )
-                Button("Choose File") {
-                    showiOSDocumentPicker()
-                }
-            } label: {
-                Image(systemName: "photo.badge.plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(Theme.surfaceHover, in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Attach image")
-            .onChange(of: selectedPhotosPickerItems) { _, newItems in
-                handlePhotosPickerItems(newItems)
-                selectedPhotosPickerItems = []
-            }
-            #endif
+        #if os(macOS)
+        Button {
+            showMacFilePicker()
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.secondary)
+                .frame(width: 28, height: 28)
+                .background(Theme.surfaceHover, in: Circle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Attach file")
+        .help("Attach a file to your message")
+        #else
+        Menu {
+            PhotosPicker(
+                "Photo Library",
+                selection: $selectedPhotosPickerItems,
+                maxSelectionCount: 5,
+                matching: .images
+            )
+            Button("Choose File") {
+                showiOSDocumentPicker()
+            }
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.secondary)
+                .frame(width: 28, height: 28)
+                .background(Theme.surfaceHover, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Attach file")
+        .onChange(of: selectedPhotosPickerItems) { _, newItems in
+            handlePhotosPickerItems(newItems)
+            selectedPhotosPickerItems = []
+        }
+        #endif
     }
 
     // MARK: - Input Field
 
     private var inputField: some View {
         #if os(macOS)
-        TextField("Message \(personaManager.activePersona.name)…", text: $chatViewModel.inputText)
-            .accessibilityIdentifier("chatInput")
-            .textFieldStyle(.plain)
-            .font(.system(size: 15, weight: .regular))
-            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-            .contentShape(Rectangle())
-            .focused(isFocused)
-            .onSubmit {
-                Task { await chatViewModel.submitPrompt() }
-            }
-            .onPasteCommand(of: [.image, .fileURL]) { providers in
-                handlePaste(providers: providers)
-            }
+        MacInputTextField(
+            text: $chatViewModel.inputText,
+            placeholder: "Message \(personaManager.activePersona.name)…",
+            isFocused: isFocused,
+            fieldRef: $inputFieldRef,
+            onSubmit: { Task { await chatViewModel.submitPrompt() } },
+            onImagePaste: { providers in handlePaste(providers: providers) }
+        )
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
         #else
         TextField("Message \(personaManager.activePersona.name)…", text: $chatViewModel.inputText, axis: .vertical)
             .accessibilityIdentifier("chatInput")
@@ -732,8 +723,8 @@ struct ChatInputBar: View {
     #if os(macOS)
     private func showMacFilePicker() {
         let panel = NSOpenPanel()
-        panel.title = "Select Images"
-        panel.allowedContentTypes = [.image]
+        panel.title = "Select Files"
+        panel.allowedContentTypes = [.item]
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
@@ -755,7 +746,7 @@ struct ChatInputBar: View {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let rootVC = scene.windows.first?.rootViewController else { return }
 
-        let docPicker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
+        let docPicker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
         docPicker.allowsMultipleSelection = true
         docPicker.delegate = DocumentPickerDelegate.shared
 
