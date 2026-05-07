@@ -11,6 +11,9 @@ packages:
   Lottie:
     url: https://github.com/airbnb/lottie-spm
     from: "4.6.0"
+  Highlightr:
+    url: https://github.com/raspu/Highlightr
+    from: "2.3.0"
 
 targets:
   HermesNativeUITests:
@@ -34,6 +37,7 @@ targets:
       - path: App/MacApp.swift
     dependencies:
       - package: Lottie
+      - package: Highlightr
     entitlements:
       path: HermesNative-macOS.entitlements
     settings:
@@ -55,6 +59,7 @@ targets:
       - path: App/IOSApp.swift
     dependencies:
       - package: Lottie
+      - package: Highlightr
     entitlements:
       path: HermesNative-iOS.entitlements
     settings:

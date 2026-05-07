@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import Highlightr
 
 /// Parses and renders markdown content in a SwiftUI view.
 /// Uses Apple's built-in AttributedString(markdown:) for inline formatting
@@ -522,402 +523,41 @@ struct CodeBlockView: View {
     }
 
     private var highlightedCode: AttributedString {
-        SyntaxHighlighter.highlight(code, language: language)
+        CodeHighlighter.highlight(code, language: language)
     }
 }
 
-// MARK: - Native Syntax Highlighter
+// MARK: - Code Highlighter (Highlightr)
 
-private enum SyntaxHighlighter {
-    struct Token {
-        let range: Range<String.Index>
-        let kind: Kind
-    }
-
-    enum Kind {
-        case keyword
-        case string
-        case comment
-        case number
-        case type
-        case function
-        case property
-        case punctuation
-        case builtin
-    }
+private enum CodeHighlighter {
+    private static let highlightr: Highlightr? = {
+        let h = Highlightr()
+        h?.setTheme(to: "atom-one-dark")
+        return h
+    }()
 
     static func highlight(_ code: String, language: String) -> AttributedString {
-        let tokens = tokenize(code, language: language)
-        var result = AttributedString(code)
-        result.font = .system(size: 12, weight: .regular, design: .monospaced)
-        #if os(macOS)
-        result.foregroundColor = NSColor(Theme.primary)
-        #else
-        result.foregroundColor = UIColor(Theme.primary)
-        #endif
-
-        for token in tokens.reversed() {
-            let nsRange = NSRange(token.range, in: code)
-            if let attrRange = Range(nsRange, in: result) {
-                result[attrRange].foregroundColor = colorForKind(token.kind)
-            }
+        guard let highlightr,
+              let attributed = highlightr.highlight(code, as: mapLanguage(language))
+        else {
+            var fallback = AttributedString(code)
+            fallback.font = .system(size: 12, weight: .regular, design: .monospaced)
+            return fallback
         }
+        var result = AttributedString(attributed)
+        result.font = .system(size: 12, weight: .regular, design: .monospaced)
         return result
     }
 
-    private static func colorForKind(_ kind: Kind) -> Color {
-        switch kind {
-        case .keyword: return Color(red: 0.77, green: 0.63, blue: 0.94)
-        case .string: return Color(red: 0.68, green: 0.85, blue: 0.58)
-        case .comment: return Color(red: 0.50, green: 0.55, blue: 0.58)
-        case .number: return Color(red: 0.80, green: 0.65, blue: 0.50)
-        case .type: return Color(red: 0.55, green: 0.82, blue: 0.92)
-        case .function: return Color(red: 0.70, green: 0.82, blue: 0.55)
-        case .property: return Color(red: 0.62, green: 0.75, blue: 0.90)
-        case .punctuation: return Color(red: 0.62, green: 0.65, blue: 0.68)
-        case .builtin: return Color(red: 0.85, green: 0.65, blue: 0.60)
+    private static func mapLanguage(_ lang: String) -> String {
+        switch lang.lowercased() {
+        case "py": return "python"
+        case "js": return "javascript"
+        case "ts": return "typescript"
+        case "sh", "zsh", "shell": return "bash"
+        case "yml": return "yaml"
+        default: return lang.lowercased()
         }
-    }
-
-    private static func tokenize(_ code: String, language: String) -> [Token] {
-        var tokens: [Token] = []
-        let lang = language.lowercased()
-
-        switch lang {
-        case "swift":
-            tokenizeSwift(code, &tokens)
-        case "python", "py":
-            tokenizePython(code, &tokens)
-        case "javascript", "js":
-            tokenizeJS(code, &tokens)
-        case "typescript", "ts":
-            tokenizeTS(code, &tokens)
-        case "rust":
-            tokenizeRust(code, &tokens)
-        case "go":
-            tokenizeGo(code, &tokens)
-        case "bash", "sh", "zsh", "shell":
-            tokenizeBash(code, &tokens)
-        case "json":
-            tokenizeJSON(code, &tokens)
-        case "css":
-            tokenizeCSS(code, &tokens)
-        default:
-            tokenizeGeneric(code, &tokens)
-        }
-        return tokens
-    }
-
-    // MARK: - Shared tokenizers
-
-    private static func tokenizeComments(_ code: String, _ tokens: inout [Token], singleLine: String = "//", multiLineStart: String = "/*", multiLineEnd: String = "*/") {
-        var i = code.startIndex
-        while i < code.endIndex {
-            if code[i...].hasPrefix(singleLine) {
-                let start = i
-                while i < code.endIndex && code[i] != "\n" { i = code.index(after: i) }
-                tokens.append(Token(range: start..<i, kind: .comment))
-            } else if code[i...].hasPrefix(multiLineStart) {
-                let start = i
-                i = code.index(i, offsetBy: multiLineStart.count, limitedBy: code.endIndex) ?? code.endIndex
-                while i < code.endIndex && !code[i...].hasPrefix(multiLineEnd) {
-                    i = code.index(after: i)
-                }
-                if i < code.endIndex {
-                    i = code.index(i, offsetBy: multiLineEnd.count, limitedBy: code.endIndex) ?? code.endIndex
-                }
-                tokens.append(Token(range: start..<i, kind: .comment))
-            } else {
-                i = code.index(after: i)
-            }
-        }
-    }
-
-    private static func tokenizeStrings(_ code: String, _ tokens: inout [Token]) {
-        var i = code.startIndex
-        while i < code.endIndex {
-            let char = code[i]
-            if char == "\"" || char == "'" {
-                let quote = char
-                let start = i
-                i = code.index(after: i)
-                while i < code.endIndex {
-                    if code[i] == "\\" {
-                        i = code.index(after: i)
-                        if i < code.endIndex { i = code.index(after: i) }
-                    } else if code[i] == quote {
-                        i = code.index(after: i)
-                        break
-                    } else {
-                        i = code.index(after: i)
-                    }
-                }
-                tokens.append(Token(range: start..<i, kind: .string))
-            } else {
-                i = code.index(after: i)
-            }
-        }
-    }
-
-    private static func tokenizeNumbers(_ code: String, _ tokens: inout [Token]) {
-        let pattern = try? NSRegularExpression(pattern: "\\b(0x[0-9a-fA-F]+|\\d+\\.?\\d*([eE][+-]?\\d+)?)\\b")
-        guard let regex = pattern else { return }
-        let nsRange = NSRange(code.startIndex..., in: code)
-        for match in regex.matches(in: code, range: nsRange) {
-            if let range = Range(match.range, in: code) {
-                tokens.append(Token(range: range, kind: .number))
-            }
-        }
-    }
-
-    private static func tokenizeKeywords(_ code: String, _ tokens: inout [Token], keywords: Set<String>) {
-        let pattern = "\\b(" + keywords.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|") + ")\\b"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
-        let nsRange = NSRange(code.startIndex..., in: code)
-        for match in regex.matches(in: code, range: nsRange) {
-            if let range = Range(match.range, in: code) {
-                tokens.append(Token(range: range, kind: .keyword))
-            }
-        }
-    }
-
-    private static func tokenizeTypes(_ code: String, _ tokens: inout [Token], types: Set<String>) {
-        let pattern = "\\b(" + types.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|") + ")\\b"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
-        let nsRange = NSRange(code.startIndex..., in: code)
-        for match in regex.matches(in: code, range: nsRange) {
-            if let range = Range(match.range, in: code) {
-                tokens.append(Token(range: range, kind: .type))
-            }
-        }
-    }
-
-    private static func tokenizePascalTypes(_ code: String, _ tokens: inout [Token]) {
-        guard let regex = try? NSRegularExpression(pattern: "\\b[A-Z][A-Za-z0-9]+\\b") else { return }
-        let nsRange = NSRange(code.startIndex..., in: code)
-        for match in regex.matches(in: code, range: nsRange) {
-            if let range = Range(match.range, in: code) {
-                let word = String(code[range])
-                if word.first?.isUppercase == true && word.count > 1 && !word.allSatisfy({ $0.isUppercase }) {
-                    tokens.append(Token(range: range, kind: .type))
-                }
-            }
-        }
-    }
-
-    private static func tokenizeFunctionCalls(_ code: String, _ tokens: inout [Token]) {
-        guard let regex = try? NSRegularExpression(pattern: "\\b([a-z_][a-zA-Z0-9_]*)\\s*(?=\\()") else { return }
-        let nsRange = NSRange(code.startIndex..., in: code)
-        for match in regex.matches(in: code, range: nsRange) {
-            if let range = Range(match.range(at: 1), in: code) {
-                tokens.append(Token(range: range, kind: .function))
-            }
-        }
-    }
-
-    private static func tokenizePunctuation(_ code: String, _ tokens: inout [Token]) {
-        for i in code.indices {
-            let char = code[i]
-            if "{}()[];,".contains(char) {
-                tokens.append(Token(range: i..<code.index(after: i), kind: .punctuation))
-            }
-        }
-    }
-
-    // MARK: - Language-specific tokenizers
-
-    private static func tokenizeSwift(_ code: String, _ tokens: inout [Token]) {
-        tokenizeComments(code, &tokens)
-        tokenizeStrings(code, &tokens)
-        tokenizeKeywords(code, &tokens, keywords: [
-            "import", "class", "struct", "enum", "protocol", "extension", "func", "var", "let",
-            "if", "else", "switch", "case", "default", "for", "in", "while", "return", "guard",
-            "break", "continue", "throw", "try", "catch", "do", "self", "super", "init",
-            "deinit", "required", "convenience", "override", "mutating", "static", "private",
-            "fileprivate", "internal", "public", "open", "weak", "unowned", "lazy", "where",
-            "typealias", "associatedtype", "true", "false", "nil", "as", "is", "inout",
-            "some", "any", "async", "await", "actor", "subscript", "precedencegroup",
-            "defer", "repeat", "fallthrough", "indirect", "optional", "package",
-        ])
-        tokenizeTypes(code, &tokens, types: [
-            "String", "Int", "Float", "Double", "Bool", "Array", "Dictionary", "Set",
-            "URL", "Data", "Date", "Error", "Result", "Optional", "UUID", "Codable",
-            "Encodable", "Decodable", "Hashable", "Equatable", "Comparable", "Identifiable",
-            "Observable", "Published", "State", "Binding", "ObservedObject", "EnvironmentObject",
-            "View", "NavigationView", "VStack", "HStack", "ZStack", "List", "ForEach",
-            "Button", "Text", "Image", "Color", "Shape", "AnyView", "Spacer",
-        ])
-        tokenizeFunctionCalls(code, &tokens)
-        tokenizeNumbers(code, &tokens)
-        tokenizePunctuation(code, &tokens)
-    }
-
-    private static func tokenizePython(_ code: String, _ tokens: inout [Token]) {
-        var i = code.startIndex
-        while i < code.endIndex {
-            if code[i] == "#" {
-                let start = i
-                while i < code.endIndex && code[i] != "\n" { i = code.index(after: i) }
-                tokens.append(Token(range: start..<i, kind: .comment))
-            } else if code[i...].hasPrefix("\"\"\"") || code[i...].hasPrefix("'''") {
-                let quote = String(code[i..<(code.index(i, offsetBy: 3, limitedBy: code.endIndex) ?? code.endIndex)])
-                let start = i
-                i = code.index(i, offsetBy: 3, limitedBy: code.endIndex) ?? code.endIndex
-                while i < code.endIndex && !code[i...].hasPrefix(quote) {
-                    i = code.index(after: i)
-                }
-                if i < code.endIndex {
-                    i = code.index(i, offsetBy: 3, limitedBy: code.endIndex) ?? code.endIndex
-                }
-                tokens.append(Token(range: start..<i, kind: .string))
-            } else {
-                i = code.index(after: i)
-            }
-        }
-        tokenizeStrings(code, &tokens)
-        tokenizeKeywords(code, &tokens, keywords: [
-            "import", "from", "class", "def", "if", "elif", "else", "for", "while", "return",
-            "yield", "try", "except", "finally", "with", "as", "lambda", "pass", "break",
-            "continue", "raise", "global", "nonlocal", "assert", "del", "in", "not", "and",
-            "or", "is", "True", "False", "None", "async", "await", "self",
-        ])
-        tokenizePascalTypes(code, &tokens)
-        tokenizeFunctionCalls(code, &tokens)
-        tokenizeNumbers(code, &tokens)
-    }
-
-    private static func tokenizeJS(_ code: String, _ tokens: inout [Token]) {
-        tokenizeComments(code, &tokens, singleLine: "//", multiLineStart: "/*", multiLineEnd: "*/")
-        tokenizeStrings(code, &tokens)
-        tokenizeKeywords(code, &tokens, keywords: [
-            "const", "let", "var", "function", "class", "if", "else", "for", "while", "do",
-            "switch", "case", "default", "break", "continue", "return", "throw", "try", "catch",
-            "finally", "new", "this", "super", "import", "export", "from", "typeof", "instanceof",
-            "async", "await", "yield", "of", "in", "true", "false", "null", "undefined", "void",
-            "delete", "extends", "static", "get", "set",
-        ])
-        tokenizePascalTypes(code, &tokens)
-        tokenizeFunctionCalls(code, &tokens)
-        tokenizeNumbers(code, &tokens)
-        tokenizePunctuation(code, &tokens)
-    }
-
-    private static func tokenizeTS(_ code: String, _ tokens: inout [Token]) {
-        tokenizeComments(code, &tokens, singleLine: "//", multiLineStart: "/*", multiLineEnd: "*/")
-        tokenizeStrings(code, &tokens)
-        tokenizeKeywords(code, &tokens, keywords: [
-            "const", "let", "var", "function", "class", "if", "else", "for", "while", "do",
-            "switch", "case", "default", "break", "continue", "return", "throw", "try", "catch",
-            "finally", "new", "this", "super", "import", "export", "from", "typeof", "instanceof",
-            "async", "await", "yield", "of", "in", "true", "false", "null", "undefined", "void",
-            "delete", "extends", "static", "get", "set", "type", "interface", "enum",
-            "implements", "declare", "abstract", "as", "is", "keyof", "readonly", "namespace",
-            "module", "require",
-        ])
-        tokenizePascalTypes(code, &tokens)
-        tokenizeFunctionCalls(code, &tokens)
-        tokenizeNumbers(code, &tokens)
-        tokenizePunctuation(code, &tokens)
-    }
-
-    private static func tokenizeRust(_ code: String, _ tokens: inout [Token]) {
-        tokenizeComments(code, &tokens, singleLine: "//", multiLineStart: "/*", multiLineEnd: "*/")
-        tokenizeStrings(code, &tokens)
-        tokenizeKeywords(code, &tokens, keywords: [
-            "fn", "let", "mut", "if", "else", "for", "while", "loop", "match", "return",
-            "break", "continue", "struct", "enum", "impl", "trait", "pub", "use", "mod",
-            "crate", "self", "super", "where", "as", "in", "ref", "type", "const", "static",
-            "unsafe", "extern", "async", "await", "move", "dyn", "true", "false",
-        ])
-        tokenizeTypes(code, &tokens, types: [
-            "String", "Vec", "Option", "Result", "Box", "Rc", "Arc", "i8", "i16", "i32",
-            "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool", "str", "Self", "Some",
-            "None", "Ok", "Err",
-        ])
-        tokenizeFunctionCalls(code, &tokens)
-        tokenizeNumbers(code, &tokens)
-        tokenizePunctuation(code, &tokens)
-    }
-
-    private static func tokenizeGo(_ code: String, _ tokens: inout [Token]) {
-        tokenizeComments(code, &tokens, singleLine: "//", multiLineStart: "/*", multiLineEnd: "*/")
-        tokenizeStrings(code, &tokens)
-        tokenizeKeywords(code, &tokens, keywords: [
-            "func", "var", "const", "type", "struct", "interface", "map", "chan", "if", "else",
-            "for", "range", "switch", "case", "default", "return", "break", "continue", "go",
-            "defer", "select", "package", "import", "true", "false", "nil", "fallthrough",
-        ])
-        tokenizeTypes(code, &tokens, types: [
-            "string", "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16",
-            "uint32", "uint64", "float32", "float64", "bool", "byte", "rune", "error",
-            "any", "complex64", "complex128",
-        ])
-        tokenizeFunctionCalls(code, &tokens)
-        tokenizeNumbers(code, &tokens)
-        tokenizePunctuation(code, &tokens)
-    }
-
-    private static func tokenizeBash(_ code: String, _ tokens: inout [Token]) {
-        var i = code.startIndex
-        while i < code.endIndex {
-            if code[i] == "#" {
-                let start = i
-                while i < code.endIndex && code[i] != "\n" { i = code.index(after: i) }
-                tokens.append(Token(range: start..<i, kind: .comment))
-            } else {
-                i = code.index(after: i)
-            }
-        }
-        tokenizeStrings(code, &tokens)
-        tokenizeKeywords(code, &tokens, keywords: [
-            "if", "then", "else", "elif", "fi", "for", "while", "do", "done", "case", "esac",
-            "function", "return", "exit", "export", "local", "readonly", "declare", "unset",
-            "source", "in", "select", "until", "true", "false",
-        ])
-        guard let regex = try? NSRegularExpression(pattern: "\\$\\{?[a-zA-Z_][a-zA-Z0-9_]*\\}?") else { return }
-        let nsRange = NSRange(code.startIndex..., in: code)
-        for match in regex.matches(in: code, range: nsRange) {
-            if let range = Range(match.range, in: code) {
-                tokens.append(Token(range: range, kind: .property))
-            }
-        }
-        tokenizeNumbers(code, &tokens)
-    }
-
-    private static func tokenizeJSON(_ code: String, _ tokens: inout [Token]) {
-        tokenizeStrings(code, &tokens)
-        tokenizeNumbers(code, &tokens)
-        tokenizeKeywords(code, &tokens, keywords: ["true", "false", "null"])
-        tokenizePunctuation(code, &tokens)
-    }
-
-    private static func tokenizeCSS(_ code: String, _ tokens: inout [Token]) {
-        tokenizeComments(code, &tokens, singleLine: "", multiLineStart: "/*", multiLineEnd: "*/")
-        tokenizeStrings(code, &tokens)
-        tokenizeNumbers(code, &tokens)
-        if let regex = try? NSRegularExpression(pattern: "\\.[a-zA-Z_-][a-zA-Z0-9_-]*") {
-            let nsRange = NSRange(code.startIndex..., in: code)
-            for match in regex.matches(in: code, range: nsRange) {
-                if let range = Range(match.range, in: code) {
-                    tokens.append(Token(range: range, kind: .function))
-                }
-            }
-        }
-        if let regex = try? NSRegularExpression(pattern: "#[a-zA-Z_-][a-zA-Z0-9_-]*") {
-            let nsRange = NSRange(code.startIndex..., in: code)
-            for match in regex.matches(in: code, range: nsRange) {
-                if let range = Range(match.range, in: code) {
-                    tokens.append(Token(range: range, kind: .type))
-                }
-            }
-        }
-    }
-
-    private static func tokenizeGeneric(_ code: String, _ tokens: inout [Token]) {
-        tokenizeComments(code, &tokens)
-        tokenizeStrings(code, &tokens)
-        tokenizeNumbers(code, &tokens)
-        tokenizePunctuation(code, &tokens)
     }
 }
 

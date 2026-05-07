@@ -36,6 +36,7 @@
 		388A2B59C0CCFE3222DE5ACF /* MermaidDiagramView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB69181ACA2327F9FDECF746 /* MermaidDiagramView.swift */; };
 		3A56767854C15D8E0A04AA2C /* MacScrollViewIntrospection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A3B5B976B82A7352C59766 /* MacScrollViewIntrospection.swift */; };
 		3B0862F9F8DB3ED209EC7505 /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5389C6C82B2AEB4DAC6CC6 /* SessionListView.swift */; };
+		3D83490DD79DE8C63FAD28C3 /* Highlightr in Frameworks */ = {isa = PBXBuildFile; productRef = 066A8C773BEA50BCC352CF5A /* Highlightr */; };
 		3D8A9421202DEC219E546408 /* HermesNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F390CDDA5944A2B5F4776A05 /* HermesNativeApp.swift */; };
 		3EE9F505BC9F6CA2AA77B3BE /* confused.json in Resources */ = {isa = PBXBuildFile; fileRef = 438F3AF894E195EF4007BAE9 /* confused.json */; };
 		3F132ED582BFB260BD55D500 /* TreeNodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCCD3141656594B639005AAD /* TreeNodeView.swift */; };
@@ -81,6 +82,7 @@
 		7E1BCCCADCFDD000491A7271 /* MessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3AB049C24CAF89E13F3FA25 /* MessageBubbleView.swift */; };
 		800DE74CC13CFCDAB5420029 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 7ABDD72800FF9093DC07B9C8 /* Lottie */; };
 		8060C4164F4FA40B50846E7D /* GatewayDebugSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0648368C04972EB1614B4374 /* GatewayDebugSnapshot.swift */; };
+		81F35CECDF184270505E77CB /* Highlightr in Frameworks */ = {isa = PBXBuildFile; productRef = 6F0058522539F20E74EE6346 /* Highlightr */; };
 		82DD829EDC65638DC04ED1BD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3D7AE79773431722873482 /* Theme.swift */; };
 		87955D6459C1CF9D37CBD5C2 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57621A872836514CD5BC0F5B /* ChatView.swift */; };
 		88BC754D533A8988EC7E5ECE /* HermesNativeMultiSessionStressUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E8A26FD44FDB5F75E805CDF /* HermesNativeMultiSessionStressUITests.swift */; };
@@ -256,6 +258,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B4C8AD263E87573995FC2518 /* Lottie in Frameworks */,
+				81F35CECDF184270505E77CB /* Highlightr in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -264,6 +267,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				800DE74CC13CFCDAB5420029 /* Lottie in Frameworks */,
+				3D83490DD79DE8C63FAD28C3 /* Highlightr in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -496,6 +500,7 @@
 			name = "HermesNative-iOS";
 			packageProductDependencies = (
 				7ABDD72800FF9093DC07B9C8 /* Lottie */,
+				066A8C773BEA50BCC352CF5A /* Highlightr */,
 			);
 			productName = "HermesNative-iOS";
 			productReference = E996AFDAC3ACF6290E04567F /* HermesNative-iOS.app */;
@@ -516,6 +521,7 @@
 			name = "HermesNative-macOS";
 			packageProductDependencies = (
 				FA354F81CE5E1F32F3D3FE79 /* Lottie */,
+				6F0058522539F20E74EE6346 /* Highlightr */,
 			);
 			productName = "HermesNative-macOS";
 			productReference = EDFF359835C2716C43ADF249 /* HermesNative-macOS.app */;
@@ -569,6 +575,7 @@
 			mainGroup = 3A598FBA90BA765239BB519B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				41A94046CD428EDBB9967345 /* XCRemoteSwiftPackageReference "Highlightr" */,
 				327DBA77A65E00A1D8FA0229 /* XCRemoteSwiftPackageReference "lottie-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -1086,9 +1093,27 @@
 				minimumVersion = 4.6.0;
 			};
 		};
+		41A94046CD428EDBB9967345 /* XCRemoteSwiftPackageReference "Highlightr" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/raspu/Highlightr";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.3.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		066A8C773BEA50BCC352CF5A /* Highlightr */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 41A94046CD428EDBB9967345 /* XCRemoteSwiftPackageReference "Highlightr" */;
+			productName = Highlightr;
+		};
+		6F0058522539F20E74EE6346 /* Highlightr */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 41A94046CD428EDBB9967345 /* XCRemoteSwiftPackageReference "Highlightr" */;
+			productName = Highlightr;
+		};
 		7ABDD72800FF9093DC07B9C8 /* Lottie */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 327DBA77A65E00A1D8FA0229 /* XCRemoteSwiftPackageReference "lottie-spm" */;
