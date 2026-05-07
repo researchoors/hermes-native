@@ -836,25 +836,17 @@ struct TableView: View {
 
     @ViewBuilder
     private func tableCell(text: String, width: CGFloat, isHeader: Bool) -> some View {
-        if isHeader {
-            MarkdownText(text: text, baseColor: Theme.accent, baseFont: .system(size: 11, weight: .bold, design: .monospaced))
-                .textSelection(.enabled)
-                .lineLimit(nil)
-                .multilineTextAlignment(.center)
-                .frame(minWidth: width, alignment: .center)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-        } else {
-            SwiftUI.Text(text)
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(Theme.primary)
-                .textSelection(.enabled)
-                .lineLimit(nil)
-                .multilineTextAlignment(.leading)
-                .frame(minWidth: width, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-        }
+        MarkdownText(
+            text: text,
+            baseColor: isHeader ? Theme.accent : nil,
+            baseFont: isHeader ? .system(size: 11, weight: .bold, design: .monospaced) : nil
+        )
+        .textSelection(.enabled)
+        .lineLimit(nil)
+        .multilineTextAlignment(isHeader ? .center : .leading)
+        .frame(minWidth: width, alignment: isHeader ? .center : .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, isHeader ? 8 : 7)
     }
 
     private var normalizedRows: [[String]] {
@@ -871,17 +863,24 @@ struct TableView: View {
     private var columnWidths: [CGFloat] {
         headers.indices.map { index in
             let values = [headers[index]] + normalizedRows.map { index < $0.count ? $0[index] : "" }
-            let longest = values.map(visualLength).max() ?? 0
-            let headerLength = visualLength(headers[index])
-            let characterWidth: CGFloat = 9.5
+            let longest = values.map { visualRenderedLength($0) }.max() ?? 0
+            let headerLength = visualRenderedLength(headers[index])
+            let characterWidth: CGFloat = 8
             let horizontalPadding: CGFloat = 24
             let computed = CGFloat(max(longest, headerLength)) * characterWidth + horizontalPadding
             return max(computed, Self.minimumColumnWidth)
         }
     }
 
-    private func visualLength(_ text: String) -> Int {
-        text.reduce(0) { total, scalar in
+    private func visualRenderedLength(_ text: String) -> Int {
+        let stripped = text
+            .replacingOccurrences(of: "`", with: "")
+            .replacingOccurrences(of: "**", with: "")
+            .replacingOccurrences(of: "__", with: "")
+            .replacingOccurrences(of: "*", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "~~", with: "")
+        return stripped.reduce(0) { total, scalar in
             total + (scalar.isASCII ? 1 : 2)
         }
     }
