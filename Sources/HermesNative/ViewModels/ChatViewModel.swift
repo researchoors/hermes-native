@@ -882,24 +882,30 @@ final class ChatViewModel: ObservableObject {
             }
         }
 
-        // Visible session-scoped events mirror deltas into the per-session
-        // runtime cache immediately, then restore the visible array on this
-        // coalesced cadence. In perf/live mode, reasoning-only updates stay in
-        // the structured trace cache and do not publish the transcript at all;
-        // the completed turn remains fully expandable after message.complete.
-        if ProcessInfo.processInfo.arguments.contains("--defer-streaming-transcript") {
-            snapshotCurrentSessionState()
-            return
-        }
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            if let current = self.sessionID {
-                let displayID = self.displaySessionID(for: current)
-                _ = self.restoreSessionState(displayID: displayID, runtimeID: current)
-            } else {
-                self.snapshotCurrentSessionState()
+        // Update the streaming message in-place instead of replacing the
+        // entire messages array.  This avoids a full SwiftUI re-render of
+        // every message view on each 500ms flush tick.
+        if !messageDelta.isEmpty {
+            if let msgID = streamingMessageID,
+               let idx = messages.firstIndex(where: { $0.id == msgID }) {
+                messages[idx].content += messageDelta
+            } else if isStreaming, let idx = messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
+                messages[idx].content += messageDelta
             }
         }
+        if !reasoningDelta.isEmpty {
+            if let idx = messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
+                let existing = messages[idx].reasoning ?? ""
+                messages[idx].reasoning = existing + reasoningDelta
+            }
+        }
+        if !thinkingDelta.isEmpty {
+            if let idx = messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
+                let existing = messages[idx].reasoning ?? ""
+                messages[idx].reasoning = existing + thinkingDelta
+            }
+        }
+        snapshotCurrentSessionState()
     }
 
     private func applySessionEvent(_ event: GatewayEvent, to eventSessionID: String) {
