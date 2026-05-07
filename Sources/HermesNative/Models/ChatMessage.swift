@@ -21,6 +21,9 @@ struct ChatMessage: Identifiable, Codable {
     /// File attachments extracted from MEDIA: tags in the content.
     var attachments: [FileAttachment] = []
 
+    /// Media attachments sent by the user with this message.
+    var userAttachments: [MediaAttachment] = []
+
     /// Content with MEDIA: lines stripped (for rendering in bubbles).
     var contentWithoutAttachments: String {
         MediaParser.stripMediaTags(from: content)
@@ -40,7 +43,8 @@ struct ChatMessage: Identifiable, Codable {
         reasoning: String? = nil,
         thinkingTrace: ThinkingTrace? = nil,
         usage: UsageInfo? = nil,
-        status: String? = nil
+        status: String? = nil,
+        userAttachments: [MediaAttachment] = []
     ) {
         self.id = id
         self.role = role
@@ -51,6 +55,7 @@ struct ChatMessage: Identifiable, Codable {
         self.thinkingTrace = thinkingTrace
         self.usage = usage
         self.status = status
+        self.userAttachments = userAttachments
     }
 }
 
