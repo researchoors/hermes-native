@@ -765,8 +765,9 @@ struct TableView: View {
             .foregroundStyle(isHeader ? Theme.accent : Theme.primary)
             .textSelection(.enabled)
             .lineLimit(nil)
-            .multilineTextAlignment(.center)
-            .frame(width: width, alignment: .center)
+            .multilineTextAlignment(isHeader ? .center : .leading)
+            .frame(minWidth: width, alignment: isHeader ? .center : .leading)
+            .padding(.horizontal, 10)
             .padding(.vertical, isHeader ? 8 : 7)
     }
 
@@ -786,10 +787,10 @@ struct TableView: View {
             let values = [headers[index]] + normalizedRows.map { index < $0.count ? $0[index] : "" }
             let longest = values.map(visualLength).max() ?? 0
             let headerLength = visualLength(headers[index])
-            let characterWidth: CGFloat = 8.5
-            let horizontalPadding: CGFloat = 28
+            let characterWidth: CGFloat = 9.5
+            let horizontalPadding: CGFloat = 24
             let computed = CGFloat(max(longest, headerLength)) * characterWidth + horizontalPadding
-            return min(max(computed, Self.minimumColumnWidth), Self.maximumColumnWidth)
+            return max(computed, Self.minimumColumnWidth)
         }
     }
 
@@ -800,7 +801,6 @@ struct TableView: View {
     }
 
     private static let minimumColumnWidth: CGFloat = 96
-    private static let maximumColumnWidth: CGFloat = 280
 }
 
 // MARK: - HTML Block
