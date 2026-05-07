@@ -836,13 +836,25 @@ struct TableView: View {
 
     @ViewBuilder
     private func tableCell(text: String, width: CGFloat, isHeader: Bool) -> some View {
-        MarkdownText(text: text, baseColor: isHeader ? Theme.accent : nil, baseFont: isHeader ? .system(size: 11, weight: .bold, design: .monospaced) : nil)
-            .textSelection(.enabled)
-            .lineLimit(nil)
-            .multilineTextAlignment(isHeader ? .center : .leading)
-            .frame(minWidth: width, alignment: isHeader ? .center : .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, isHeader ? 8 : 7)
+        if isHeader {
+            MarkdownText(text: text, baseColor: Theme.accent, baseFont: .system(size: 11, weight: .bold, design: .monospaced))
+                .textSelection(.enabled)
+                .lineLimit(nil)
+                .multilineTextAlignment(.center)
+                .frame(minWidth: width, alignment: .center)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+        } else {
+            SwiftUI.Text(text)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(Theme.primary)
+                .textSelection(.enabled)
+                .lineLimit(nil)
+                .multilineTextAlignment(.leading)
+                .frame(minWidth: width, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+        }
     }
 
     private var normalizedRows: [[String]] {
