@@ -830,10 +830,10 @@ struct TableView: View {
             }
             .frame(width: tableWidth, alignment: .leading)
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 4)
                     .stroke(Theme.border, lineWidth: 0.5)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         }
     }
 
