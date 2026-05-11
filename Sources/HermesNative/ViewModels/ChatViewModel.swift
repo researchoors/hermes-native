@@ -718,13 +718,25 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Local Persistence
 
-    /// Save current messages to disk (debounced — only call at stable points).
+    private var saveHistoryTask: Task<Void, Never>?
+
+    /// Save current messages to disk immediately.
     func saveHistory() {
         guard let sid = sessionID, !messages.isEmpty else { return }
         ChatHistoryStore.shared.saveMessages(messages, forSession: sid)
         let displayID = displaySessionID(for: sid)
         if displayID != sid {
             ChatHistoryStore.shared.saveMessages(messages, forSession: displayID)
+        }
+    }
+
+    /// Debounced save — coalesces rapid calls during streaming into at most one save per second.
+    func saveHistoryDebounced() {
+        saveHistoryTask?.cancel()
+        saveHistoryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.saveHistory()
         }
     }
 
@@ -1102,10 +1114,7 @@ final class ChatViewModel: ObservableObject {
         }
 
         if case .messageComplete(let payload) = event {
-            ChatHistoryStore.shared.saveMessages(state.messages, forSession: eventSessionID)
-            if displayID != eventSessionID {
-                ChatHistoryStore.shared.saveMessages(state.messages, forSession: displayID)
-            }
+            saveHistoryDebounced()
             #if !DEBUG
             NotificationService.shared.notifyResponseComplete(
                 sessionTitle: state.sessionTitle,

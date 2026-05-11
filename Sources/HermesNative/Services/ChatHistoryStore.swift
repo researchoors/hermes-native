@@ -14,7 +14,12 @@ final class ChatHistoryStore {
     private let sessionsDir: URL
 
     private init() {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            log.error("ChatHistoryStore: cannot locate Application Support directory")
+            sessionsDir = URL(fileURLWithPath: "/tmp/hermes-native/sessions")
+            try? fileManager.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+            return
+        }
         sessionsDir = appSupport.appendingPathComponent("hermes-native/sessions", isDirectory: true)
         try? fileManager.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
     }

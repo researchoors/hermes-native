@@ -345,27 +345,26 @@ final class SessionListViewModel: ObservableObject {
         try await client.closeSession(sessionID: rpcID)
         // Clean up local history file
         ChatHistoryStore.shared.deleteMessages(forSession: id)
-        // Clean up local data
+        // Clean up local data — batch all UserDefaults writes into one transaction
         var titles = localTitles
         titles.removeValue(forKey: id)
-        localTitles = titles
         var idMap = gatewayIDMap
         idMap.removeValue(forKey: id)
-        gatewayIDMap = idMap
-        // Remove local organization state too
         var archived = archivedIDs
         archived.remove(id)
-        archivedIDs = archived
         var pinned = pinnedIDs
         pinned.remove(id)
-        pinnedIDs = pinned
         var tags = sessionTags
         tags.removeValue(forKey: id)
-        sessionTags = tags
         localRunStates.removeValue(forKey: id)
         if let gatewayID = sessions.first(where: { $0.id == id })?.gatewayID {
             localRunStates.removeValue(forKey: gatewayID)
         }
+        UserDefaults.standard.set(titles, forKey: Self.titlesKey)
+        UserDefaults.standard.set(idMap, forKey: Self.gatewayIDMapKey)
+        UserDefaults.standard.set(Array(archived), forKey: Self.archivedIDsKey)
+        UserDefaults.standard.set(Array(pinned), forKey: Self.pinnedIDsKey)
+        UserDefaults.standard.set(tags, forKey: Self.tagsKey)
 
         withAnimation {
             sessions.removeAll { $0.id == id }

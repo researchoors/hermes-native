@@ -16,7 +16,7 @@ struct MarkdownContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+            ForEach(blocks) { block in
                 switch block {
                 case .codeBlock(let language, let code):
                     if MarkdownParser.isDiagramLanguage(language) {
@@ -124,7 +124,7 @@ final class MarkdownParseCache: @unchecked Sendable {
 
 // MARK: - Block Types
 
-enum MarkdownBlock: Equatable {
+enum MarkdownBlock: Equatable, Identifiable {
     case paragraph(String)
     case heading(level: Int, content: String)
     case codeBlock(language: String, code: String)
@@ -132,6 +132,18 @@ enum MarkdownBlock: Equatable {
     case blockquote(content: String)
     case horizontalRule
     case table(headers: [String], rows: [[String]])
+
+    var id: String {
+        switch self {
+        case .paragraph(let content): return "p-\(content.prefix(64))"
+        case .heading(let level, let content): return "h\(level)-\(content.prefix(64))"
+        case .codeBlock(let language, let code): return "code-\(language)-\(code.prefix(64))"
+        case .listItem(let index, let content, let isOrdered): return "li\(isOrdered ? "o" : "u")-\(index)-\(content.prefix(64))"
+        case .blockquote(let content): return "bq-\(content.prefix(64))"
+        case .horizontalRule: return "hr"
+        case .table(let headers, _): return "table-\(headers.joined(separator: "|"))"
+        }
+    }
 }
 
 // MARK: - Parser

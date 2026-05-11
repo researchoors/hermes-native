@@ -118,4 +118,8 @@ struct Session: Identifiable, Equatable, Hashable {
     static func == (lhs: Session, rhs: Session) -> Bool {
         lhs.id == rhs.id
     }
+
+    nonisolated func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }

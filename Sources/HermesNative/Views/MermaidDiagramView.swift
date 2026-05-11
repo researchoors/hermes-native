@@ -242,7 +242,7 @@ class MermaidWebView: WKWebView {
             mermaid.initialize({
                 startOnLoad: false,
                 theme: 'dark',
-                securityLevel: 'loose',
+                securityLevel: 'strict',
                 flowchart: { htmlLabels: true, curve: 'basis' },
                 sequence: { useMaxWidth: true },
             });
