@@ -341,8 +341,10 @@ struct ContentView: View {
                     chatToolbarPills
                         .padding(.leading, 12)
                     Spacer(minLength: 0)
+                    #if os(macOS)
                     macOverlayIcons
                         .padding(.trailing, 14)
+                    #endif
                 }
                 .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .leading)
                 .background(Theme.background)
