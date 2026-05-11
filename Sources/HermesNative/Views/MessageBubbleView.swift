@@ -275,6 +275,7 @@ private extension ThinkingBlock.Kind {
     }
 }
 
+
 // MARK: - Reasoning Section
 
 private struct ReasoningSection: View {

@@ -77,6 +77,7 @@ final class ChatViewModel: ObservableObject {
         var streamingMessageID: UUID?
     }
 
+
     private var gatewayClient: GatewayClient?
     private var sessionID: String?
     private var stableSessionByGatewayID: [String: String] = [:]

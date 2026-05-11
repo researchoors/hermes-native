@@ -431,7 +431,6 @@ struct MarkdownText: View {
             attr[attr.runs[i].range].font = font
         }
     }
-
     private func stripSystemColors(_ attr: inout AttributedString, to color: Color) {
         for i in attr.runs.indices {
             let run = attr.runs[i]

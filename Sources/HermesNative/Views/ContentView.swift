@@ -390,6 +390,7 @@ struct ContentView: View {
         .background(Theme.background)
     }
 
+
     private var chatToolbarPills: some View {
         HStack(spacing: 8) {
             HStack(spacing: 6) {
@@ -731,7 +732,6 @@ struct ContentView: View {
 
         Task {
             await sessionList.refreshSessions()
-            await activityInbox.refresh()
             if chatViewModel.isSessionReady, let sid = chatViewModel.currentSessionID {
                 if chatViewModel.messages.isEmpty {
                     chatViewModel.loadLocalHistory(sessionID: sid)

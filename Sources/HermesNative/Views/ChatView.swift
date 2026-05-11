@@ -179,6 +179,7 @@ struct ChatView: View {
 
                         ChatInputBar(isFocused: $isInputFocused, inputFieldRef: $inputFieldRef)
                             .environmentObject(chatViewModel)
+                            .id(chatViewModel.currentSessionID ?? "no-session")
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 18)
