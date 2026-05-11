@@ -73,7 +73,7 @@ struct Session: Identifiable, Equatable, Hashable {
     var isRunning: Bool = false // Derived from source context, not from gateway
 
     /// Best-known state for the latest run in this session.
-    var runState: SessionRunState? = nil
+    var runState: SessionRunState?
 
     /// Local-only: archived sessions are hidden from "My Sessions" by default.
     var isArchived: Bool = false

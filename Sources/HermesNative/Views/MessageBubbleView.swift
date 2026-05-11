@@ -194,7 +194,6 @@ struct MessageBubbleView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
 }
 
 
@@ -408,4 +407,3 @@ private struct UserAttachmentThumbnail: View {
         }
     }
 }
-

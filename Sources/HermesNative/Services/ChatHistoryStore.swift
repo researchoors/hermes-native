@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let log = Logger(subsystem: "com.researchoors.HermesNative", category: "ChatHistoryStore")
 
 /// Persists chat message history per session to local disk.
 /// Files live in Application Support/hermes-native/sessions/<id>.json
@@ -25,7 +28,7 @@ final class ChatHistoryStore {
             let data = try JSONEncoder().encode(messages)
             try data.write(to: file, options: .atomic)
         } catch {
-            NSLog("[ChatHistoryStore] Failed to save session \(sessionID): \(error)")
+            log.error("Failed to save session \(sessionID): \(error)")
         }
     }
 
@@ -39,7 +42,7 @@ final class ChatHistoryStore {
             let data = try Data(contentsOf: file)
             return try JSONDecoder().decode([ChatMessage].self, from: data)
         } catch {
-            NSLog("[ChatHistoryStore] Failed to load session \(sessionID): \(error)")
+            log.error("Failed to load session \(sessionID): \(error)")
             return nil
         }
     }

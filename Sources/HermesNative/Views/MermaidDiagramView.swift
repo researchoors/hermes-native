@@ -63,7 +63,7 @@ class MermaidWebView: WKWebView {
         navigationDelegate = self
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    required init?(coder: NSCoder) { fatalError("init?(coder:) is not implemented") }
 
     #if os(macOS)
     override func scrollWheel(with event: NSEvent) {
