@@ -6,7 +6,6 @@ struct SkillsView: View {
     @State private var expandedSkill: String?
     @State private var searchDebounceTask: Task<Void, Never>?
     @State private var confirmUninstall: String?
-    @State private var hasAppeared = false
     @State private var showDiagnostics = false
 
     var body: some View {
@@ -31,15 +30,10 @@ struct SkillsView: View {
             .refreshable { await viewModel.reload() }
         }
         .background(Theme.background)
-        .onAppear {
-            guard !hasAppeared else { return }
-            hasAppeared = true
+        .task(id: gatewayClientWrapper.isConnected) {
             viewModel.setGatewayClient(gatewayClientWrapper.client)
-            Task { await viewModel.refresh() }
-        }
-        .onChange(of: gatewayClientWrapper.isConnected) { _, isConnected in
-            if isConnected && viewModel.skills.isEmpty && !viewModel.isLoading {
-                Task { await viewModel.refresh() }
+            if gatewayClientWrapper.isConnected {
+                await viewModel.refresh()
             }
         }
     }
@@ -144,7 +138,9 @@ struct SkillsView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.primary)
 
-            if viewModel.skills.isEmpty && !viewModel.isLoading {
+            if viewModel.isLoading {
+                loadingState
+            } else if viewModel.skills.isEmpty {
                 emptyState
             } else {
                 ForEach(viewModel.categories.keys.sorted(), id: \.self) { category in
@@ -160,6 +156,16 @@ struct SkillsView: View {
         }
         .padding(14)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var loadingState: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Loading skills…")
+                .font(.caption)
+                .foregroundStyle(Theme.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 120)
     }
 
     private var emptyState: some View {

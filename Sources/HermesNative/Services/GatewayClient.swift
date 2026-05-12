@@ -279,13 +279,59 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
         refreshDebugSnapshot()
         recordDebugEvent(.state, name: "connect", detail: "opening")
 
-        // If we have a CF_Authorization cookie, verify it's still valid first
-        if cfAuthCookie != nil {
-            Task {
-                await verifyCFCookieThenConnect()
+        Task {
+            // Always probe HTTP first so we fail fast with a useful status.
+            let httpStatus = await probeHTTPHealth()
+            if httpStatus == 404 {
+                onLog?("⚠ HTTP health returned 404 — gateway may not have a WebSocket route at \(gatewayURL.path)", true)
+                connectionState = .error(
+                    "Gateway returned 404. The server does not have a WebSocket endpoint at \(gatewayURL.path). " +
+                    "Check your gateway URL or server configuration."
+                )
+                return
             }
-        } else {
-            openWebSocket()
+            // If HTTP is also failing (non-200, non-404), surface it but still try WS
+            if httpStatus != 200 {
+                onLog?("⚠ HTTP health returned \(httpStatus) — trying WS anyway", true)
+            }
+
+            // If we have a CF_Authorization cookie, verify it's still valid first
+            if cfAuthCookie != nil {
+                await verifyCFCookieThenConnect()
+            } else {
+                openWebSocket()
+            }
+        }
+    }
+
+    /// Quick HTTP HEAD to the gateway host to confirm reachability.
+    /// Returns the HTTP status code, or -1 if the request itself failed.
+    private func probeHTTPHealth() async -> Int {
+        guard let host = gatewayURL.host,
+              let scheme = gatewayURL.scheme else { return -1 }
+        let healthURL = URL(string: "\(scheme)://\(host)/health")
+            ?? URL(string: "\(scheme)://\(host)")
+        guard let url = healthURL else { return -1 }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        request.httpMethod = "HEAD"
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        if let cookie = cfAuthCookie {
+            HTTPCookieStorage.shared.setCookie(cookie)
+        }
+
+        onLog?("Probing HTTP health at \(url)…", false)
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            onLog?("HTTP health status: \(status)", status != 200)
+            return status
+        } catch {
+            onLog?("HTTP health probe failed: \(error.localizedDescription)", true)
+            return -1
         }
     }
 
@@ -1236,6 +1282,37 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
     }
 
     // MARK: - URLSessionWebSocketDelegate
+
+    nonisolated func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        Task { @MainActor in
+            if let error = error as NSError? {
+                let code = error.code
+                let domain = error.domain
+                let description = error.localizedDescription
+                recordDebugEvent(.error, name: "websocket.failed", detail: "[\(domain) \(code)] \(description)")
+                onLog?("✗ WebSocket handshake failed: [\(domain) \(code)] \(description)", true)
+
+                // If it's a bad server response (-1011), try to read the HTTP status
+                if code == NSURLErrorBadServerResponse,
+                   let response = task.response as? HTTPURLResponse {
+                    let status = response.statusCode
+                    let headers = response.allHeaderFields
+                    recordDebugEvent(.error, name: "websocket.http", detail: "status=\(status) headers=\(headers)")
+                    onLog?("  HTTP status on upgrade: \(status)", true)
+                }
+
+                // Don't spin-reconnect on permanent errors
+                if code == NSURLErrorBadServerResponse || code == NSURLErrorNotConnectedToInternet {
+                    connectionState = .error("Server rejected connection (\(code): \(description))")
+                    return
+                }
+            }
+        }
+    }
 
     nonisolated func urlSession(
         _ session: URLSession,

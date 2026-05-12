@@ -340,15 +340,6 @@ struct SessionListView: View {
                     isPrimary: true,
                     action: { onCreateSession?() }
                 )
-
-                sidebarHeaderButton(
-                    icon: "clock.badge.checkmark",
-                    title: "Cron",
-                    accessibilityLabel: "Open Cron Jobs",
-                    accessibilityID: "panelToggleButton",
-                    isPrimary: false,
-                    action: { onOpenPanel?() }
-                )
             }
         }
         .padding(.horizontal, 12)

@@ -1063,7 +1063,7 @@ struct OpenableBlockSheet: View {
 
                 Divider().overlay(Theme.border)
 
-                // Content — WKWebView handles its own scrolling
+                // Content — diagram or HTML, clipped so zoom/pan never overlaps the title bar
                 Group {
                     if MarkdownParser.isDiagramLanguage(language) {
                         MermaidDiagramView(mermaidCode: content)
@@ -1072,6 +1072,7 @@ struct OpenableBlockSheet: View {
                     }
                 }
                 .padding(12)
+                .clipped()
             }
         }
         #if os(iOS)

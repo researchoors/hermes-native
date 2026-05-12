@@ -19,6 +19,7 @@ struct ContentView: View {
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
     @Environment(\.scenePhase) private var scenePhase
 
+    @State private var showSettings = false
     @State private var isMacSidebarVisible = true
     private let macSidebarWidth: CGFloat = 352
     @State private var missionControlSessionID: String?
@@ -269,6 +270,13 @@ struct ContentView: View {
             })
             .frame(minWidth: 640, minHeight: 620)
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .environmentObject(settings)
+                .environmentObject(personaManager)
+                .environmentObject(capabilitiesStore)
+                .frame(minWidth: 500, minHeight: 450)
+        }
         .sheet(item: $observerSession, onDismiss: {
             sessionList.activeSessionID = previousActiveSessionID ?? chatViewModel.currentSessionID
             previousActiveSessionID = nil
@@ -457,6 +465,16 @@ struct ContentView: View {
     #if os(macOS)
     private var macOverlayIcons: some View {
         HStack(spacing: 8) {
+            Button {
+                showSettings = true
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut(",", modifiers: .command)
+            .accessibilityLabel("Settings")
+
             Button {
                 showLiveSessions = true
             } label: {

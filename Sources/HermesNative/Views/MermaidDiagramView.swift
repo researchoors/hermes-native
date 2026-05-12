@@ -152,6 +152,7 @@ private struct ZoomableDiagram: View {
                 .offset(offset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
+                .clipped()
                 .onTapGesture(count: 2) {
                     withAnimation(.spring(response: 0.3)) {
                         scale = 1.0
