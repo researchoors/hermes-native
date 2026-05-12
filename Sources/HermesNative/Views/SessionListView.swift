@@ -51,10 +51,10 @@ struct SessionListView: View {
                 if !mySessionsCollapsed {
                     if mySessions.isEmpty {
                         VStack(spacing: 8) {
-                            Text("No sessions yet")
+                            Text("Ready when you are ✨")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
-                            Button("Start New Chat") {
+                            Button("Start First Chat") {
                                 onCreateSession?()
                             }
                             .buttonStyle(.borderedProminent)

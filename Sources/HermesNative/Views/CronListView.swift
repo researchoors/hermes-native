@@ -43,6 +43,7 @@ struct CronListView: View {
                     Task { await cronViewModel.updatePrompt(id: job.id, newPrompt: newPrompt) }
                 }
             )
+            .environmentObject(gatewayClientWrapper)
         }
         .navigationTitle("Cron Jobs")
         #if os(iOS)
@@ -375,26 +376,26 @@ struct CronJobDetailView: View {
 
     private var promptDisplay: some View {
         Group {
-            ScrollView(isPromptExpanded ? [.vertical] : []) {
-                Text(promptText)
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(Theme.secondary)
-                    .textSelection(.enabled)
-                    .lineLimit(isPromptExpanded ? nil : 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: isPromptExpanded ? 420 : nil, alignment: .top)
-
-            if isPromptExpandable && !isPromptExpanded {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        isPromptExpanded = true
+            VStack(alignment: .leading, spacing: 6) {
+                if job.isPromptTruncated {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                        Text("Gateway stores truncated prompts only")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
                     }
-                } label: {
-                    Label("Read full prompt", systemImage: "arrow.down.right.and.arrow.up.left")
+                    .padding(.horizontal, 2)
                 }
-                .font(.caption)
-                .buttonStyle(.bordered)
+                ScrollView([.vertical]) {
+                    Text(promptText)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(Theme.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 420, alignment: .top)
             }
         }
     }
@@ -462,10 +463,10 @@ struct CronJobDetailView: View {
     @ViewBuilder
     private var statusIcon: some View {
         if job.state == "paused" || !job.enabled {
-            Image(systemName: "pause.circle.fill")
-                .foregroundStyle(.secondary)
+            Image(systemName: "pause.circle")
+                .foregroundStyle(.orange)
         } else if job.lastStatus == "error" {
-            Image(systemName: "exclamationmark.circle.fill")
+            Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
         } else if job.lastStatus == "ok" {
             Image(systemName: "checkmark.circle.fill")

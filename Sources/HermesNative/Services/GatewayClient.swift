@@ -663,6 +663,28 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
                 return nil
             }()
 
+            let promptValue: String? = {
+                let candidates = [
+                    d["prompt"]?.stringValue,
+                    d["full_prompt"]?.stringValue,
+                    d["prompt_text"]?.stringValue,
+                    d["cron_prompt"]?.stringValue,
+                    d["command"]?.stringValue,
+                    d["task"]?.stringValue,
+                    d["script"]?.stringValue,
+                    d["description"]?.stringValue,
+                    d["body"]?.stringValue,
+                    d["text"]?.stringValue,
+                    d["message"]?.stringValue,
+                    d["query"]?.stringValue,
+                    d["content"]?.stringValue,
+                    d["args"]?.stringValue,
+                    d["input"]?.stringValue,
+                    d["prompt_preview"]?.stringValue
+                ]
+                return candidates.compactMap { $0 }.first
+            }()
+
             return CronJob(
                 id: jobID,
                 name: d["name"]?.stringValue ?? jobID,
@@ -674,59 +696,9 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
                 state: d["state"]?.stringValue ?? "scheduled",
                 deliver: d["deliver"]?.stringValue ?? "local",
                 promptPreview: d["prompt_preview"]?.stringValue,
-                prompt: d["prompt"]?.stringValue
-                    ?? d["full_prompt"]?.stringValue
-                    ?? d["prompt_text"]?.stringValue
-                    ?? d["prompt_preview"]?.stringValue
+                prompt: promptValue
             )
         }
-    }
-
-    func getCronJob(id: String) async throws -> CronJob? {
-        let response = try await call("cron.manage", params: [
-            "action": AnyCodable("get"),
-            "name": AnyCodable(id)
-        ])
-        if let error = response.error {
-            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
-        }
-        guard let d = response.result?.dictionaryValue else { return nil }
-
-        let iso8601Formatter = ISO8601DateFormatter()
-        iso8601Formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        guard let jobID = d["job_id"]?.stringValue, !jobID.isEmpty else { return nil }
-
-        let nextRunAt: Date? = {
-            if let str = d["next_run_at"]?.stringValue {
-                return iso8601Formatter.date(from: str)
-            }
-            return nil
-        }()
-
-        let lastRunAt: Date? = {
-            if let str = d["last_run_at"]?.stringValue {
-                return iso8601Formatter.date(from: str)
-            }
-            return nil
-        }()
-
-        return CronJob(
-            id: jobID,
-            name: d["name"]?.stringValue ?? jobID,
-            schedule: d["schedule"]?.stringValue ?? "",
-            nextRunAt: nextRunAt,
-            lastRunAt: lastRunAt,
-            lastStatus: d["last_status"]?.stringValue,
-            enabled: d["enabled"]?.boolValue ?? true,
-            state: d["state"]?.stringValue ?? "scheduled",
-            deliver: d["deliver"]?.stringValue ?? "local",
-            promptPreview: d["prompt_preview"]?.stringValue,
-            prompt: d["prompt"]?.stringValue
-                ?? d["full_prompt"]?.stringValue
-                ?? d["prompt_text"]?.stringValue
-                ?? d["prompt_preview"]?.stringValue
-        )
     }
 
     // MARK: - Skills RPCs
@@ -739,6 +711,13 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
             log.error("listSkills: RPC error code=\(error.code) message=\(error.message)")
             throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
         }
+
+        // Handle case where result is a string (e.g. "No skills configured")
+        if let stringResult = response.result?.stringValue {
+            log.info("listSkills: result is a string: '\(stringResult)'")
+            return [:]
+        }
+
         guard let result = response.result?.dictionaryValue else {
             log.info("listSkills: result is nil or not a dict, raw=\(String(describing: response.result))")
             return [:]

@@ -76,13 +76,36 @@ struct MacInputTextField: NSViewRepresentable {
     }
 
     private func makeFirstResponder(_ nsView: FocusableTextField) {
-        DispatchQueue.main.async {
-            guard let window = nsView.window else { return }
+        let attempt: () -> Void = { [weak nsView] in
+            guard let nsView, let window = nsView.window else {
+                // View not in window yet — retry after layout
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak nsView] in
+                    guard let nsView, let window = nsView.window else { return }
+                    nsView.isEditable = true
+                    nsView.isSelectable = true
+                    let editor = nsView.currentEditor() ?? nsView
+                    if window.firstResponder !== editor {
+                        let success = window.makeFirstResponder(nsView)
+                        if !success {
+                            window.makeFirstResponder(nil)
+                            window.makeFirstResponder(nsView)
+                        }
+                    }
+                }
+                return
+            }
+            nsView.isEditable = true
+            nsView.isSelectable = true
             let editor = nsView.currentEditor() ?? nsView
             if window.firstResponder !== editor {
-                window.makeFirstResponder(nsView)
+                let success = window.makeFirstResponder(nsView)
+                if !success {
+                    window.makeFirstResponder(nil)
+                    window.makeFirstResponder(nsView)
+                }
             }
         }
+        DispatchQueue.main.async(execute: attempt)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -135,17 +158,26 @@ final class FocusableTextField: NSTextField {
     var onSubmit: (() -> Void)?
     var onImagePaste: (([NSItemProvider]) -> Void)?
 
+    override var acceptsFirstResponder: Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         super.mouseDown(with: event)
-        if let window {
-            DispatchQueue.main.async { [weak self] in
-                guard let self, let window = self.window else { return }
-                let editor = self.currentEditor() ?? self
-                if window.firstResponder !== editor {
+        guard let window else { return }
+        let attempt: () -> Void = { [weak self] in
+            guard let self, let window = self.window else { return }
+            self.isEditable = true
+            self.isSelectable = true
+            let editor = self.currentEditor() ?? self
+            if window.firstResponder !== editor {
+                let success = window.makeFirstResponder(self)
+                if !success {
+                    // Force-resign current responder and retry
+                    window.makeFirstResponder(nil)
                     window.makeFirstResponder(self)
                 }
             }
         }
+        DispatchQueue.main.async(execute: attempt)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -239,14 +271,11 @@ final class ClickMonitorView: NSView {
 
     func handleClick(_ event: NSEvent) {
         guard let window else { return }
-
         let textField = textFieldRef ?? findTextField(in: window.contentView)
-
         guard let textField else { return }
 
         let locationInWindow = event.locationInWindow
         let locationInView = convert(locationInWindow, from: nil)
-
         guard bounds.contains(locationInView) else { return }
 
         if let clickedView = window.contentView?.hitTest(locationInWindow) {
@@ -268,7 +297,13 @@ final class ClickMonitorView: NSView {
                 guard let window = textField.window else { return }
                 let editor = textField.currentEditor() ?? textField
                 if window.firstResponder !== editor {
-                    window.makeFirstResponder(textField)
+                    textField.isEditable = true
+                    textField.isSelectable = true
+                    let success = window.makeFirstResponder(textField)
+                    if !success {
+                        window.makeFirstResponder(nil)
+                        window.makeFirstResponder(textField)
+                    }
                 }
             }
         }

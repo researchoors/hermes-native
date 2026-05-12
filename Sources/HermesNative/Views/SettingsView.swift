@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings view for gateway connection configuration + persona management.
+/// Settings view for gateway connection configuration.
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var personaManager: PersonaManager
@@ -41,7 +41,6 @@ struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Gateway
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Gateway URL")
                             .font(.caption)
@@ -84,14 +83,12 @@ struct SettingsView: View {
 
                     Divider()
 
-                    // Persona
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Persona")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .textCase(.uppercase)
 
-                        // Active persona
                         HStack(spacing: 12) {
                             personaManager.activePersona.bubbleAvatar(size: 36)
                             VStack(alignment: .leading, spacing: 2) {
@@ -101,29 +98,6 @@ struct SettingsView: View {
                                 Text(personaManager.activePersona.tagline)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        // Picker
-                        ForEach(personaManager.personas) { persona in
-                            HStack(spacing: 10) {
-                                persona.bubbleAvatar(size: 28)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(persona.name)
-                                        .font(.subheadline)
-                                    Text(persona.tagline)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if persona.id == personaManager.activePersona.id {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(persona.accentColor)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                personaManager.select(persona)
                             }
                         }
                     }
@@ -205,7 +179,7 @@ struct SettingsView: View {
 
     private var personaTab: some View {
         Form {
-            Section("Active Persona") {
+            Section("Gateway Persona") {
                 HStack(spacing: 12) {
                     personaManager.activePersona.bubbleAvatar(size: 40)
                     VStack(alignment: .leading, spacing: 2) {
@@ -218,66 +192,14 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Available Personas") {
-                ForEach(personaManager.personas) { persona in
-                    HStack(spacing: 10) {
-                        persona.bubbleAvatar(size: 28)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(persona.name)
-                                .font(.subheadline)
-                            Text(persona.tagline)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if persona.id == personaManager.activePersona.id {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(persona.accentColor)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        personaManager.select(persona)
-                    }
-                }
-            }
-
-            Section("Custom Personas") {
-                HStack {
-                    Text("Drop .json files in:")
-                        .font(.caption)
-                    Text(PersonaManager.personasDirectory.path)
-                        .font(.caption)
+            if let suffix = personaManager.activePersona.systemPromptSuffix,
+               !suffix.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Section("Persona Prompt (from PERSONA.md)") {
+                    Text(suffix)
+                        .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
-                HStack {
-                    Button("Open Folder") {
-                        NSWorkspace.shared.open(PersonaManager.personasDirectory)
-                    }
-                    Button("Create Template") {
-                        if let url = personaManager.exportTemplate() {
-                            NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: "")
-                        }
-                    }
-                }
-            }
-
-            Section("Persona JSON Format") {
-                Text("""
-                    {
-                      "id": "my-persona",
-                      "name": "My Persona",
-                      "tagline": "A custom AI assistant",
-                      "symbolName": "person.fill",
-                      "accentColorHex": "#5856D6",
-                      "imagePath": null,
-                      "systemPromptSuffix": "You are…"
-                    }
-                    """)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
             }
         }
         .formStyle(.grouped)
