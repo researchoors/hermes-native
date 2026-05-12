@@ -1,0 +1,115 @@
+name: macOS Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  notarize-macos:
+    name: Archive, Notarize & Publish macOS App
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Install Developer ID Certificate
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+
+      - name: Archive macOS App
+        run: |
+          mkdir -p build
+          xcodebuild archive \
+            -project HermesNative.xcodeproj \
+            -scheme HermesNative-macOS \
+            -destination "generic/platform=macOS" \
+            -archivePath build/HermesNative-macOS.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="${{ secrets.TEAM_ID }}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            OTHER_CODE_SIGN_FLAGS="--keychain=$HOME/Library/Keychains/signing_temp.keychain-db"
+
+      - name: Export macOS App
+        run: |
+          cat > build/ExportOptions-macOS.plist << PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>teamID</key>
+            <string>${{ secrets.TEAM_ID }}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath build/HermesNative-macOS.xcarchive \
+            -exportPath build/export-macos \
+            -exportOptionsPlist build/ExportOptions-macOS.plist
+
+      - name: Notarize
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          ditto -c -k --keepParent \
+            build/export-macos/HermesNative-macOS.app \
+            build/HermesNative-macOS.zip
+
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" > \
+            ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8
+
+          xcrun notarytool submit build/HermesNative-macOS.zip \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --wait
+
+          xcrun stapler staple build/export-macos/HermesNative-macOS.app
+
+      - name: Package as DMG
+        run: |
+          hdiutil create \
+            -volname "HermesNative" \
+            -srcfolder build/export-macos/HermesNative-macOS.app \
+            -ov -format UDZO \
+            build/HermesNative-macOS.dmg
+
+      - name: Upload macOS App as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HermesNative-macOS
+          path: build/HermesNative-macOS.dmg
+          retention-days: 30
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            build/HermesNative-macOS.dmg \
+            --title "HermesNative ${{ github.ref_name }}" \
+            --notes "Notarized macOS app bundle. Download, open the DMG, and drag HermesNative to Applications." \
+            || gh release upload "${{ github.ref_name }}" build/HermesNative-macOS.dmg
