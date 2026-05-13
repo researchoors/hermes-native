@@ -14,7 +14,12 @@ struct WikiGraphView: View {
     var body: some View {
         TimelineView(.animation) { timeline in
             Canvas { context, size in
+                let wasZero = viewModel.canvasSize == .zero
                 viewModel.canvasSize = size
+                // Defer simulation setup until we have a real canvas size.
+                if wasZero && size != .zero && viewModel.simNodes.isEmpty && !viewModel.graph.pages.isEmpty {
+                    viewModel.setupSimulation()
+                }
                 viewModel.tick()
 
                 context.translateBy(x: viewModel.panOffset.width, y: viewModel.panOffset.height)
@@ -87,6 +92,13 @@ struct WikiGraphView: View {
                 if viewModel.isLoading {
                     ProgressView().controlSize(.small)
                     Text("Loading…").font(.caption2)
+                } else if let error = viewModel.error {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Theme.warning)
+                    Text(error)
+                        .font(.caption2)
+                        .lineLimit(2)
+                        .frame(maxWidth: 280, alignment: .leading)
                 }
             }
             .foregroundStyle(Theme.secondary)
@@ -112,6 +124,7 @@ struct WikiGraphView: View {
             }
         }
         .onAppear {
+            guard gatewayClientWrapper.isConnected else { return }
             Task { await viewModel.load(client: gatewayClientWrapper.client) }
         }
     }
