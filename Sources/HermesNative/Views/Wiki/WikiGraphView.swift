@@ -16,8 +16,12 @@ struct WikiGraphView: View {
         case idle, deciding, panning, draggingNode
     }
 
+    // Timer-driven frame pump (TimelineView is unreliable in overlay ZStacks)
+    @State private var frameID = UUID()
+    private let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+
     var body: some View {
-        TimelineView(.periodic(from: Date(), by: 1.0 / 60.0)) { _ in
+        GeometryReader { geometry in
             Canvas { context, size in
                 let wasZero = viewModel.canvasSize == .zero
                 viewModel.canvasSize = size
@@ -68,6 +72,9 @@ struct WikiGraphView: View {
                 }
             }
             .gesture(dragGesture, including: .gesture)
+            .onReceive(timer) { _ in
+                frameID = UUID()
+            }
         }
         .background(Theme.background)
         .overlay(alignment: .topLeading) {
@@ -99,6 +106,24 @@ struct WikiGraphView: View {
             }
             .foregroundStyle(Theme.secondary)
             .padding(8)
+            .padding(12)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("canvas: \(Int(viewModel.canvasSize.width))×\(Int(viewModel.canvasSize.height))")
+                Text("pages: \(viewModel.graph.pages.count)")
+                Text("nodes: \(viewModel.simNodes.count)")
+                Text("links: \(viewModel.simLinks.count)")
+                Text("loading: \(viewModel.isLoading)")
+                Text("error: \(viewModel.error ?? "nil")")
+                Text("zoom: \(String(format: "%.2f", viewModel.zoom))")
+                Text("pan: \(Int(viewModel.panOffset.width)), \(Int(viewModel.panOffset.height))")
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(Color.red)
+            .padding(8)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(6)
             .padding(12)
         }
         .overlay(alignment: .topTrailing) {
