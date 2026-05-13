@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var showLiveSessions = false
     @State private var showCronDashboard = false
     @State private var showSkills = false
+    @State private var showWikiGraph = false
     @State private var selectedTab = 0
     @State private var isCreatingSession = false
     @State private var sessionCreationError: String?
@@ -291,10 +292,11 @@ struct ContentView: View {
     }
 
     private var isOverlayActive: Bool {
-        missionControlSessionID != nil || showCronDashboard || showLiveSessions || showActivitySheet || showSkills
+        missionControlSessionID != nil || showCronDashboard || showLiveSessions || showActivitySheet || showSkills || showWikiGraph
     }
 
     private var overlayTitle: String {
+        if showWikiGraph { return "Wiki Graph" }
         if showSkills { return "Skills" }
         if showLiveSessions { return "Sessions" }
         if showCronDashboard { return "Cron Activity" }
@@ -363,6 +365,7 @@ struct ContentView: View {
                 showLiveSessions = false
                 showActivitySheet = false
                 showSkills = false
+                showWikiGraph = false
                 chatViewModel.refocusInput += 1
             } label: {
                 HStack(spacing: 6) {
@@ -485,6 +488,16 @@ struct ContentView: View {
             .buttonStyle(.borderless)
             .keyboardShortcut("j", modifiers: .command)
             .accessibilityLabel("Skills")
+
+            Button {
+                showWikiGraph = true
+            } label: {
+                Label("Wiki", systemImage: "network")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut("w", modifiers: .command)
+            .accessibilityLabel("Wiki Graph")
         }
         .foregroundStyle(Theme.primary)
     }
@@ -561,6 +574,14 @@ struct ContentView: View {
 
             if showSkills {
                 SkillsView()
+                    .environmentObject(gatewayClientWrapper)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.background)
+                    .transition(.opacity)
+            }
+
+            if showWikiGraph {
+                WikiGraphView()
                     .environmentObject(gatewayClientWrapper)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.background)
