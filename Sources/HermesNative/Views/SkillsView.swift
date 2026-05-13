@@ -7,6 +7,7 @@ struct SkillsView: View {
     @State private var searchDebounceTask: Task<Void, Never>?
     @State private var confirmUninstall: String?
     @State private var showDiagnostics = false
+    @State private var markdownSkill: SkillInfo?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -32,9 +33,15 @@ struct SkillsView: View {
         .background(Theme.background)
         .task(id: gatewayClientWrapper.isConnected) {
             viewModel.setGatewayClient(gatewayClientWrapper.client)
-            if gatewayClientWrapper.isConnected {
+            if gatewayClientWrapper.isConnected, viewModel.skills.isEmpty {
                 await viewModel.refresh()
             }
+        }
+        .sheet(item: $markdownSkill) { skill in
+            SkillMarkdownSheet(
+                skill: skill,
+                viewModel: viewModel
+            )
         }
     }
 
@@ -238,30 +245,33 @@ struct SkillsView: View {
                 .foregroundStyle(Theme.secondary)
                 .padding(.bottom, 2)
 
-            ForEach(skills) { skill in
-                SkillCard(
-                    skill: skill,
-                    isExpanded: expandedSkill == skill.id,
-                    installStatus: viewModel.installStatus[skill.name] ?? nil,
-                    confirmUninstall: confirmUninstall == skill.name,
-                    onToggle: {
-                        withAnimation(.easeInOut(duration: 0.18)) {
-                            expandedSkill = expandedSkill == skill.id ? nil : skill.id
-                        }
-                    },
-                    onUninstall: {
-                        if confirmUninstall == skill.name {
+                ForEach(skills) { skill in
+                    SkillCard(
+                        skill: skill,
+                        isExpanded: expandedSkill == skill.id,
+                        installStatus: viewModel.installStatus[skill.name] ?? nil,
+                        confirmUninstall: confirmUninstall == skill.name,
+                        onToggle: {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                expandedSkill = expandedSkill == skill.id ? nil : skill.id
+                            }
+                        },
+                        onUninstall: {
+                            if confirmUninstall == skill.name {
+                                confirmUninstall = nil
+                                Task { await viewModel.uninstallSkill(name: skill.name) }
+                            } else {
+                                confirmUninstall = skill.name
+                            }
+                        },
+                        onCancelUninstall: {
                             confirmUninstall = nil
-                            Task { await viewModel.uninstallSkill(name: skill.name) }
-                        } else {
-                            confirmUninstall = skill.name
+                        },
+                        onViewMarkdown: {
+                            markdownSkill = skill
                         }
-                    },
-                    onCancelUninstall: {
-                        confirmUninstall = nil
-                    }
-                )
-            }
+                    )
+                }
         }
     }
 
@@ -337,6 +347,7 @@ private struct SkillCard: View {
     let onToggle: () -> Void
     let onUninstall: () -> Void
     let onCancelUninstall: () -> Void
+    let onViewMarkdown: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -354,20 +365,15 @@ private struct SkillCard: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if let preview = skill.skillMdPreview {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("SKILL.md Preview")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Theme.tertiary)
-                            ScrollView {
-                                Text(preview)
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(Theme.secondary)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .frame(maxHeight: 200)
+                    if skill.skillMdPreview != nil || skill.skillMdFullContent != nil {
+                        Button {
+                            onViewMarkdown()
+                        } label: {
+                            Label("View Markdown", systemImage: "doc.text")
+                                .font(.caption)
                         }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
                     if let path = skill.skillMdPath {
                         detailRow("Path", value: path)
@@ -506,6 +512,95 @@ private struct SkillCard: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
+        }
+    }
+}
+
+// MARK: - Skill Markdown Sheet
+
+private struct SkillMarkdownSheet: View {
+    let skill: SkillInfo
+    var viewModel: SkillsViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var content: String = ""
+    @State private var isLoading = false
+    @State private var isSaving = false
+    @State private var saveError: String?
+    @State private var hasChanges = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if let saveError {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        Text(saveError)
+                            .font(.caption)
+                        Spacer()
+                        Button("Dismiss") { self.saveError = nil }
+                            .font(.caption)
+                    }
+                    .padding(10)
+                    .background(Color.red.opacity(0.06))
+                }
+
+                TextEditor(text: $content)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(Theme.primary)
+                    .padding(8)
+                    .onChange(of: content) { _, _ in
+                        hasChanges = true
+                    }
+
+                if isSaving {
+                    ProgressView("Saving…")
+                        .padding(8)
+                }
+            }
+            .background(Theme.background)
+            .navigationTitle("\(skill.name) — Markdown")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Save") {
+                        Task {
+                            isSaving = true
+                            saveError = nil
+                            let success = await viewModel.saveSkillMarkdown(
+                                name: skill.name,
+                                content: content
+                            )
+                            isSaving = false
+                            if success {
+                                hasChanges = false
+                                dismiss()
+                            } else {
+                                saveError = "Failed to save. Check connection and try again."
+                            }
+                        }
+                    }
+                    .disabled(!hasChanges || isSaving)
+                }
+            }
+        }
+        .background(Theme.background)
+        .task {
+            isLoading = true
+            if let cached = skill.skillMdFullContent {
+                content = cached
+            } else if let preview = skill.skillMdPreview {
+                content = preview
+            }
+            if let fetched = await viewModel.readSkillMarkdown(name: skill.name), !fetched.isEmpty {
+                content = fetched
+                hasChanges = false
+            }
+            isLoading = false
         }
     }
 }

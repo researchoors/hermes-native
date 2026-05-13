@@ -17,6 +17,7 @@ final class SkillsViewModel {
     var searchQuery = ""
     var searchError: String?
     var installStatus: [String: String] = [:]
+    private var hasLoaded = false
 
     private var gatewayClient: GatewayClient?
     private let log = Logger(subsystem: "com.researchoors.HermesNative", category: "SkillsViewModel")
@@ -53,6 +54,7 @@ final class SkillsViewModel {
                             skillMdPath: nil,
                             skillDir: nil,
                             skillMdPreview: nil,
+                            skillMdFullContent: nil,
                             slashCommand: slashCmd
                         )
                         allSkills.append(skill)
@@ -74,13 +76,18 @@ final class SkillsViewModel {
                 if let detail = inspected[allSkills[i].name] {
                     allSkills[i].description = detail.description
                     allSkills[i].skillMdPreview = detail.skillMdPreview
+                    allSkills[i].skillMdFullContent = detail.skillMdFullContent
                     allSkills[i].tags = detail.tags
                     allSkills[i].source = detail.source
+                    allSkills[i].skillMdPath = detail.skillMdPath
+                    allSkills[i].skillDir = detail.skillDir
+                    allSkills[i].slashCommand = detail.slashCommand
                 }
             }
 
             self.skills = allSkills.sorted { $0.name.lowercased() < $1.name.lowercased() }
             self.categories = grouped
+            hasLoaded = true
             log.info("refresh: total \(allSkills.count) skills in \(grouped.count) categories")
         } catch {
             log.error("refresh: error=\(error.localizedDescription)")
@@ -214,4 +221,42 @@ final class SkillsViewModel {
 
     var totalSkills: Int { skills.count }
     var categoryCount: Int { categories.keys.count }
+
+    /// Load full markdown content for a skill on demand.
+    func readSkillMarkdown(name: String) async -> String? {
+        guard let client = gatewayClient else { return nil }
+        do {
+            return try await client.readSkillMarkdown(name: name)
+        } catch {
+            log.error("readSkillMarkdown failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Save edited markdown back to the skill.
+    func saveSkillMarkdown(name: String, content: String) async -> Bool {
+        guard let client = gatewayClient else { return false }
+        do {
+            let success = try await client.writeSkillMarkdown(name: name, content: content)
+            if success {
+                // Update local cache so the UI reflects changes immediately
+                for i in skills.indices where skills[i].name == name {
+                    skills[i].skillMdFullContent = content
+                    skills[i].skillMdPreview = String(content.prefix(500))
+                }
+                // Also update categories
+                for (key, var list) in categories {
+                    for i in list.indices where list[i].name == name {
+                        list[i].skillMdFullContent = content
+                        list[i].skillMdPreview = String(content.prefix(500))
+                    }
+                    categories[key] = list
+                }
+            }
+            return success
+        } catch {
+            log.error("saveSkillMarkdown failed: \(error.localizedDescription)")
+            return false
+        }
+    }
 }
