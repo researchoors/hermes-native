@@ -1,4 +1,6 @@
 import SwiftUI
+
+#if os(macOS)
 import AppKit
 
 // MARK: - Mouse Interceptor (NSView)
@@ -21,15 +23,9 @@ final class GraphMouseView: NSView {
         wantsLayer = true
     }
 
-    // Match SwiftUI's top-left coordinate origin
     override var isFlipped: Bool { true }
-
-    // Always capture mouse events in this view
     override func hitTest(_ point: NSPoint) -> NSView? { self }
-
-    // Accept first click without requiring window focus first
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
     override var acceptsFirstResponder: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
@@ -68,6 +64,7 @@ struct GraphMouseInterceptor: NSViewRepresentable {
         nsView.onMouseUp = onMouseUp
     }
 }
+#endif
 
 // MARK: - WikiGraphView
 
@@ -92,12 +89,17 @@ struct WikiGraphView: View {
                 ZStack {
                     graphCanvas
 
-                    // Native NSView mouse interceptor — works reliably on macOS
+                    #if os(macOS)
                     GraphMouseInterceptor(
                         onMouseDown: { pt in handleMouseDown(pt) },
                         onMouseDragged: { pt in handleMouseDragged(pt) },
                         onMouseUp: { pt in handleMouseUp(pt) }
                     )
+                    #else
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .gesture(iosDragGesture)
+                    #endif
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onReceive(timer) { _ in
@@ -212,6 +214,50 @@ struct WikiGraphView: View {
         mouseState = .idle
         dragNodeIndex = nil
     }
+
+    #if !os(macOS)
+    private var iosDragGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .local)
+            .onChanged { value in
+                switch mouseState {
+                case .idle:
+                    mouseState = .deciding
+                    dragStartPan = viewModel.panOffset
+                    dragStartPoint = value.startLocation
+                    dragNodeIndex = viewModel.hitTest(point: value.startLocation)
+                case .deciding:
+                    let dist = hypot(value.translation.width, value.translation.height)
+                    if dist > 5 {
+                        if let idx = dragNodeIndex {
+                            mouseState = .draggingNode
+                            viewModel.startDragging(index: idx, at: value.location)
+                        } else {
+                            mouseState = .panning
+                        }
+                    }
+                case .panning:
+                    viewModel.panOffset = CGSize(
+                        width: dragStartPan.width + value.translation.width,
+                        height: dragStartPan.height + value.translation.height
+                    )
+                case .draggingNode:
+                    if let idx = dragNodeIndex {
+                        viewModel.dragNode(index: idx, to: value.location)
+                    }
+                }
+            }
+            .onEnded { value in
+                if mouseState == .deciding {
+                    viewModel.handleTap(at: value.startLocation)
+                }
+                if let idx = dragNodeIndex {
+                    viewModel.stopDragging(index: idx)
+                }
+                mouseState = .idle
+                dragNodeIndex = nil
+            }
+    }
+    #endif
 
     // MARK: - Graph Canvas
 
