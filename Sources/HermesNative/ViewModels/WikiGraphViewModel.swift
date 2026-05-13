@@ -14,6 +14,14 @@ final class WikiGraphViewModel: ObservableObject {
     @Published var graph: WikiGraph = .empty
     @Published var selectedPage: WikiPage?
     @Published var showPageDetail = false
+
+    /// Currently selected node index (not page, local sim index).
+    @Published var selectedNodeIndex: Int?
+
+    var selectedNodeTitle: String? {
+        guard let idx = selectedNodeIndex, simNodes.indices.contains(idx) else { return nil }
+        return simNodes[idx].label
+    }
     @Published var isLoading = false
     @Published var error: String?
 
@@ -230,12 +238,46 @@ final class WikiGraphViewModel: ObservableObject {
 
     func handleTap(at point: CGPoint) {
         if let index = hitTest(point: point) {
-            let pageID = simNodes[index].id
-            if let page = graph.pages.first(where: { $0.id == pageID }) {
-                selectedPage = page
-                showPageDetail = true
+            if selectedNodeIndex == index {
+                // Double-tap: open detail
+                let pageID = simNodes[index].id
+                if let page = graph.pages.first(where: { $0.id == pageID }) {
+                    selectedPage = page
+                    showPageDetail = true
+                }
+            } else {
+                selectedNodeIndex = index
             }
+        } else {
+            selectedNodeIndex = nil
         }
+    }
+
+    func deselectNode() {
+        selectedNodeIndex = nil
+    }
+
+    // MARK: - Selection Helpers
+
+    func selectedNodeNeighbors() -> [Int] {
+        guard let sel = selectedNodeIndex else { return [] }
+        var result = Set<Int>()
+        for (si, ti) in simLinks {
+            if si == sel { result.insert(ti) }
+            if ti == sel { result.insert(si) }
+        }
+        return Array(result)
+    }
+
+    func isNodeConnectedToSelection(_ index: Int) -> Bool {
+        guard let sel = selectedNodeIndex else { return true }
+        if index == sel { return true }
+        return selectedNodeNeighbors().contains(index)
+    }
+
+    func linkIsConnectedToSelection(_ source: Int, _ target: Int) -> Bool {
+        guard let sel = selectedNodeIndex else { return true }
+        return source == sel || target == sel
     }
 
     func zoomAtPoint(factor: CGFloat, around point: CGPoint) {
