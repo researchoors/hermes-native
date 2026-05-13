@@ -261,9 +261,10 @@ struct ChatView: View {
         .sheet(isPresented: $showSettings) {
             settingsSheet
         }
-        .onTapGesture {
-            dismissKeyboard()
-        }
+        .simultaneousGesture(
+            TapGesture().onEnded { _ in dismissKeyboard() },
+            including: .all
+        )
         #endif
         .sheet(isPresented: $showGatewayDebug) {
             GatewayDebugPanelView(client: gatewayClientWrapper.client)

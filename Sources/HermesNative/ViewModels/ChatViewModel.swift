@@ -766,8 +766,13 @@ final class ChatViewModel: ObservableObject {
 
     /// Delete local history for a session.
     func deleteLocalHistory(sessionID: String) {
+        cancelPendingFlush()
         ChatHistoryStore.shared.deleteMessages(forSession: sessionID)
         sessionStates.removeValue(forKey: sessionID)
+        gatewayIDByStableSession.removeValue(forKey: sessionID)
+        for (gatewayID, displayID) in stableSessionByGatewayID where displayID == sessionID {
+            stableSessionByGatewayID.removeValue(forKey: gatewayID)
+        }
     }
 
 #if DEBUG
