@@ -19,6 +19,7 @@
 		0C0C28041FEF81750765CCBE /* GatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6DB7DECBA8B2BCE7989B62 /* GatewayClient.swift */; };
 		0FD4BEE9B35811AC3F5D405C /* GatewayClientWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD3BC9EBF49E5287A7AE997C /* GatewayClientWrapper.swift */; };
 		11015CE9F95C252B0BF0F96A /* LottieCharacterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDB000F6D0C975615D7F80F /* LottieCharacterView.swift */; };
+		1537D87915C7E8AE247C6B9C /* SkillCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E50848877F195F3F5628E4 /* SkillCache.swift */; };
 		19D14A47BB043496A58D17F5 /* PersonaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF6C83FB177D450056599E65 /* PersonaManager.swift */; };
 		1A10548E63D0F622DAA2EBEF /* LongResponseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F82B26CC4D53A1A8AD7A15A4 /* LongResponseView.swift */; };
 		1B9CFABF8EA2A0E659C80D9A /* ChatSkin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742C42FB4508D2508FF94A82 /* ChatSkin.swift */; };
@@ -132,6 +133,7 @@
 		C1551C4EC0BA077469198667 /* BeautifulMermaid in Frameworks */ = {isa = PBXBuildFile; productRef = 3B1D253A1B6E0624203E28E4 /* BeautifulMermaid */; };
 		C2EC3B58E28D3010EF444E86 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AF7C8FD90209C14BD37A45 /* NotificationService.swift */; };
 		C50238D57DB0F48A1064C65E /* SpawnNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7471C7C26357969AFAF4154 /* SpawnNode.swift */; };
+		C639B17446988C825619F345 /* SkillCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E50848877F195F3F5628E4 /* SkillCache.swift */; };
 		C94DA73F98B98B31367A2487 /* SessionObserverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC89BDA9F965E178C495B02 /* SessionObserverView.swift */; };
 		C98EECAF481BF8D1D742664C /* ActivityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1C673C620872B0D6482C9E /* ActivityStore.swift */; };
 		CBF547E9F64DB1BF606F17D9 /* CelebrationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C62719357450637B7EF8D76 /* CelebrationOverlay.swift */; };
@@ -226,6 +228,7 @@
 		7FA16F415470C4A20A1155A3 /* SessionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListViewModel.swift; sourceTree = "<group>"; };
 		80C19CE5657AD3FD6547FC3D /* ActivityItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityItem.swift; sourceTree = "<group>"; };
 		82587B61F3E0F931D857D35F /* HermesNativeVisionDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesNativeVisionDemoUITests.swift; sourceTree = "<group>"; };
+		85E50848877F195F3F5628E4 /* SkillCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillCache.swift; sourceTree = "<group>"; };
 		89DF820435B5D88C97CF7888 /* CronJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJob.swift; sourceTree = "<group>"; };
 		8DFAC2BEE7A7000345BFEE4B /* TUISkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TUISkin.swift; sourceTree = "<group>"; };
 		8F3D7AE79773431722873482 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -498,6 +501,7 @@
 				CD3BC9EBF49E5287A7AE997C /* GatewayClientWrapper.swift */,
 				2CB34A11D78E3CDA3A1BECC2 /* KeychainStore.swift */,
 				E5AF7C8FD90209C14BD37A45 /* NotificationService.swift */,
+				85E50848877F195F3F5628E4 /* SkillCache.swift */,
 				9A014710FF545F86CB656E53 /* TTSService.swift */,
 			);
 			path = Services;
@@ -716,6 +720,7 @@
 				75C11FF675CE3ECE889E401B /* SettingsView.swift in Sources */,
 				71D6DCD896DD343FFA4BE0C7 /* SettingsViewModel.swift in Sources */,
 				4AB867696B6237E2E400D49A /* Skill.swift in Sources */,
+				1537D87915C7E8AE247C6B9C /* SkillCache.swift in Sources */,
 				5EB57F8E47A6B9CC7AC6296B /* SkillsView.swift in Sources */,
 				854DA8E57545F5379A0F4C54 /* SkillsViewModel.swift in Sources */,
 				C50238D57DB0F48A1064C65E /* SpawnNode.swift in Sources */,
@@ -807,6 +812,7 @@
 				B1C72D03E5C09B3FF0D5095D /* SettingsView.swift in Sources */,
 				9050E9BF45207715254D5340 /* SettingsViewModel.swift in Sources */,
 				EEE533A6664268A419D73884 /* Skill.swift in Sources */,
+				C639B17446988C825619F345 /* SkillCache.swift in Sources */,
 				617F9169FBE1B5C9439009B3 /* SkillsView.swift in Sources */,
 				6FF03CBBC5F7ACE0D5AB2C74 /* SkillsViewModel.swift in Sources */,
 				DC32BA16DE76CD9121AEEABB /* SpawnNode.swift in Sources */,

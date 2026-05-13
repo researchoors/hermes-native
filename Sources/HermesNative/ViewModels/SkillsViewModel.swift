@@ -24,6 +24,12 @@ final class SkillsViewModel {
 
     func setGatewayClient(_ client: GatewayClient) {
         gatewayClient = client
+        // Populate instantly from local cache so the UI never flashes empty
+        if self.skills.isEmpty, self.categories.isEmpty, let cached = SkillCache.load() {
+            self.skills = cached.values.flatMap { $0 }.sorted { $0.name.lowercased() < $1.name.lowercased() }
+            self.categories = cached
+            log.info("setGatewayClient: restored \(self.skills.count) skills from cache")
+        }
     }
 
     func refresh() async {
@@ -88,6 +94,7 @@ final class SkillsViewModel {
             self.skills = allSkills.sorted { $0.name.lowercased() < $1.name.lowercased() }
             self.categories = grouped
             hasLoaded = true
+            SkillCache.save(categories: grouped)
             log.info("refresh: total \(allSkills.count) skills in \(grouped.count) categories")
         } catch {
             log.error("refresh: error=\(error.localizedDescription)")
