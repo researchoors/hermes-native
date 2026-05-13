@@ -1,33 +1,109 @@
 import SwiftUI
+import AppKit
 
-/// Native force-directed wiki graph using SwiftUI Canvas + Timer.
-/// Shows color-coded node types, interactive selection, and neighbor highlighting.
+// MARK: - Mouse Interceptor (NSView)
+
+/// A transparent NSView that captures mouseDown / mouseDragged / mouseUp
+/// and forwards them as callbacks.  This bypasses the broken SwiftUI
+/// DragGesture-on-Canvas path on macOS.
+final class GraphMouseView: NSView {
+    var onMouseDown: ((CGPoint) -> Void)?
+    var onMouseDragged: ((CGPoint) -> Void)?
+    var onMouseUp: ((CGPoint) -> Void)?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+    }
+
+    // Match SwiftUI's top-left coordinate origin
+    override var isFlipped: Bool { true }
+
+    // Always capture mouse events in this view
+    override func hitTest(_ point: NSPoint) -> NSView? { self }
+
+    // Accept first click without requiring window focus first
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        let pt = convert(event.locationInWindow, from: nil)
+        onMouseDown?(pt)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let pt = convert(event.locationInWindow, from: nil)
+        onMouseDragged?(pt)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let pt = convert(event.locationInWindow, from: nil)
+        onMouseUp?(pt)
+    }
+}
+
+/// SwiftUI wrapper for GraphMouseView.
+struct GraphMouseInterceptor: NSViewRepresentable {
+    var onMouseDown: ((CGPoint) -> Void)?
+    var onMouseDragged: ((CGPoint) -> Void)?
+    var onMouseUp: ((CGPoint) -> Void)?
+
+    func makeNSView(context: Context) -> GraphMouseView {
+        let v = GraphMouseView()
+        v.onMouseDown = onMouseDown
+        v.onMouseDragged = onMouseDragged
+        v.onMouseUp = onMouseUp
+        return v
+    }
+
+    func updateNSView(_ nsView: GraphMouseView, context: Context) {
+        nsView.onMouseDown = onMouseDown
+        nsView.onMouseDragged = onMouseDragged
+        nsView.onMouseUp = onMouseUp
+    }
+}
+
+// MARK: - WikiGraphView
+
 struct WikiGraphView: View {
     @StateObject private var viewModel = WikiGraphViewModel()
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
 
-    // MARK: - Interaction State
-
-    @State private var dragState: DragState = .idle
+    @State private var mouseState = MouseState.idle
+    @State private var dragStartPan: CGSize = .zero
+    @State private var dragStartPoint: CGPoint = .zero
     @State private var dragNodeIndex: Int?
-    @State private var panStartOffset: CGSize = .zero
 
-    private enum DragState {
+    private enum MouseState {
         case idle, deciding, panning, draggingNode
     }
 
-    // Timer-driven frame pump (TimelineView is unreliable in overlay ZStacks)
-    @State private var frameID = UUID()
     private let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
-                // Main graph canvas
-                graphCanvas
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ZStack {
+                    graphCanvas
 
-                // Detail panel on the right
+                    // Native NSView mouse interceptor — works reliably on macOS
+                    GraphMouseInterceptor(
+                        onMouseDown: { pt in handleMouseDown(pt) },
+                        onMouseDragged: { pt in handleMouseDragged(pt) },
+                        onMouseUp: { pt in handleMouseUp(pt) }
+                    )
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onReceive(timer) { _ in
+                    viewModel.tick()
+                }
+
                 if let selIdx = viewModel.selectedNodeIndex,
                    viewModel.simNodes.indices.contains(selIdx) {
                     nodeDetailPanel(nodeIndex: selIdx)
@@ -69,29 +145,10 @@ struct WikiGraphView: View {
                             .frame(maxWidth: 260, alignment: .leading)
                     }
                 }
-
-                // Classification Legend
                 legendView
             }
             .padding(8)
             .padding(12)
-        }
-        .overlay(alignment: .bottomTrailing) {
-            // Shrunk debug overlay
-            if viewModel.error != nil || viewModel.simNodes.isEmpty {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("canvas: \(Int(viewModel.canvasSize.width))×\(Int(viewModel.canvasSize.height))")
-                    Text("pages: \(viewModel.graph.pages.count)")
-                    Text("nodes: \(viewModel.simNodes.count)")
-                    Text("error: \(viewModel.error ?? "nil")")
-                }
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(Color.red)
-                .padding(6)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(6)
-                .padding(12)
-            }
         }
         .overlay(alignment: .topTrailing) {
             controlsOverlay
@@ -107,6 +164,55 @@ struct WikiGraphView: View {
         }
     }
 
+    // MARK: - Mouse Event Handlers
+
+    private func handleMouseDown(_ pt: CGPoint) {
+        mouseState = .deciding
+        dragStartPan = viewModel.panOffset
+        dragStartPoint = pt
+        dragNodeIndex = viewModel.hitTest(point: pt)
+    }
+
+    private func handleMouseDragged(_ pt: CGPoint) {
+        let dx = pt.x - dragStartPoint.x
+        let dy = pt.y - dragStartPoint.y
+        let dist = hypot(dx, dy)
+
+        switch mouseState {
+        case .deciding:
+            if dist > 5 {
+                if let idx = dragNodeIndex {
+                    mouseState = .draggingNode
+                    viewModel.startDragging(index: idx, at: pt)
+                } else {
+                    mouseState = .panning
+                }
+            }
+        case .panning:
+            viewModel.panOffset = CGSize(
+                width: dragStartPan.width + dx,
+                height: dragStartPan.height + dy
+            )
+        case .draggingNode:
+            if let idx = dragNodeIndex {
+                viewModel.dragNode(index: idx, to: pt)
+            }
+        case .idle:
+            break
+        }
+    }
+
+    private func handleMouseUp(_ pt: CGPoint) {
+        if mouseState == .deciding {
+            viewModel.handleTap(at: dragStartPoint)
+        }
+        if let idx = dragNodeIndex {
+            viewModel.stopDragging(index: idx)
+        }
+        mouseState = .idle
+        dragNodeIndex = nil
+    }
+
     // MARK: - Graph Canvas
 
     private var graphCanvas: some View {
@@ -117,14 +223,12 @@ struct WikiGraphView: View {
                 if wasZero && size != .zero && viewModel.simNodes.isEmpty && !viewModel.graph.pages.isEmpty {
                     viewModel.setupSimulation()
                 }
-                viewModel.tick()
 
                 let hasSelection = viewModel.selectedNodeIndex != nil
 
                 context.translateBy(x: viewModel.panOffset.width, y: viewModel.panOffset.height)
                 context.scaleBy(x: viewModel.zoom, y: viewModel.zoom)
 
-                // Links
                 for (si, ti) in viewModel.simLinks {
                     guard viewModel.simNodes.indices.contains(si),
                           viewModel.simNodes.indices.contains(ti) else { continue }
@@ -143,13 +247,15 @@ struct WikiGraphView: View {
                     path.addLine(to: tp)
                     context.stroke(path, with: .color(color), lineWidth: lineWidth)
 
-                    // Relationship label near midpoint when selected
-                    if isConnected, hasSelection, viewModel.simNodes.indices.contains(si), viewModel.simNodes.indices.contains(ti) {
+                    if isConnected, hasSelection,
+                       viewModel.simNodes.indices.contains(si),
+                       viewModel.simNodes.indices.contains(ti),
+                       let selIdx = viewModel.selectedNodeIndex {
                         let mid = CGPoint(x: (sp.x + tp.x) / 2, y: (sp.y + tp.y) / 2)
                         let source = viewModel.simNodes[si]
                         let target = viewModel.simNodes[ti]
-                        var labelText = "links to"
-                        if viewModel.simNodes[si].id == viewModel.simNodes[viewModel.selectedNodeIndex!].id {
+                        let labelText: String
+                        if source.id == viewModel.simNodes[selIdx].id {
                             labelText = "→ \(target.label)"
                         } else {
                             labelText = "← \(source.label)"
@@ -158,13 +264,11 @@ struct WikiGraphView: View {
                             Text(labelText)
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundColor(Color(hex: "7c7cff")!.opacity(0.7)),
-                            at: mid,
-                            anchor: .center
+                            at: mid, anchor: .center
                         )
                     }
                 }
 
-                // Nodes (sorted by z so labels overlap correctly)
                 let sorted = viewModel.simNodes.enumerated().sorted { (a, b) in
                     a.element.position.y < b.element.position.y
                 }
@@ -173,19 +277,22 @@ struct WikiGraphView: View {
                     let isConnected = !hasSelection || viewModel.isNodeConnectedToSelection(index)
                     let baseOpacity = isConnected ? 1.0 : 0.2
                     let r = viewModel.nodeRadius(for: node.type)
-                    let ellipse = CGRect(x: node.position.x - r, y: node.position.y - r, width: r * 2, height: r * 2)
+                    let ellipse = CGRect(x: node.position.x - r, y: node.position.y - r,
+                                         width: r * 2, height: r * 2)
 
-                    // Selection ring
                     if isSelected {
-                        let ringRect = CGRect(x: node.position.x - r - 4, y: node.position.y - r - 4, width: r * 2 + 8, height: r * 2 + 8)
+                        let ringRect = CGRect(x: node.position.x - r - 4,
+                                               y: node.position.y - r - 4,
+                                               width: r * 2 + 8, height: r * 2 + 8)
                         context.fill(Path(ellipseIn: ringRect), with: .color(.white.opacity(0.3)))
                     }
 
-                    context.fill(Path(ellipseIn: ellipse), with: .color(viewModel.color(for: node.type).opacity(baseOpacity)))
-                    context.stroke(Path(ellipseIn: ellipse), with: .color(.white.opacity(isSelected ? 0.8 : 0.3)))
+                    context.fill(Path(ellipseIn: ellipse),
+                                 with: .color(viewModel.color(for: node.type).opacity(baseOpacity)))
+                    context.stroke(Path(ellipseIn: ellipse),
+                                   with: .color(.white.opacity(isSelected ? 0.8 : 0.3)))
                 }
 
-                // Labels in screen space so text is crisp regardless of zoom
                 context.transform = .identity
                 for (index, node) in viewModel.simNodes.enumerated() {
                     let isConnected = !hasSelection || viewModel.isNodeConnectedToSelection(index)
@@ -197,14 +304,12 @@ struct WikiGraphView: View {
                     guard screenPos.x > -50, screenPos.x < size.width + 50,
                           screenPos.y > -20, screenPos.y < size.height + 20 else { continue }
                     context.draw(
-                        Text(node.label).font(.system(size: 11, weight: .medium)).foregroundColor(.white.opacity(0.85)),
+                        Text(node.label)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.85)),
                         at: screenPos, anchor: .leading
                     )
                 }
-            }
-            .gesture(dragGesture, including: .gesture)
-            .onReceive(timer) { _ in
-                frameID = UUID()
             }
         }
     }
@@ -218,7 +323,6 @@ struct WikiGraphView: View {
         let page = viewModel.graph.pages.first(where: { $0.id == node.id })
 
         VStack(alignment: .leading, spacing: 0) {
-            // Header
             HStack {
                 Text(node.label)
                     .font(.headline)
@@ -237,7 +341,6 @@ struct WikiGraphView: View {
             .padding(.horizontal, 14)
             .padding(.top, 14)
 
-            // Type pill
             HStack(spacing: 6) {
                 Circle()
                     .fill(viewModel.color(for: node.type))
@@ -253,7 +356,6 @@ struct WikiGraphView: View {
                 .padding(.vertical, 10)
                 .padding(.horizontal, 14)
 
-            // Stats
             VStack(alignment: .leading, spacing: 8) {
                 Text("Connected to \(neighbors.count) page(s)")
                     .font(.caption)
@@ -294,7 +396,6 @@ struct WikiGraphView: View {
 
             Spacer()
 
-            // Open detail button
             if page != nil {
                 Button {
                     viewModel.selectedPage = page
@@ -343,49 +444,6 @@ struct WikiGraphView: View {
                 .font(.caption2)
                 .foregroundStyle(Theme.secondary)
         }
-    }
-
-    // MARK: - Drag / Tap Unified Gesture
-
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 3, coordinateSpace: .local)
-            .onChanged { value in
-                switch dragState {
-                case .idle:
-                    dragState = .deciding
-                    panStartOffset = viewModel.panOffset
-                case .deciding:
-                    let dist = hypot(value.translation.width, value.translation.height)
-                    if dist > 5 {
-                        if let idx = viewModel.hitTest(point: value.startLocation) {
-                            dragState = .draggingNode
-                            dragNodeIndex = idx
-                            viewModel.startDragging(index: idx, at: value.location)
-                        } else {
-                            dragState = .panning
-                        }
-                    }
-                case .panning:
-                    viewModel.panOffset = CGSize(
-                        width: panStartOffset.width + value.translation.width,
-                        height: panStartOffset.height + value.translation.height
-                    )
-                case .draggingNode:
-                    if let idx = dragNodeIndex {
-                        viewModel.dragNode(index: idx, to: value.location)
-                    }
-                }
-            }
-            .onEnded { value in
-                if dragState == .deciding {
-                    viewModel.handleTap(at: value.startLocation)
-                }
-                if let idx = dragNodeIndex {
-                    viewModel.stopDragging(index: idx)
-                }
-                dragState = .idle
-                dragNodeIndex = nil
-            }
     }
 
     // MARK: - Zoom Controls
