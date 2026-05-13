@@ -72,7 +72,10 @@ final class WikiGraphViewModel: ObservableObject {
         do {
             let newGraph = try await client.wikiScan()
             self.graph = newGraph
-            // setupSimulation is deferred to Canvas render so we have a real canvasSize
+            // If canvas already has a real size, set up sim now; otherwise Canvas frame will trigger it.
+            if canvasSize != .zero {
+                setupSimulation()
+            }
         } catch {
             log.error("wiki.scan failed: \(error.localizedDescription)")
             self.error = error.localizedDescription

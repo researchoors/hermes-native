@@ -17,7 +17,7 @@ struct WikiGraphView: View {
     }
 
     var body: some View {
-        TimelineView(.animation) { _ in
+        TimelineView(.periodic(from: Date(), by: 1.0 / 60.0)) { _ in
             Canvas { context, size in
                 let wasZero = viewModel.canvasSize == .zero
                 viewModel.canvasSize = size
@@ -111,7 +111,6 @@ struct WikiGraphView: View {
             }
         }
         .onAppear {
-            guard gatewayClientWrapper.isConnected else { return }
             Task { await viewModel.load(client: gatewayClientWrapper.client) }
         }
     }
