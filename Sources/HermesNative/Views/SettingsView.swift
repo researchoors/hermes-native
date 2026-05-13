@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject var personaManager: PersonaManager
     @EnvironmentObject var capabilitiesStore: HermesCapabilitiesStore
     @Environment(\.dismiss) private var dismiss
+    @State private var showCFAuth = false
 
     var body: some View {
         #if os(macOS)
@@ -157,6 +158,33 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
             }
 
+            if settings.needsCFAuth {
+                Section("Cloudflare Access") {
+                    HStack {
+                        if let email = settings.cfAuthEmail {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text(email)
+                                .lineLimit(1)
+                        } else if settings.cfAuthCookie != nil {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text("Authenticated")
+                        } else {
+                            Image(systemName: "lock.shield")
+                                .foregroundStyle(.secondary)
+                            Text("Not authenticated")
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button(settings.cfAuthCookie != nil ? "Re-auth" : "Sign In") {
+                            showCFAuth = true
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+
             Section("Notifications") {
                 Toggle("Response complete", isOn: $settings.responseCompleteNotificationsEnabled)
                 Text("Notify when a response finishes while the app is in the background or another session is active.")
@@ -175,6 +203,17 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showCFAuth) {
+            if let host = settings.buildWebSocketURL()?.host {
+                CFAuthView(gatewayHost: host) { cookie in
+                    settings.cfAuthCookie = cookie
+                    settings.parseCFAuthEmail(from: cookie)
+                    showCFAuth = false
+                } onDismiss: {
+                    showCFAuth = false
+                }
+            }
+        }
     }
 
     private var personaTab: some View {

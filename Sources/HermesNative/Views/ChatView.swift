@@ -99,29 +99,27 @@ struct ChatView: View {
 
                         ZStack(alignment: .topLeading) {
                             LazyVStack(alignment: .leading, spacing: 2) {
-                                ForEach(renderedMessages, id: \.element.id) { index, message in
                                 let msgs = chatViewModel.messages
-                                // Next message in same role group?
-                                let nextIsSameRole = index < msgs.count - 1 &&
-                                    msgs[index + 1].role == message.role
-                                let isLastInGroup = !nextIsSameRole
+                                ForEach(renderedMessages, id: \.element.id) { index, message in
+                                    // Index is into renderedMessages, NOT msgs. Use the
+                                    // actual offset into msgs for next-is-same-role check.
+                                    let msgIndex = msgs.firstIndex(where: { $0.id == message.id }) ?? index
+                                    let nextIsSameRole = msgIndex < msgs.count - 1 &&
+                                        msgs[msgIndex + 1].role == message.role
+                                    let isLastInGroup = !nextIsSameRole
+                                    let showTimestamp = isLastInGroup
 
-                                // Timestamp: only on the last message in a consecutive same-role group
-                                let showTimestamp = isLastInGroup
-
-                                skinProvider.messageBubble(
-                                    message: {
-                                        var m = message
-                                        m.showAvatar = false
-                                        m.showTimestamp = showTimestamp
-                                        return m
-                                    }(),
-                                    persona: personaManager.activePersona
-                                )
-                                .id(message.id)
-                                // Report the latest assistant turn's bottom edge so the
-                                // singleton avatar can travel through the conversation.
-                            }
+                                    skinProvider.messageBubble(
+                                        message: {
+                                            var m = message
+                                            m.showAvatar = false
+                                            m.showTimestamp = showTimestamp
+                                            return m
+                                        }(),
+                                        persona: personaManager.activePersona
+                                    )
+                                    .id(message.id)
+                                }
 
                             // Streaming panel — skin-provided
                             if chatViewModel.isStreaming {

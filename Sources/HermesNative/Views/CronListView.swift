@@ -6,7 +6,10 @@ struct CronListView: View {
 
     var body: some View {
         List {
-            if cronViewModel.jobs.isEmpty {
+            if cronViewModel.jobs.isEmpty && cronViewModel.isLoading {
+                loadingState
+                    .listRowBackground(Color.clear)
+            } else if cronViewModel.jobs.isEmpty {
                 emptyState
                     .listRowBackground(Color.clear)
             } else {
@@ -59,11 +62,6 @@ struct CronListView: View {
                 }
             }
         }
-        .overlay {
-            if cronViewModel.jobs.isEmpty && !cronViewModel.isLoading {
-                emptyStateOverlay
-            }
-        }
         .refreshable {
             await cronViewModel.refreshJobs()
         }
@@ -89,22 +87,17 @@ struct CronListView: View {
         .padding(.vertical, 40)
     }
 
-    private var emptyStateOverlay: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "clock.badge.checkmark")
-                .font(.system(size: 40))
-                .foregroundStyle(.tertiary)
-            Text("No Cron Jobs")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("Cron jobs will appear here when scheduled")
+    private var loadingState: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Loading cron jobs…")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
     }
 
-    @ViewBuilder
     private func cronActions(for job: CronJob) -> some View {
         pauseResumeButton(for: job)
         Divider()
