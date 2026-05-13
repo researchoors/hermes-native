@@ -14,14 +14,6 @@ final class WikiGraphViewModel: ObservableObject {
     @Published var graph: WikiGraph = .empty
     @Published var selectedPage: WikiPage?
     @Published var showPageDetail = false
-
-    /// Currently selected node index (not page, local sim index).
-    @Published var selectedNodeIndex: Int?
-
-    var selectedNodeTitle: String? {
-        guard let idx = selectedNodeIndex, simNodes.indices.contains(idx) else { return nil }
-        return simNodes[idx].label
-    }
     @Published var isLoading = false
     @Published var error: String?
 
@@ -36,8 +28,8 @@ final class WikiGraphViewModel: ObservableObject {
         let label: String
     }
 
-    @Published var simNodes: [SimNode] = []
-    @Published var simLinks: [(sourceIndex: Int, targetIndex: Int)] = []
+    var simNodes: [SimNode] = []
+    var simLinks: [(sourceIndex: Int, targetIndex: Int)] = []
 
     // Simulation parameters (tuned for ~20-50 nodes)
     private let friction: CGFloat = 0.92
@@ -80,10 +72,7 @@ final class WikiGraphViewModel: ObservableObject {
         do {
             let newGraph = try await client.wikiScan()
             self.graph = newGraph
-            // If canvas already has a real size, set up sim now; otherwise Canvas frame will trigger it.
-            if canvasSize != .zero {
-                setupSimulation()
-            }
+            // setupSimulation is deferred to Canvas render so we have a real canvasSize
         } catch {
             log.error("wiki.scan failed: \(error.localizedDescription)")
             self.error = error.localizedDescription
@@ -238,46 +227,12 @@ final class WikiGraphViewModel: ObservableObject {
 
     func handleTap(at point: CGPoint) {
         if let index = hitTest(point: point) {
-            if selectedNodeIndex == index {
-                // Double-tap: open detail
-                let pageID = simNodes[index].id
-                if let page = graph.pages.first(where: { $0.id == pageID }) {
-                    selectedPage = page
-                    showPageDetail = true
-                }
-            } else {
-                selectedNodeIndex = index
+            let pageID = simNodes[index].id
+            if let page = graph.pages.first(where: { $0.id == pageID }) {
+                selectedPage = page
+                showPageDetail = true
             }
-        } else {
-            selectedNodeIndex = nil
         }
-    }
-
-    func deselectNode() {
-        selectedNodeIndex = nil
-    }
-
-    // MARK: - Selection Helpers
-
-    func selectedNodeNeighbors() -> [Int] {
-        guard let sel = selectedNodeIndex else { return [] }
-        var result = Set<Int>()
-        for (si, ti) in simLinks {
-            if si == sel { result.insert(ti) }
-            if ti == sel { result.insert(si) }
-        }
-        return Array(result)
-    }
-
-    func isNodeConnectedToSelection(_ index: Int) -> Bool {
-        guard let sel = selectedNodeIndex else { return true }
-        if index == sel { return true }
-        return selectedNodeNeighbors().contains(index)
-    }
-
-    func linkIsConnectedToSelection(_ source: Int, _ target: Int) -> Bool {
-        guard let sel = selectedNodeIndex else { return true }
-        return source == sel || target == sel
     }
 
     func zoomAtPoint(factor: CGFloat, around point: CGPoint) {
