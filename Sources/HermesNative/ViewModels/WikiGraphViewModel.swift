@@ -36,8 +36,8 @@ final class WikiGraphViewModel: ObservableObject {
         let label: String
     }
 
-    var simNodes: [SimNode] = []
-    var simLinks: [(sourceIndex: Int, targetIndex: Int)] = []
+    @Published var simNodes: [SimNode] = []
+    @Published var simLinks: [(sourceIndex: Int, targetIndex: Int)] = []
 
     // Simulation parameters (tuned for ~20-50 nodes)
     private let friction: CGFloat = 0.92
