@@ -34,13 +34,10 @@ struct SkillsView: View {
         .task(id: gatewayClientWrapper.isConnected) {
             viewModel.setGatewayClient(gatewayClientWrapper.client)
             guard gatewayClientWrapper.isConnected else { return }
-            // If we have no cached skills yet, do an eager refresh with spinner.
             if viewModel.skills.isEmpty {
                 await viewModel.refresh()
                 return
             }
-            // Otherwise silently refresh in background so the UI never
-            // flashes a loading state when the user toggles back to Skills.
             if SkillCache.age == nil || SkillCache.age! > 30 {
                 await viewModel.refresh()
             }
@@ -373,14 +370,16 @@ private struct SkillCard: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Button {
-                        onViewMarkdown()
-                    } label: {
-                        Label("Edit Markdown", systemImage: "doc.text")
-                            .font(.caption)
+                    if skill.skillMdPreview != nil || skill.skillMdFullContent != nil {
+                        Button {
+                            onViewMarkdown()
+                        } label: {
+                            Label("View Markdown", systemImage: "doc.text")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                     if let path = skill.skillMdPath {
                         detailRow("Path", value: path)
                     }
