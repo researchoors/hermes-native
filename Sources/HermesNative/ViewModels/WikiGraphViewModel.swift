@@ -247,4 +247,3 @@ extension CGPoint {
 extension CGVector {
     static let zero = CGVector(dx: 0, dy: 0)
 }
-
