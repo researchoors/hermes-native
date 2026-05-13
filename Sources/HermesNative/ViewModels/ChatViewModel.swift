@@ -115,13 +115,15 @@ final class ChatViewModel: ObservableObject {
         let fullLine = "\(timestamp) #\(perfWriteCount) \(line)\n"
         log.info("\(fullLine)")
         guard let url = perfLogURL, let data = fullLine.data(using: .utf8) else { return }
-        if FileManager.default.fileExists(atPath: url.path),
-           let handle = try? FileHandle(forWritingTo: url) {
-            try? handle.seekToEnd()
-            try? handle.write(contentsOf: data)
-            try? handle.close()
-        } else {
-            try? data.write(to: url, options: .atomic)
+        Task.detached(priority: .background) {
+            if FileManager.default.fileExists(atPath: url.path),
+               let handle = try? FileHandle(forWritingTo: url) {
+                try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+                try? handle.close()
+            } else {
+                try? data.write(to: url, options: .atomic)
+            }
         }
     }
 
@@ -352,6 +354,7 @@ final class ChatViewModel: ObservableObject {
             self.isStreaming = false
             self.avatarState = .idle
             self.error = nil
+            cancelPendingFlush()
             snapshotCurrentSessionState()
 
             await applyEphemeralPrompt(for: sid, using: client)
@@ -400,6 +403,7 @@ final class ChatViewModel: ObservableObject {
         self.avatarState = .idle
         self.error = nil
         self.sessionTitle = "New Chat"
+        cancelPendingFlush()
         snapshotCurrentSessionState()
         return generation
     }
@@ -900,10 +904,23 @@ final class ChatViewModel: ObservableObject {
         scheduleVisibleEventFlush()
     }
 
+    private func cancelPendingFlush() {
+        pendingVisibleEventFlush?.cancel()
+        pendingVisibleEventFlush = nil
+        pendingVisibleMessageDelta = ""
+        pendingVisibleReasoningDelta = ""
+        pendingVisibleThinkingDelta = ""
+    }
+
     private func scheduleVisibleEventFlush() {
         guard pendingVisibleEventFlush == nil else { return }
         pendingVisibleEventFlush = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 500_000_000)
+            } catch is CancellationError {
+                return
+            }
+            guard !Task.isCancelled else { return }
             flushPendingVisibleEventDeltas()
         }
     }
@@ -1087,6 +1104,14 @@ final class ChatViewModel: ObservableObject {
             state.error = message
             state.isStreaming = false
             state.avatarState = .error
+            // Finalize the last streaming assistant message so it doesn't appear stuck
+            if let msgID = state.streamingMessageID,
+               let idx = state.messages.firstIndex(where: { $0.id == msgID }) {
+                state.messages[idx].isStreaming = false
+                state.messages[idx].status = "error"
+                state.streamingMessageID = nil
+            }
+            state.activeToolCalls = [:]
 
         case .statusUpdate, .toolGenerating, .reasoningAvailable,
              .gatewayReady, .skinChanged, .backgroundComplete,
@@ -1113,6 +1138,9 @@ final class ChatViewModel: ObservableObject {
                 // or every token triggers a full SwiftUI re-render cycle.
             } else {
                 _ = restoreSessionState(displayID: displayID, runtimeID: eventSessionID)
+            }
+            if case .messageComplete(let payload) = event {
+                finishStreaming(status: payload.status)
             }
         }
 
@@ -1274,6 +1302,7 @@ final class ChatViewModel: ObservableObject {
             self.error = message
             isStreaming = false
             avatarState = .error
+            finishStreaming(status: "error")
             writePerfSnapshot("error")
 
         case .skinChanged:

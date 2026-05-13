@@ -158,7 +158,7 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
     // MARK: - Init
 
     override init() {
-        self.gatewayURL = URL(string: Constants.defaultGatewayURL)!
+        self.gatewayURL = URL(string: Constants.defaultGatewayURL) ?? URL(string: "ws://localhost:8642/v1/ws")!
         self.apiKey = ""
         super.init()
         refreshDebugSnapshot()
@@ -543,7 +543,15 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
             onLog?("→ \(method) (id=\(id))", false)
             Task { @MainActor in
                 do {
-                    try await webSocketTask.send(.string(String(data: data, encoding: .utf8)!))
+                    guard let jsonString = String(data: data, encoding: .utf8) else {
+                        log.error("call: failed to encode JSON as UTF-8 for \(method) id=\(id)")
+                        if self.removePendingRequest(id: id) != nil {
+                            self.recordDebugEvent(.error, name: method, detail: "UTF-8 encode failed id=\(id)")
+                            continuation.resume(throwing: GatewayError.invalidResponse("JSON UTF-8 encoding failed"))
+                        }
+                        return
+                    }
+                    try await webSocketTask.send(.string(jsonString))
                 } catch {
                     // Send failed — remove continuation and propagate error.
                     // Only resume if it is still pending; a fast disconnect may
@@ -1244,8 +1252,22 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
             if type != "message.delta" && type != "reasoning.delta" && type != "thinking.delta" {
                 onLog?("← event: \(type)", false)
             }
-            let payloadData = try? JSONSerialization.data(withJSONObject: params["payload"] ?? [:])
-            let payload = payloadData.flatMap { try? JSONDecoder().decode(AnyCodable.self, from: $0) }
+            let payloadData: Data
+            do {
+                payloadData = try JSONSerialization.data(withJSONObject: params["payload"] ?? [:])
+            } catch {
+                log.error("JSONSerialization failed for event payload: \(error)")
+                onLog?("⚠ Serialize failed for \(type): \(error.localizedDescription)", true)
+                return
+            }
+            let payload: AnyCodable?
+            do {
+                payload = try JSONDecoder().decode(AnyCodable.self, from: payloadData)
+            } catch {
+                log.error("JSONDecoder failed for event payload: \(error)")
+                onLog?("⚠ Decode failed for \(type): \(error.localizedDescription)", true)
+                return
+            }
             let event = GatewayEvent.from(type: type, payload: payload)
             let sessionID = params["session_id"] as? String
             recordDebugEvent(.inbound, name: type, sessionID: sessionID)
