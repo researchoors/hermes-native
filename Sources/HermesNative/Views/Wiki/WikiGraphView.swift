@@ -6,17 +6,21 @@ struct WikiGraphView: View {
     @StateObject private var viewModel = WikiGraphViewModel()
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
 
-    @State private var isDragging = false
-    @State private var draggingIndex: Int?
-    @State private var isPanning = false
-    @State private var panStart: CGPoint?
+    // MARK: - Interaction State
+
+    @State private var dragState: DragState = .idle
+    @State private var dragNodeIndex: Int?
+    @State private var panStartOffset: CGSize = .zero
+
+    private enum DragState {
+        case idle, deciding, panning, draggingNode
+    }
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation) { _ in
             Canvas { context, size in
                 let wasZero = viewModel.canvasSize == .zero
                 viewModel.canvasSize = size
-                // Defer simulation setup until we have a real canvas size.
                 if wasZero && size != .zero && viewModel.simNodes.isEmpty && !viewModel.graph.pages.isEmpty {
                     viewModel.setupSimulation()
                 }
@@ -25,7 +29,7 @@ struct WikiGraphView: View {
                 context.translateBy(x: viewModel.panOffset.width, y: viewModel.panOffset.height)
                 context.scaleBy(x: viewModel.zoom, y: viewModel.zoom)
 
-                // Draw links
+                // Links
                 for (si, ti) in viewModel.simLinks {
                     guard viewModel.simNodes.indices.contains(si),
                           viewModel.simNodes.indices.contains(ti) else { continue }
@@ -37,41 +41,33 @@ struct WikiGraphView: View {
                     context.stroke(path, with: .color(Color(hex: "7c7cff")!.opacity(0.35)), lineWidth: 1)
                 }
 
-                // Draw nodes
-                for node in viewModel.simNodes {
-                    let ellipse = CGRect(
-                        x: node.position.x - viewModel.nodeRadius(for: node.type),
-                        y: node.position.y - viewModel.nodeRadius(for: node.type),
-                        width: viewModel.nodeRadius(for: node.type) * 2,
-                        height: viewModel.nodeRadius(for: node.type) * 2
-                    )
+                // Nodes (sorted by z so labels overlap correctly)
+                let sorted = viewModel.simNodes.sorted {
+                    $0.position.y < $1.position.y
+                }
+                for node in sorted {
+                    let r = viewModel.nodeRadius(for: node.type)
+                    let ellipse = CGRect(x: node.position.x - r, y: node.position.y - r, width: r * 2, height: r * 2)
                     context.fill(Path(ellipseIn: ellipse), with: .color(viewModel.color(for: node.type)))
-                    // White stroke
                     context.stroke(Path(ellipseIn: ellipse), with: .color(.white.opacity(0.3)), lineWidth: 1)
                 }
 
-                // Draw labels (always readable, not scaled)
+                // Labels in screen space so text is crisp regardless of zoom
                 context.transform = .identity
                 for node in viewModel.simNodes {
                     let screenPos = CGPoint(
                         x: node.position.x * viewModel.zoom + viewModel.panOffset.width + 10,
                         y: node.position.y * viewModel.zoom + viewModel.panOffset.height + 4
                     )
-                    // Only draw if on screen (with some margin)
-                    if screenPos.x > -50 && screenPos.x < size.width + 50 &&
-                       screenPos.y > -20 && screenPos.y < size.height + 20 {
-                        context.draw(
-                            Text(node.label)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(Color.white.opacity(0.85)),
-                            at: screenPos,
-                            anchor: .leading
-                        )
-                    }
+                    guard screenPos.x > -50, screenPos.x < size.width + 50,
+                          screenPos.y > -20, screenPos.y < size.height + 20 else { continue }
+                    context.draw(
+                        Text(node.label).font(.system(size: 11, weight: .medium)).foregroundColor(.white.opacity(0.85)),
+                        at: screenPos, anchor: .leading
+                    )
                 }
             }
-            .gesture(dragGesture)
-            .gesture(magnificationGesture)
+            .gesture(dragGesture, including: .gesture)
         }
         .background(Theme.background)
         .overlay(alignment: .topLeading) {
@@ -106,16 +102,7 @@ struct WikiGraphView: View {
             .padding(12)
         }
         .overlay(alignment: .topTrailing) {
-            Button {
-                Task { await viewModel.load(client: gatewayClientWrapper.client) }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(Theme.secondary)
-            .padding(12)
-            .help("Refresh graph")
+            controlsOverlay
         }
         .sheet(isPresented: $viewModel.showPageDetail) {
             if let page = viewModel.selectedPage {
@@ -129,60 +116,95 @@ struct WikiGraphView: View {
         }
     }
 
-    // MARK: - Gestures
+    // MARK: - Drag / Tap Unified Gesture
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            .onChanged { drag in
-                if isDragging, let index = draggingIndex {
-                    viewModel.dragNode(index: index, to: drag.location)
-                } else if isPanning, let start = panStart {
+        DragGesture(minimumDistance: 3, coordinateSpace: .local)
+            .onChanged { value in
+                switch dragState {
+                case .idle:
+                    dragState = .deciding
+                    panStartOffset = viewModel.panOffset
+                case .deciding:
+                    let dist = hypot(value.translation.width, value.translation.height)
+                    if dist > 5 {
+                        if let idx = viewModel.hitTest(point: value.startLocation) {
+                            dragState = .draggingNode
+                            dragNodeIndex = idx
+                            viewModel.startDragging(index: idx, at: value.location)
+                        } else {
+                            dragState = .panning
+                        }
+                    }
+                case .panning:
                     viewModel.panOffset = CGSize(
-                        width: drag.location.x - start.x,
-                        height: drag.location.y - start.y
+                        width: panStartOffset.width + value.translation.width,
+                        height: panStartOffset.height + value.translation.height
                     )
-                } else {
-                    // Determine if we're hitting a node or background
-                    if let index = viewModel.hitTest(point: drag.location) {
-                        isDragging = true
-                        draggingIndex = index
-                        viewModel.startDragging(index: index, at: drag.location)
-                    } else {
-                        isPanning = true
-                        panStart = CGPoint(
-                            x: drag.location.x - viewModel.panOffset.width,
-                            y: drag.location.y - viewModel.panOffset.height
-                        )
+                case .draggingNode:
+                    if let idx = dragNodeIndex {
+                        viewModel.dragNode(index: idx, to: value.location)
                     }
                 }
             }
-            .onEnded { _ in
-                if let index = draggingIndex {
-                    viewModel.stopDragging(index: index)
+            .onEnded { value in
+                if dragState == .deciding {
+                    viewModel.handleTap(at: value.startLocation)
                 }
-                isDragging = false
-                draggingIndex = nil
-                isPanning = false
-                panStart = nil
+                if let idx = dragNodeIndex {
+                    viewModel.stopDragging(index: idx)
+                }
+                dragState = .idle
+                dragNodeIndex = nil
             }
     }
 
-    #if os(macOS)
-    private var magnificationGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { scale in
-                // Use center of view as zoom anchor
-                let center = CGPoint(x: viewModel.canvasSize.width / 2, y: viewModel.canvasSize.height / 2)
-                viewModel.zoomAtPoint(factor: scale, around: center)
+    // MARK: - Zoom Controls
+
+    @ViewBuilder
+    private var controlsOverlay: some View {
+        HStack(spacing: 6) {
+            Button {
+                let c = CGPoint(x: viewModel.canvasSize.width / 2, y: viewModel.canvasSize.height / 2)
+                viewModel.zoomAtPoint(factor: 0.8, around: c)
+            } label: {
+                Image(systemName: "minus.magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
             }
-    }
-    #else
-    private var magnificationGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { scale in
-                let center = CGPoint(x: viewModel.canvasSize.width / 2, y: viewModel.canvasSize.height / 2)
-                viewModel.zoomAtPoint(factor: scale, around: center)
+            .buttonStyle(.borderless)
+
+            Text("\(Int(viewModel.zoom * 100))%")
+                .font(.caption2.monospacedDigit())
+                .frame(minWidth: 32)
+
+            Button {
+                let c = CGPoint(x: viewModel.canvasSize.width / 2, y: viewModel.canvasSize.height / 2)
+                viewModel.zoomAtPoint(factor: 1.25, around: c)
+            } label: {
+                Image(systemName: "plus.magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
             }
+            .buttonStyle(.borderless)
+
+            Button {
+                viewModel.resetView()
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.borderless)
+
+            Divider().frame(height: 14)
+
+            Button {
+                Task { await viewModel.load(client: gatewayClientWrapper.client) }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.borderless)
+        }
+        .foregroundStyle(Theme.secondary)
+        .padding(12)
     }
-    #endif
 }
