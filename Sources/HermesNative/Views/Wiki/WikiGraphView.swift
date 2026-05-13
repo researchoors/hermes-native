@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Native force-directed wiki graph using SwiftUI Canvas + TimelineView.
-/// Adapted from rayfix/ForceDirectedGraph — pure Swift, no WebKit.
+/// Native force-directed wiki graph using SwiftUI Canvas + Timer.
+/// Shows color-coded node types, interactive selection, and neighbor highlighting.
 struct WikiGraphView: View {
     @StateObject private var viewModel = WikiGraphViewModel()
     @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
@@ -22,6 +22,95 @@ struct WikiGraphView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            HStack(spacing: 0) {
+                // Main graph canvas
+                graphCanvas
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Detail panel on the right
+                if let selIdx = viewModel.selectedNodeIndex,
+                   viewModel.simNodes.indices.contains(selIdx) {
+                    nodeDetailPanel(nodeIndex: selIdx)
+                        .frame(width: 260)
+                        .background(Theme.background)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+        }
+        .background(Theme.background)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Wiki Graph")
+                    .font(.headline)
+                    .foregroundStyle(Theme.primary)
+                Text("\(viewModel.graph.pages.count) pages · \(viewModel.graph.links.count) links")
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondary)
+            }
+            .padding(10)
+            .background(Theme.surface.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
+            .padding(12)
+        }
+        .overlay(alignment: .bottomLeading) {
+            VStack(alignment: .leading, spacing: 6) {
+                if viewModel.isLoading {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Loading…").font(.caption2)
+                    }
+                } else if let error = viewModel.error {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Theme.warning)
+                        Text(error)
+                            .font(.caption2)
+                            .lineLimit(2)
+                            .frame(maxWidth: 260, alignment: .leading)
+                    }
+                }
+
+                // Classification Legend
+                legendView
+            }
+            .padding(8)
+            .padding(12)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            // Shrunk debug overlay
+            if viewModel.error != nil || viewModel.simNodes.isEmpty {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("canvas: \(Int(viewModel.canvasSize.width))×\(Int(viewModel.canvasSize.height))")
+                    Text("pages: \(viewModel.graph.pages.count)")
+                    Text("nodes: \(viewModel.simNodes.count)")
+                    Text("error: \(viewModel.error ?? "nil")")
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(Color.red)
+                .padding(6)
+                .background(Color.black.opacity(0.7))
+                .cornerRadius(6)
+                .padding(12)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            controlsOverlay
+        }
+        .sheet(isPresented: $viewModel.showPageDetail) {
+            if let page = viewModel.selectedPage {
+                WikiPageDetailView(page: page, viewModel: viewModel)
+                    .frame(minWidth: 560, minHeight: 620)
+            }
+        }
+        .onAppear {
+            Task { await viewModel.load(client: gatewayClientWrapper.client) }
+        }
+    }
+
+    // MARK: - Graph Canvas
+
+    private var graphCanvas: some View {
+        GeometryReader { geometry in
             Canvas { context, size in
                 let wasZero = viewModel.canvasSize == .zero
                 viewModel.canvasSize = size
@@ -30,6 +119,8 @@ struct WikiGraphView: View {
                 }
                 viewModel.tick()
 
+                let hasSelection = viewModel.selectedNodeIndex != nil
+
                 context.translateBy(x: viewModel.panOffset.width, y: viewModel.panOffset.height)
                 context.scaleBy(x: viewModel.zoom, y: viewModel.zoom)
 
@@ -37,28 +128,68 @@ struct WikiGraphView: View {
                 for (si, ti) in viewModel.simLinks {
                     guard viewModel.simNodes.indices.contains(si),
                           viewModel.simNodes.indices.contains(ti) else { continue }
+
+                    let isConnected = !hasSelection || viewModel.linkIsConnectedToSelection(si, ti)
+                    let opacity: CGFloat = isConnected ? 0.5 : 0.08
+                    let lineWidth: CGFloat = isConnected ? 1.5 : 0.5
+                    let color = isConnected
+                        ? Color(hex: "7c7cff")!.opacity(opacity)
+                        : Theme.secondary.opacity(opacity)
+
                     let sp = viewModel.simNodes[si].position
                     let tp = viewModel.simNodes[ti].position
                     var path = Path()
                     path.move(to: sp)
                     path.addLine(to: tp)
-                    context.stroke(path, with: .color(Color(hex: "7c7cff")!.opacity(0.35)), lineWidth: 1)
+                    context.stroke(path, with: .color(color), lineWidth: lineWidth)
+
+                    // Relationship label near midpoint when selected
+                    if isConnected, hasSelection, viewModel.simNodes.indices.contains(si), viewModel.simNodes.indices.contains(ti) {
+                        let mid = CGPoint(x: (sp.x + tp.x) / 2, y: (sp.y + tp.y) / 2)
+                        let source = viewModel.simNodes[si]
+                        let target = viewModel.simNodes[ti]
+                        var labelText = "links to"
+                        if viewModel.simNodes[si].id == viewModel.simNodes[viewModel.selectedNodeIndex!].id {
+                            labelText = "→ \(target.label)"
+                        } else {
+                            labelText = "← \(source.label)"
+                        }
+                        context.draw(
+                            Text(labelText)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(Color(hex: "7c7cff")!.opacity(0.7)),
+                            at: mid,
+                            anchor: .center
+                        )
+                    }
                 }
 
                 // Nodes (sorted by z so labels overlap correctly)
-                let sorted = viewModel.simNodes.sorted {
-                    $0.position.y < $1.position.y
+                let sorted = viewModel.simNodes.enumerated().sorted { (a, b) in
+                    a.element.position.y < b.element.position.y
                 }
-                for node in sorted {
+                for (index, node) in sorted {
+                    let isSelected = viewModel.selectedNodeIndex == index
+                    let isConnected = !hasSelection || viewModel.isNodeConnectedToSelection(index)
+                    let baseOpacity = isConnected ? 1.0 : 0.2
                     let r = viewModel.nodeRadius(for: node.type)
                     let ellipse = CGRect(x: node.position.x - r, y: node.position.y - r, width: r * 2, height: r * 2)
-                    context.fill(Path(ellipseIn: ellipse), with: .color(viewModel.color(for: node.type)))
-                    context.stroke(Path(ellipseIn: ellipse), with: .color(.white.opacity(0.3)), lineWidth: 1)
+
+                    // Selection ring
+                    if isSelected {
+                        let ringRect = CGRect(x: node.position.x - r - 4, y: node.position.y - r - 4, width: r * 2 + 8, height: r * 2 + 8)
+                        context.fill(Path(ellipseIn: ringRect), with: .color(.white.opacity(0.3)))
+                    }
+
+                    context.fill(Path(ellipseIn: ellipse), with: .color(viewModel.color(for: node.type).opacity(baseOpacity)))
+                    context.stroke(Path(ellipseIn: ellipse), with: .color(.white.opacity(isSelected ? 0.8 : 0.3)))
                 }
 
                 // Labels in screen space so text is crisp regardless of zoom
                 context.transform = .identity
-                for node in viewModel.simNodes {
+                for (index, node) in viewModel.simNodes.enumerated() {
+                    let isConnected = !hasSelection || viewModel.isNodeConnectedToSelection(index)
+                    guard isConnected else { continue }
                     let screenPos = CGPoint(
                         x: node.position.x * viewModel.zoom + viewModel.panOffset.width + 10,
                         y: node.position.y * viewModel.zoom + viewModel.panOffset.height + 4
@@ -76,67 +207,141 @@ struct WikiGraphView: View {
                 frameID = UUID()
             }
         }
-        .background(Theme.background)
-        .overlay(alignment: .topLeading) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Wiki Graph")
+    }
+
+    // MARK: - Node Detail Panel
+
+    @ViewBuilder
+    private func nodeDetailPanel(nodeIndex: Int) -> some View {
+        let node = viewModel.simNodes[nodeIndex]
+        let neighbors = viewModel.selectedNodeNeighbors()
+        let page = viewModel.graph.pages.first(where: { $0.id == node.id })
+
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack {
+                Text(node.label)
                     .font(.headline)
                     .foregroundStyle(Theme.primary)
-                Text("\(viewModel.graph.pages.count) pages · \(viewModel.graph.links.count) links")
+                    .lineLimit(2)
+                Spacer()
+                Button {
+                    viewModel.deselectNode()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.secondary)
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+
+            // Type pill
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(viewModel.color(for: node.type))
+                    .frame(width: 8, height: 8)
+                Text(node.type.capitalized)
                     .font(.caption)
                     .foregroundStyle(Theme.secondary)
             }
-            .padding(10)
-            .background(Theme.surface.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
-            .padding(12)
-        }
-        .overlay(alignment: .bottomLeading) {
-            HStack(spacing: 6) {
-                if viewModel.isLoading {
-                    ProgressView().controlSize(.small)
-                    Text("Loading…").font(.caption2)
-                } else if let error = viewModel.error {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Theme.warning)
-                    Text(error)
-                        .font(.caption2)
-                        .lineLimit(2)
-                        .frame(maxWidth: 280, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
+
+            Divider()
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+
+            // Stats
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Connected to \(neighbors.count) page(s)")
+                    .font(.caption)
+                    .foregroundStyle(Theme.primary)
+
+                if let page = page {
+                    if !page.tags.isEmpty {
+                        FlowLayout(spacing: 6) {
+                            ForEach(page.tags, id: \.self) { tag in
+                                Text(tag)
+                                    .font(.caption2)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(Theme.surface, in: Capsule())
+                                    .foregroundStyle(Theme.secondary)
+                            }
+                        }
+                    }
+
+                    if let confidence = page.confidence, !confidence.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.shield")
+                                .font(.caption2)
+                            Text("Confidence: \(confidence)")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(Theme.secondary)
+                    }
+
+                    if page.contested {
+                        Label("Contested", systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(Theme.warning)
+                    }
                 }
             }
-            .foregroundStyle(Theme.secondary)
-            .padding(8)
-            .padding(12)
-        }
-        .overlay(alignment: .bottomTrailing) {
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("canvas: \(Int(viewModel.canvasSize.width))×\(Int(viewModel.canvasSize.height))")
-                Text("pages: \(viewModel.graph.pages.count)")
-                Text("nodes: \(viewModel.simNodes.count)")
-                Text("links: \(viewModel.simLinks.count)")
-                Text("loading: \(viewModel.isLoading)")
-                Text("error: \(viewModel.error ?? "nil")")
-                Text("zoom: \(String(format: "%.2f", viewModel.zoom))")
-                Text("pan: \(Int(viewModel.panOffset.width)), \(Int(viewModel.panOffset.height))")
-            }
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(Color.red)
-            .padding(8)
-            .background(Color.black.opacity(0.7))
-            .cornerRadius(6)
-            .padding(12)
-        }
-        .overlay(alignment: .topTrailing) {
-            controlsOverlay
-        }
-        .sheet(isPresented: $viewModel.showPageDetail) {
-            if let page = viewModel.selectedPage {
-                WikiPageDetailView(page: page, viewModel: viewModel)
-                    .frame(minWidth: 560, minHeight: 620)
+            .padding(.horizontal, 14)
+
+            Spacer()
+
+            // Open detail button
+            if page != nil {
+                Button {
+                    viewModel.selectedPage = page
+                    viewModel.showPageDetail = true
+                } label: {
+                    Label("Open Page Detail", systemImage: "arrow.up.right.square")
+                        .font(.subheadline.weight(.medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .onAppear {
-            Task { await viewModel.load(client: gatewayClientWrapper.client) }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    // MARK: - Legend
+
+    @ViewBuilder
+    private var legendView: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Node Types")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Theme.secondary)
+
+            legendRow(color: "#7c7cff", label: "Entity", description: "things, people, tools")
+            legendRow(color: "#5cb85c", label: "Concept", description: "ideas, patterns, abstractions")
+            legendRow(color: "#e8a838", label: "Comparison", description: "contrasts, benchmarks, trade-offs")
+            legendRow(color: "#ff6b9d", label: "Query", description: "questions, hypotheses, todos")
+            legendRow(color: "#888888", label: "Raw", description: "unstructured notes")
+        }
+        .padding(8)
+        .background(Theme.surface.opacity(0.82), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private func legendRow(color hex: String, label: String, description: String) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color(hex: hex)!)
+                .frame(width: 7, height: 7)
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(Theme.primary)
+            Text("- \(description)")
+                .font(.caption2)
+                .foregroundStyle(Theme.secondary)
         }
     }
 
