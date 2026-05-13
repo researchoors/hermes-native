@@ -919,11 +919,11 @@ final class ChatViewModel: ObservableObject {
 
     private func scheduleVisibleEventFlush() {
         guard pendingVisibleEventFlush == nil else { return }
-        pendingVisibleEventFlush = Task { @MainActor in
+        pendingVisibleEventFlush = Task {
             do {
                 try await Task.sleep(nanoseconds: 500_000_000)
-            } catch is CancellationError {
-                return
+            } catch {
+                if error is CancellationError { return }
             }
             guard !Task.isCancelled else { return }
             flushPendingVisibleEventDeltas()

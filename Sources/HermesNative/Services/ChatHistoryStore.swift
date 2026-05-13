@@ -59,8 +59,8 @@ final class ChatHistoryStore {
     /// Delete local history for a session.
     func deleteMessages(forSession sessionID: String) {
         let file = sessionsDir.appendingPathComponent("\(sessionID).json")
-        Task.detached(priority: .background) {
-            try? fileManager.removeItem(at: file)
+        Task.detached(priority: .background) { [file] in
+            try? FileManager.default.removeItem(at: file)
         }
     }
 

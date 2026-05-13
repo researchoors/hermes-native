@@ -98,6 +98,7 @@ struct CronListView: View {
         .padding(.vertical, 40)
     }
 
+    @ViewBuilder
     private func cronActions(for job: CronJob) -> some View {
         pauseResumeButton(for: job)
         Divider()
