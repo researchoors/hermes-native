@@ -7,6 +7,7 @@ struct SkillsView: View {
     @State private var searchDebounceTask: Task<Void, Never>?
     @State private var confirmUninstall: String?
     @State private var showDiagnostics = false
+    @State private var editingSkill: SkillContent? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -30,6 +31,22 @@ struct SkillsView: View {
             .refreshable { await viewModel.reload() }
         }
         .background(Theme.background)
+        .sheet(item: $editingSkill) { content in
+            SkillEditorSheet(
+                content: content,
+                onSave: { newContent in
+                    Task {
+                        do {
+                            try await viewModel.saveSkill(id: content.skill.id, content: newContent)
+                            editingSkill = nil
+                        } catch {
+                            viewModel.errorMessage = error.localizedDescription
+                        }
+                    }
+                },
+                onCancel: { editingSkill = nil }
+            )
+        }
         .task(id: gatewayClientWrapper.isConnected) {
             viewModel.setGatewayClient(gatewayClientWrapper.client)
             if gatewayClientWrapper.isConnected {
@@ -338,6 +355,8 @@ private struct SkillCard: View {
     let onUninstall: () -> Void
     let onCancelUninstall: () -> Void
 
+    let onEdit: () -> Void
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             headerRow
@@ -377,6 +396,16 @@ private struct SkillCard: View {
                     }
                     detailRow("Source", value: skill.source)
                     detailRow("Command", value: skill.slashCommand)
+                    if !(skill.skillMdPreview?.isEmpty ?? true) {
+                        Button {
+                            onEdit()
+                        } label: {
+                            Label(skill.skillMdPath != nil ? "Edit SKILL.md" : "Edit", systemImage: "pencil")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
                     uninstallButton
                 }
                 .padding(.top, 8)
@@ -550,5 +579,48 @@ private struct HubResultRow: View {
         }
         .padding(8)
         .background(Theme.background, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+// MARK: - Skill Editor Sheet
+
+private struct SkillEditorSheet: View {
+    let content: SkillContent
+    let onSave: (String) -> Void
+    let onCancel: () -> Void
+
+    @State private var text: String = ""
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                TextEditor(text: $text)
+                    .font(.system(.body, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.background)
+                    .padding(8)
+            }
+            .background(Theme.background)
+            .navigationTitle(content.filePath)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                        .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        isSaving = true
+                        onSave(text)
+                    }
+                    .disabled(text == content.content || isSaving)
+                }
+            }
+        }
+        .frame(minWidth: 600, minHeight: 500)
+        .onAppear { text = content.content }
     }
 }

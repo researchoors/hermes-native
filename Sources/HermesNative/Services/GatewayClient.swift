@@ -933,6 +933,47 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
         return SkillsReloadResult(output: output, added: added, removed: removed, total: total)
     }
 
+
+    // MARK: - Skill Content RPCs
+
+    func getSkill(id: String, filePath: String? = nil) async throws -> SkillContent {
+        var params: [String: AnyCodable] = ["skill_id": AnyCodable(id)]
+        if let fp = filePath {
+            params["file_path"] = AnyCodable(fp)
+        }
+        let response = try await call("skills.get", params: params)
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let result = response.result?.dictionaryValue else {
+            throw GatewayError.invalidResponse("missing result")
+        }
+        let skillDict = result["skill"]?.dictionaryValue ?? [:]
+        guard let skill = SkillInfo.fromInspectDict(skillDict) else {
+            throw GatewayError.invalidResponse("missing skill info")
+        }
+        return SkillContent(
+            skill: skill,
+            filePath: result["file_path"]?.stringValue ?? "SKILL.md",
+            content: result["content"]?.stringValue ?? "",
+            readOnly: result["read_only"]?.boolValue ?? true
+        )
+    }
+
+    func updateSkill(id: String, content: String) async throws -> SkillInfo {
+        let response = try await call("skills.update", params: [
+            "skill_id": AnyCodable(id),
+            "content": AnyCodable(content)
+        ])
+        if let error = response.error {
+            throw GatewayError.rpcError(JSONRPCError(code: error.code, message: error.message))
+        }
+        guard let skillDict = response.result?.dictionaryValue?["skill"]?.dictionaryValue,
+              let skill = SkillInfo.fromInspectDict(skillDict) else {
+            throw GatewayError.invalidResponse("missing skill info")
+        }
+        return skill
+    }
     // MARK: - Activity Inbox RPCs
 
     func listActivityItems(limit: Int = 100, includeRead: Bool = true, includeDismissed: Bool = false) async throws -> [ActivityItem] {

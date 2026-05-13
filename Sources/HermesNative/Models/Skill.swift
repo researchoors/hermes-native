@@ -33,11 +33,11 @@ struct SkillInfo: Identifiable, Equatable {
         return SkillInfo(
             name: name,
             description: d["description"]?.stringValue ?? "",
-            category: "general",
+            category: d["category"]?.stringValue ?? "general",
             source: d["source"]?.stringValue ?? "local",
-            identifier: d["identifier"]?.stringValue,
+            identifier: d["id"]?.stringValue ?? d["identifier"]?.stringValue,
             tags: d["tags"]?.arrayValue?.map { $0.stringValue ?? "" } ?? [],
-            skillMdPath: nil,
+            skillMdPath: d["path"]?.stringValue,
             skillDir: nil,
             skillMdPreview: d["skill_md_preview"]?.stringValue,
             slashCommand: "/\(name.lowercased().replacingOccurrences(of: " ", with: "-"))"
@@ -64,4 +64,12 @@ struct SkillsReloadResult {
     var added: [String]
     var removed: [String]
     var total: Int
+}
+
+struct SkillContent: Identifiable, Equatable {
+    var id: String { skill.id }
+    var skill: SkillInfo
+    var filePath: String
+    var content: String
+    var readOnly: Bool
 }

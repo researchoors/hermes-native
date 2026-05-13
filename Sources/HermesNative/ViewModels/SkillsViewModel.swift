@@ -92,7 +92,16 @@ final class SkillsViewModel {
     private func inspectSkills(_ client: GatewayClient, names: [String]) async -> [String: SkillInfo] {
         await withTaskGroup(of: (String, SkillInfo?).self) { group in
             for name in names {
-                group.addTask { (name, try? await client.inspectSkill(name: name)) }
+                group.addTask {
+                    do {
+                        let content = try await client.getSkill(id: name)
+                        var info = content.skill
+                        info.skillMdPreview = content.content
+                        return (name, info)
+                    } catch {
+                        return (name, nil)
+                    }
+                }
             }
             var result: [String: SkillInfo] = [:]
             for await (name, info) in group {
@@ -158,6 +167,14 @@ final class SkillsViewModel {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    func saveSkill(id: String, content: String) async throws {
+        guard let client = gatewayClient else {
+            throw GatewayError.notConnected
+        }
+        _ = try await client.updateSkill(id: id, content: content)
+        await refresh()
     }
 
     enum DiagnosticTest {
