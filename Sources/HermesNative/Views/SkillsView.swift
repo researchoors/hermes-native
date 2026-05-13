@@ -34,10 +34,13 @@ struct SkillsView: View {
         .task(id: gatewayClientWrapper.isConnected) {
             viewModel.setGatewayClient(gatewayClientWrapper.client)
             guard gatewayClientWrapper.isConnected else { return }
+            // If we have no cached skills yet, do an eager refresh with spinner.
             if viewModel.skills.isEmpty {
                 await viewModel.refresh()
                 return
             }
+            // Otherwise silently refresh in background so the UI never
+            // flashes a loading state when the user toggles back to Skills.
             if SkillCache.age == nil || SkillCache.age! > 30 {
                 await viewModel.refresh()
             }
@@ -370,16 +373,14 @@ private struct SkillCard: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if skill.skillMdPreview != nil || skill.skillMdFullContent != nil {
-                        Button {
-                            onViewMarkdown()
-                        } label: {
-                            Label("View Markdown", systemImage: "doc.text")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                    Button {
+                        onViewMarkdown()
+                    } label: {
+                        Label("Edit Markdown", systemImage: "doc.text")
+                            .font(.caption)
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                     if let path = skill.skillMdPath {
                         detailRow("Path", value: path)
                     }
@@ -531,9 +532,7 @@ private struct SkillMarkdownSheet: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var saveError: String?
-    @State private var loadError: String?
     @State private var hasChanges = false
-    @State private var isEditing = false
 
     var body: some View {
         NavigationStack {
@@ -552,59 +551,13 @@ private struct SkillMarkdownSheet: View {
                     .background(Color.red.opacity(0.06))
                 }
 
-                if isLoading {
-                    Spacer()
-                    ProgressView("Loading markdown…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    Spacer()
-                } else if let loadError {
-                    VStack(spacing: 12) {
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(.system(size: 32))
-                            .foregroundStyle(Theme.tertiary)
-                        Text("Could not load markdown")
-                            .font(.headline)
-                            .foregroundStyle(Theme.secondary)
-                        Text(loadError)
-                            .font(.caption)
-                            .foregroundStyle(Theme.tertiary)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: 320)
-                        Button("Retry") {
-                            Task { await loadMarkdown() }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                TextEditor(text: $content)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(Theme.primary)
+                    .padding(8)
+                    .onChange(of: content) { _, _ in
+                        hasChanges = true
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if content.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 32))
-                            .foregroundStyle(Theme.tertiary)
-                        Text("No markdown content")
-                            .font(.headline)
-                            .foregroundStyle(Theme.secondary)
-                        Text("This skill does not have a SKILL.md file.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.tertiary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if isEditing {
-                    TextEditor(text: $content)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(Theme.primary)
-                        .padding(8)
-                        .onChange(of: content) { _, _ in
-                            hasChanges = true
-                        }
-                } else {
-                    ScrollView {
-                        MarkdownContentView(text: content)
-                            .padding(16)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
 
                 if isSaving {
                     ProgressView("Saving…")
@@ -612,78 +565,48 @@ private struct SkillMarkdownSheet: View {
                 }
             }
             .background(Theme.background)
-            .navigationTitle(skill.name)
+            .navigationTitle("\(skill.name) — Markdown")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button("Close") {
+                        dismiss()
+                    }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    HStack(spacing: 8) {
-                        if !content.isEmpty {
-                            Button {
-                                withAnimation { isEditing.toggle() }
-                            } label: {
-                                Label(isEditing ? "Preview" : "Edit",
-                                      systemImage: isEditing ? "doc.text.viewfinder" : "pencil")
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Save") {
+                        Task {
+                            isSaving = true
+                            saveError = nil
+                            let success = await viewModel.saveSkillMarkdown(
+                                name: skill.name,
+                                content: content
+                            )
+                            isSaving = false
+                            if success {
+                                hasChanges = false
+                                dismiss()
+                            } else {
+                                saveError = "Failed to save. Check connection and try again."
                             }
-                            .buttonStyle(.borderless)
-                        }
-                        if isEditing {
-                            Button("Save") {
-                                Task { await saveMarkdown() }
-                            }
-                            .disabled(!hasChanges || isSaving)
                         }
                     }
+                    .disabled(!hasChanges || isSaving)
                 }
             }
         }
-        .frame(minWidth: 600, minHeight: 500)
         .background(Theme.background)
         .task {
-            await loadMarkdown()
-        }
-    }
-
-    private func loadMarkdown() async {
-        isLoading = true
-        loadError = nil
-
-        if let cached = skill.skillMdFullContent, !cached.isEmpty {
-            content = cached
+            isLoading = true
+            if let cached = skill.skillMdFullContent {
+                content = cached
+            } else if let preview = skill.skillMdPreview {
+                content = preview
+            }
+            if let fetched = await viewModel.readSkillMarkdown(name: skill.name), !fetched.isEmpty {
+                content = fetched
+                hasChanges = false
+            }
             isLoading = false
-            return
-        }
-        if let preview = skill.skillMdPreview, !preview.isEmpty {
-            content = preview
-        }
-
-        guard let fetched = await viewModel.readSkillMarkdown(name: skill.name) else {
-            loadError = "Gateway returned no content. The skill may not have a SKILL.md file."
-            isLoading = false
-            return
-        }
-        if fetched.isEmpty {
-            loadError = "Gateway returned empty content. The skill may not have a SKILL.md file."
-            isLoading = false
-            return
-        }
-
-        content = fetched
-        hasChanges = false
-        isLoading = false
-    }
-
-    private func saveMarkdown() async {
-        isSaving = true
-        saveError = nil
-        let success = await viewModel.saveSkillMarkdown(name: skill.name, content: content)
-        isSaving = false
-        if success {
-            hasChanges = false
-            isEditing = false
-        } else {
-            saveError = "Failed to save. Check connection and try again."
         }
     }
 }
