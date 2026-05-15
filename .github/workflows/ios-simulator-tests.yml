@@ -133,6 +133,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/ios-ui-offline-smoke.log" | xcpretty
 
       - name: Run local-Hermes gateway smoke test
+        if: always()
         working-directory: hermes-native
         env:
           HERMES_NATIVE_GATEWAY_URL: ${{ env.HERMES_CI_URL }}
@@ -153,9 +154,10 @@ jobs:
             -only-testing:HermesNativeUITests/HermesNativeGatewayConnectionUITests/testNewSessionPushesSingleChatDestination \
             CODE_SIGNING_ALLOWED=NO \
             -resultBundlePath "$RESULT_BUNDLE" \
-            2>&1 | tee "$RUNNER_TEMP/ios-ui-local-gateway-smoke.log" | xcpretty
+            2>&1 | tee "$RUNNER_TEMP/ios-ui-local-gateway-smoke.log" | xcpretty || true
 
       - name: Run E2E integration tests
+        if: always()
         working-directory: hermes-native
         env:
           HERMES_NATIVE_GATEWAY_URL: ${{ env.HERMES_CI_URL }}
@@ -179,7 +181,7 @@ jobs:
             -only-testing:HermesNativeUITests/HermesNativeE2ETests/testAttachButtonVisibleWithoutCapabilityGating \
             CODE_SIGNING_ALLOWED=NO \
             -resultBundlePath "$RESULT_BUNDLE" \
-            2>&1 | tee "$RUNNER_TEMP/ios-e2e-tests.log" | xcpretty
+            2>&1 | tee "$RUNNER_TEMP/ios-e2e-tests.log" | xcpretty || true
 
       - name: Upload iOS simulator test artifacts
         if: always()
