@@ -116,6 +116,7 @@
 		95006EACD8FAE6B2373C7E9D /* GatewayDebugSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0648368C04972EB1614B4374 /* GatewayDebugSnapshot.swift */; };
 		95678EA6F547C8AB0F9ED9B8 /* SessionRunEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7FF38A450D5792CD5FBD622 /* SessionRunEvent.swift */; };
 		96AE5EBED2A3EE2AA17626F9 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B2F649BE0F12B966FAF6C47 /* Extensions.swift */; };
+		982CDFF6ACCAF4EF8B9FCAA9 /* HermesNativeE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03F119AA20F2FA922F50012C /* HermesNativeE2ETests.swift */; };
 		9B4FAE7AD46C36480B9C7D2A /* SkillGraph3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D003F1AD32BA1637BC7C1C2 /* SkillGraph3DView.swift */; };
 		9BEF3885B4A263FBDAC9F1B3 /* AttachmentChipView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93ABC37DAEF78165B9F9173C /* AttachmentChipView.swift */; };
 		9D77260B5C0167683494801A /* ThumbnailImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CCAEA30C82BE9DEAAB6E59F /* ThumbnailImageView.swift */; };
@@ -204,6 +205,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		03F119AA20F2FA922F50012C /* HermesNativeE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesNativeE2ETests.swift; sourceTree = "<group>"; };
 		04413B7162C8D0EAA432920E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		0648368C04972EB1614B4374 /* GatewayDebugSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayDebugSnapshot.swift; sourceTree = "<group>"; };
 		0929E0C0571B4C1249D20DAC /* SkillsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsViewModel.swift; sourceTree = "<group>"; };
@@ -511,6 +513,7 @@
 		D087157DF3D83C65A7057EC9 /* HermesNativeUITests */ = {
 			isa = PBXGroup;
 			children = (
+				03F119AA20F2FA922F50012C /* HermesNativeE2ETests.swift */,
 				6C633B4D795C9824FB4B54E5 /* HermesNativeGatewayConnectionUITests.swift */,
 				968F70307942ABE375AE4CC9 /* HermesNativeOfflineSmokeUITests.swift */,
 				FE1B098714AA8CADED2118F6 /* HermesNativeSmokeUITests.swift */,
@@ -797,6 +800,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				982CDFF6ACCAF4EF8B9FCAA9 /* HermesNativeE2ETests.swift in Sources */,
 				0A5ED4D2B4B0DA8E1883CA48 /* HermesNativeGatewayConnectionUITests.swift in Sources */,
 				CD36367200E4AC47BEF6E9D4 /* HermesNativeOfflineSmokeUITests.swift in Sources */,
 				949710C0980DCAAF18C1BD89 /* HermesNativeSmokeUITests.swift in Sources */,
