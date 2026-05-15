@@ -695,48 +695,47 @@ struct ChatInputBar: View {
 
     // MARK: - Attach Button
 
-    @ViewBuilder
     private var attachButton: some View {
-        if capabilitiesStore.hasImageInput || capabilitiesStore.hasACPImagePrompts {
-            #if os(macOS)
-            Button {
-                showMacFilePicker()
-            } label: {
-                Image(systemName: "photo.badge.plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(Theme.surfaceHover, in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Attach image")
-            .help("Attach an image to your message")
-            #else
-            Menu {
-                PhotosPicker(
-                    "Photo Library",
-                    selection: $selectedPhotosPickerItems,
-                    maxSelectionCount: 5,
-                    matching: .images
-                )
-                Button("Choose File") {
-                    showiOSDocumentPicker()
-                }
-            } label: {
-                Image(systemName: "photo.badge.plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(Theme.surfaceHover, in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Attach image")
-            .onChange(of: selectedPhotosPickerItems) { _, newItems in
-                handlePhotosPickerItems(newItems)
-                selectedPhotosPickerItems = []
-            }
-            #endif
+        #if os(macOS)
+        Button {
+            showMacFilePicker()
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.secondary)
+                .frame(width: 28, height: 28)
+                .background(Theme.surfaceHover, in: Circle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Attach file")
+        .accessibilityIdentifier("attachFileButton")
+        .help("Attach a file to your message")
+        #else
+        Menu {
+            PhotosPicker(
+                "Photo Library",
+                selection: $selectedPhotosPickerItems,
+                maxSelectionCount: 5,
+                matching: .images
+            )
+            Button("Choose File") {
+                showiOSDocumentPicker()
+            }
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.secondary)
+                .frame(width: 28, height: 28)
+                .background(Theme.surfaceHover, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Attach file")
+        .accessibilityIdentifier("attachFileButton")
+        .onChange(of: selectedPhotosPickerItems) { _, newItems in
+            handlePhotosPickerItems(newItems)
+            selectedPhotosPickerItems = []
+        }
+        #endif
     }
 
     // MARK: - Input Field
@@ -788,8 +787,8 @@ struct ChatInputBar: View {
     #if os(macOS)
     private func showMacFilePicker() {
         let panel = NSOpenPanel()
-        panel.title = "Select Images"
-        panel.allowedContentTypes = [.image]
+        panel.title = "Select Files"
+        panel.allowedContentTypes = [.item]
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
@@ -811,7 +810,7 @@ struct ChatInputBar: View {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let rootVC = scene.windows.first?.rootViewController else { return }
 
-        let docPicker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
+        let docPicker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
         docPicker.allowsMultipleSelection = true
         docPicker.delegate = DocumentPickerDelegate.shared
 
