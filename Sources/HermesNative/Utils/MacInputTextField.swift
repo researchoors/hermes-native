@@ -41,6 +41,8 @@ struct MacInputTextField: NSViewRepresentable {
         tv.setAccessibilityIdentifier("chatInput")
         tv.isRichText = false
         tv.allowsUndo = true
+        tv.drawsBackground = false
+        tv.backgroundColor = .clear
         tv.textContainerInset = NSSize(width: 4, height: 4)
         tv.textContainer?.lineFragmentPadding = 2
         tv.autoresizingMask = .none

@@ -674,22 +674,16 @@ struct ChatInputBar: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
-            .frame(maxWidth: 760)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Theme.border.opacity(0.9), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 8)
-            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .background {
-                MacScrollViewIntrospection()
-                    .frame(width: 0, height: 0)
-                    .allowsHitTesting(false)
-            }
-            .onDrop(of: [.image, .fileURL], isTargeted: nil) { providers in
-                handleDrop(providers: providers)
-            }
+        }
+        .frame(maxWidth: 760)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Theme.border.opacity(0.9), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 8)
+        .onDrop(of: [.image, .fileURL], isTargeted: nil) { providers in
+            handleDrop(providers: providers)
         }
         #else
         VStack(spacing: 0) {
