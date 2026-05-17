@@ -152,6 +152,8 @@ final class SkillCache {
 
     // MARK: - Private
 
+    /// Lightweight load: just fetch skill names/categories from gateway.
+    /// Full metadata (description, tags, md preview) is fetched lazily on expand.
     private func load(cached: Bool, client: GatewayClient) async {
         if !cached { isLoading = true }
         errorMessage = nil
@@ -162,63 +164,53 @@ final class SkillCache {
 
             var allSkills: [SkillInfo] = []
 
-            if !categoriesDict.isEmpty {
-                for (category, names) in categoriesDict {
-                    for name in names {
-                        let slashCmd = "/\(name.lowercased().replacingOccurrences(of: " ", with: "-"))"
-                        allSkills.append(SkillInfo(
-                            name: name, description: "", category: category,
-                            source: "local", identifier: nil, tags: [],
-                            skillMdPath: nil, skillDir: nil, skillMdPreview: nil,
-                            skillMdFullContent: nil, slashCommand: slashCmd
-                        ))
-                    }
+            for (category, names) in categoriesDict {
+                for name in names {
+                    let slashCmd = "/\(name.lowercased().replacingOccurrences(of: " ", with: "-"))"
+                    allSkills.append(SkillInfo(
+                        name: name, description: "", category: category,
+                        source: "local", identifier: nil, tags: [],
+                        skillMdPath: nil, skillDir: nil, skillMdPreview: nil,
+                        skillMdFullContent: nil, slashCommand: slashCmd
+                    ))
                 }
-            } else {
+            }
+
+            if allSkills.isEmpty {
+                // Fallback: try scanning slash commands
                 let commands = (try? await client.scanSkillCommands()) ?? []
-                log.info("SkillCache.load scan → \(commands.count) commands")
-                allSkills = commands
+                if !commands.isEmpty {
+                    log.info("SkillCache.load scan → \(commands.count) commands")
+                    allSkills = commands
+                }
             }
 
-            // Parallel inspect
-            let inspected = await withTaskGroup(of: (String, SkillInfo?).self) { group in
-                for skill in allSkills {
-                    group.addTask { (skill.name, try? await client.inspectSkill(name: skill.name)) }
-                }
-                var result: [String: SkillInfo] = [:]
-                for await (name, info) in group { result[name] = info }
-                return result
+            // Preserve any lazy-loaded content from existing skills
+            var oldContent: [String: (description: String, tags: [String], source: String,
+                                      skillMdPreview: String?, skillMdFullContent: String?)] = [:]
+            for s in self.skills {
+                oldContent[s.name] = (s.description, s.tags, s.source, s.skillMdPreview, s.skillMdFullContent)
             }
 
-            // Merge: preserve lazy-loaded content, update metadata
-            if cached {
-                // Diff-merge: update existing, add new, remove stale
-                var newMap = Dictionary(uniqueKeysWithValues: allSkills.map { ($0.id, $0) })
-                var merged: [SkillInfo] = []
-                for i in self.skills.indices {
-                    var s = self.skills[i]
-                    if let fresh = newMap.removeValue(forKey: s.id) {
-                        s.category = fresh.category
-                        // Preserve content we already fetched
-                        merged.append(s)
-                    } // else: stale, drop it
+            for i in allSkills.indices {
+                let name = allSkills[i].name
+                if let existing = oldContent[name] {
+                    allSkills[i].description = existing.description
+                    allSkills[i].tags = existing.tags
+                    allSkills[i].source = existing.source
+                    allSkills[i].skillMdPreview = existing.skillMdPreview
+                    allSkills[i].skillMdFullContent = existing.skillMdFullContent
                 }
-                merged.append(contentsOf: newMap.values.map { $0 }) // new skills
-                self.skills = merged.sorted { $0.name.lowercased() < $1.name.lowercased() }
-            } else {
-                for i in allSkills.indices {
-                    if let detail = inspected[allSkills[i].name] {
-                        allSkills[i].description = detail.description
-                        allSkills[i].skillMdPreview = detail.skillMdPreview
-                        allSkills[i].tags = detail.tags
-                        allSkills[i].source = detail.source
-                    }
-                }
-                self.skills = allSkills.sorted { $0.name.lowercased() < $1.name.lowercased() }
             }
 
-            lastUpdated = Date()
-            log.info("SkillCache.load done: \(self.skills.count) skills")
+            self.skills = allSkills.sorted { $0.name.lowercased() < $1.name.lowercased() }
+            log.info("SkillCache.load done: \(self.skills.count) skills (metadata lazy)")
+
+            // Only persist to disk if we actually got data
+            if !allSkills.isEmpty {
+                let dict = Dictionary(grouping: allSkills) { $0.category }
+                SkillCacheDisk.save(categories: dict)
+            }
         } catch {
             log.error("SkillCache.load error: \(error.localizedDescription)")
             if !cached { errorMessage = error.localizedDescription }

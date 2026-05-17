@@ -149,7 +149,6 @@ final class SkillsViewModel {
         diagnosticResult = output
     }
 
-    /// Load full markdown content for a skill on demand.
     func readSkillMarkdown(name: String) async -> String? {
         guard let client = gatewayClient else { return nil }
         do {
@@ -157,6 +156,30 @@ final class SkillsViewModel {
         } catch {
             log.error("readSkillMarkdown failed: \(error.localizedDescription)")
             return nil
+        }
+    }
+
+    /// Lazily fetch skill metadata (description, tags, md preview) on expand.
+    func inspectSkill(name: String) async {
+        guard let client = gatewayClient else { return }
+        // Check if we already have metadata
+        if let idx = SkillCache.shared.skills.firstIndex(where: { $0.name == name }),
+           !SkillCache.shared.skills[idx].description.isEmpty {
+            return
+        }
+        do {
+            if let detail = try await client.inspectSkill(name: name) {
+                await MainActor.run {
+                    if let idx = SkillCache.shared.skills.firstIndex(where: { $0.name == name }) {
+                        SkillCache.shared.skills[idx].description = detail.description
+                        SkillCache.shared.skills[idx].skillMdPreview = detail.skillMdPreview
+                        SkillCache.shared.skills[idx].tags = detail.tags
+                        SkillCache.shared.skills[idx].source = detail.source
+                    }
+                }
+            }
+        } catch {
+            log.error("inspectSkill(\(name)) failed: \(error.localizedDescription)")
         }
     }
 
