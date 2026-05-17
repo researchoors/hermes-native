@@ -1048,16 +1048,20 @@ struct ChatInputBar: View {
                         Task { @MainActor in
                             chatViewModel.addAttachment(path: cachedPath)
                         }
-                    } else if let nsImage = item as? NSImage,
-                              let tiffData = nsImage.tiffRepresentation,
-                              let bitmapRep = NSBitmapImageRep(data: tiffData),
-                              let pngData = bitmapRep.representation(using: .png, properties: [:]) {
+                    }
+                    #if os(macOS)
+                    if let nsImage = item as? NSImage,
+                       let tiffData = nsImage.tiffRepresentation,
+                       let bitmapRep = NSBitmapImageRep(data: tiffData),
+                       let pngData = bitmapRep.representation(using: .png, properties: [:]) {
                         let cachedPath = Self.saveImageDataToCache(data: pngData, ext: "png")
                         guard !cachedPath.isEmpty else { return }
                         Task { @MainActor in
                             chatViewModel.addAttachment(path: cachedPath)
                         }
-                    } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                    }
+                    #endif
+                    if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                         provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                             if let url = item as? URL {
                                 let cachedPath = Self.copyToCache(url: url)

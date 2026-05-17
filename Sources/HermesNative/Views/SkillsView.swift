@@ -675,7 +675,9 @@ private struct SkillMarkdownSheet: View {
         }
 
         guard let fetched = await viewModel.readSkillMarkdown(name: skill.name), !fetched.isEmpty else {
-            loadError = "Gateway does not support reading SKILL.md content.\n\nAsk your gateway administrator to implement `skills.manage` with `action: \"read\"`, or check that the skill has a SKILL.md file."
+            loadError = "Gateway does not support reading SKILL.md content.\n\n" +
+                "Ask your gateway administrator to implement `skills.manage` with " +
+                "`action: \"read\"`, or check that the skill has a SKILL.md file."
             isLoading = false
             return
         }
