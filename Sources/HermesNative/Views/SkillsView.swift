@@ -31,18 +31,15 @@ struct SkillsView: View {
             .refreshable { await viewModel.reload() }
         }
         .background(Theme.background)
-        .task(id: gatewayClientWrapper.isConnected) {
+        .task {
             viewModel.setGatewayClient(gatewayClientWrapper.client)
-            guard gatewayClientWrapper.isConnected else { return }
-            // If we have no cached skills yet, do an eager refresh with spinner.
-            if viewModel.skills.isEmpty {
-                await viewModel.refresh()
-                return
-            }
-            // Otherwise silently refresh in background so the UI never
-            // flashes a loading state when the user toggles back to Skills.
-            if SkillCache.age == nil || SkillCache.age! > 30 {
-                await viewModel.refresh()
+            if gatewayClientWrapper.isConnected {
+                // Show cached data immediately, refresh silently in background
+                await viewModel.refreshIfNeeded()
+                // If cache is stale (>30s), do a background refresh
+                if SkillCacheDisk.age == nil || SkillCacheDisk.age! > 30 {
+                    await viewModel.backgroundRefresh()
+                }
             }
         }
         .sheet(item: $markdownSkill) { skill in
@@ -659,13 +656,8 @@ private struct SkillMarkdownSheet: View {
             content = preview
         }
 
-        guard let fetched = await viewModel.readSkillMarkdown(name: skill.name) else {
-            loadError = "Gateway returned no content. The skill may not have a SKILL.md file."
-            isLoading = false
-            return
-        }
-        if fetched.isEmpty {
-            loadError = "Gateway returned empty content. The skill may not have a SKILL.md file."
+        guard let fetched = await viewModel.readSkillMarkdown(name: skill.name), !fetched.isEmpty else {
+            loadError = "Gateway does not support reading SKILL.md content.\n\nAsk your gateway administrator to implement `skills.manage` with `action: \"read\"`, or check that the skill has a SKILL.md file."
             isLoading = false
             return
         }
