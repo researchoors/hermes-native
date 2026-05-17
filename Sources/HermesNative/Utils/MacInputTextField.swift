@@ -48,7 +48,7 @@ struct MacInputTextField: NSViewRepresentable {
         tv.autoresizingMask = .none
         tv.isHorizontallyResizable = false
         tv.isVerticallyResizable = true
-        tv.textContainer?.widthTracksTextView = false
+        tv.textContainer?.widthTracksTextView = true
         tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         tv.setContentHuggingPriority(.defaultHigh, for: .vertical)
 
@@ -247,13 +247,13 @@ final class FocusableTextView: NSTextView {
         ]
         let inset = textContainerInset
         let padding = textContainer?.lineFragmentPadding ?? 0
-        // Align placeholder with the first line of text (same baseline)
-        let lineHeight = font?.boundingRectForFont.height ?? 18
-        let baselineOffset = (lineHeight - (font?.capHeight ?? 12)) / 2
+        // Match NSTextView's first-line baseline using font metrics
+        let ascender = font?.ascender ?? 14
+        let maxW = (textContainer?.containerSize.width ?? bounds.width) - inset.width * 2
         let rect = NSRect(x: inset.width + padding,
-                          y: inset.height + baselineOffset,
-                          width: bounds.width - inset.width * 2,
-                          height: lineHeight)
+                          y: inset.height + ascender,
+                          width: maxW,
+                          height: ascender + (font?.descender ?? -4) * -1)
         (placeholder as NSString).draw(with: rect, options: .truncatesLastVisibleLine, attributes: attrs)
     }
 }
