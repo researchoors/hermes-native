@@ -179,6 +179,7 @@ struct ChatView: View {
 
                         ChatInputBar(isFocused: $isInputFocused, inputFieldRef: $inputFieldRef)
                             .environmentObject(chatViewModel)
+                            .frame(maxWidth: 840, alignment: .center)
                             .id(chatViewModel.currentSessionID ?? "no-session")
                         if let error = chatViewModel.error {
                             HStack(spacing: 8) {
