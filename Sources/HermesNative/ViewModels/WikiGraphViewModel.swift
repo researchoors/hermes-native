@@ -121,6 +121,14 @@ final class WikiGraphViewModel: ObservableObject {
             )
         }
 
+        // Deduplicate nodes by ID — graph data may contain duplicates
+        var seenIds = Set<String>()
+        simNodes = simNodes.filter { node in
+            guard !seenIds.contains(node.id) else { return false }
+            seenIds.insert(node.id)
+            return true
+        }
+
         let idToIndex = Dictionary(uniqueKeysWithValues: simNodes.enumerated().map { ($1.id, $0) })
         simLinks = graph.links.compactMap { link -> (Int, Int)? in
             guard let si = idToIndex[link.source],
