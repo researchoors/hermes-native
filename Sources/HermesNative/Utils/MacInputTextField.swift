@@ -47,7 +47,7 @@ struct MacInputTextField: NSViewRepresentable {
         tv.textContainer?.lineFragmentPadding = 2
         tv.autoresizingMask = .none
         tv.isHorizontallyResizable = false
-        tv.isVerticallyResizable = true
+        tv.isVerticallyResizable = false
         tv.textContainer?.widthTracksTextView = true
         tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         tv.setContentHuggingPriority(.defaultHigh, for: .vertical)
