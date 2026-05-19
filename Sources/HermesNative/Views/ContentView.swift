@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var missionControlSessionID: String?
     @State private var missionControlRuntimeSessionID: String?
     @State private var observerSession: Session?
+    @State private var isObserverDismissing = false
     @State private var previousActiveSessionID: String?  // Preserve List selection when opening observer
     @State private var showCronSheet = false
     @State private var showGatewayDebugSheet = false
@@ -279,8 +280,15 @@ struct ContentView: View {
                 .frame(minWidth: 500, minHeight: 450)
         }
         .sheet(item: $observerSession, onDismiss: {
-            sessionList.activeSessionID = previousActiveSessionID ?? chatViewModel.currentSessionID
+            isObserverDismissing = true
+            let prev = previousActiveSessionID
             previousActiveSessionID = nil
+            if let prev {
+                sessionList.activeSessionID = prev
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isObserverDismissing = false
+            }
         }, content: { session in
             SessionObserverView(session: session)
                 .environmentObject(gatewayClientWrapper)
@@ -632,10 +640,9 @@ struct ContentView: View {
     /// main-actor turn before doing selection side effects so the list binding
     /// can finish its update transaction first.
     private func handleSelectionChangeAfterViewUpdate(_ newID: String?) {
-        // Guard: don't resume sessions while a non-owned session observer is open.
-        // The onChange fires when we reset List selection after opening a sheet,
-        // which would re-enter resumeSession during the transition and crash.
-        guard observerSession == nil else { return }
+        // Guard: don't resume sessions while a non-owned session observer is open,
+        // and don't handle selection changes triggered by observer dismissal.
+        guard observerSession == nil, !isObserverDismissing else { return }
         Task { @MainActor in
             await Task.yield()
             handleSessionSelection(newID)
@@ -691,13 +698,13 @@ struct ContentView: View {
                 }
             }
         } else {
-            // Non-owned session — open observer view, but preserve List selection.
-            previousActiveSessionID = sessionList.activeSessionID
-            observerSession = session
-            // Defer the List selection reset so it doesn't happen during the
-            // same layout pass as the sheet presentation, which causes recursion.
-            DispatchQueue.main.async {
-                self.sessionList.activeSessionID = self.previousActiveSessionID
+            // Non-owned session — defer sheet presentation completely outside
+            // the current run loop to avoid AppKit layout recursion.
+            let sessionToObserve = session
+            let ownedSessionID = chatViewModel.currentSessionID
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.previousActiveSessionID = ownedSessionID
+                self.observerSession = sessionToObserve
             }
         }
     }
