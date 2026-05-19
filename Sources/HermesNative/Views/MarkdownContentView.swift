@@ -415,12 +415,7 @@ struct MarkdownText: View {
     var baseColor: Color?
     var baseFont: Font?
 
-    private static let singleQuotedCodeRegex: NSRegularExpression? = {
-        try? NSRegularExpression(
-            pattern: "'([^'\\s][^']{1,120})'",
-            options: []
-        )
-    }()
+    private static let singleQuotedCodeRegex: NSRegularExpression? = nil
 
     init(text: String, baseColor: Color? = nil, baseFont: Font? = nil) {
         self.text = text
@@ -464,21 +459,9 @@ struct MarkdownText: View {
         return plain
     }
 
-    /// Normalize inline code markers that Apple's parser sometimes misses:
-    /// - Convert single-quoted code spans like 'path/to/file' to backtick code
-    /// - Escape unpaired backticks so the parser doesn't bail out
+    /// Escape unpaired backticks so the AttributedString parser doesn't bail out.
     private static func normalizeInlineCode(_ input: String) -> String {
         var result = input
-
-        // Convert single-quoted code-like spans to backtick code
-        guard let regex = singleQuotedCodeRegex else { return result }
-        let nsRange = NSRange(result.startIndex..., in: result)
-        let matches = regex.matches(in: result, range: nsRange)
-        for match in matches.reversed() {
-            guard let range = Range(match.range, in: result) else { continue }
-            let inner = result[range]
-            result.replaceSubrange(range, with: "`\(inner)`")
-        }
 
         // Fix unpaired backticks: count them, if odd, escape the last one
         var backtickCount = 0
