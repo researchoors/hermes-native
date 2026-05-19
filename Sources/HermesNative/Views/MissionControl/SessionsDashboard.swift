@@ -566,7 +566,9 @@ struct SessionsDashboard: View {
 
 extension Session {
     var isLive: Bool {
-        endedAt == nil
+        // A session is only "live" if it's active within the last 60s.
+        // endedAt == nil alone isn't enough — old idle sessions pile up.
+        status == .active
     }
 
     var displaySource: String {
