@@ -566,9 +566,14 @@ struct SessionsDashboard: View {
 
 extension Session {
     var isLive: Bool {
-        // A session is only "live" if it's active within the last 60s.
-        // endedAt == nil alone isn't enough — old idle sessions pile up.
-        status == .active
+        // A session is live if it hasn't explicitly ended.
+        // If lastActive is available, also require activity within 5 minutes
+        // to avoid marking ancient idle sessions as live.
+        guard endedAt == nil else { return false }
+        if let last = lastActive {
+            return Date().timeIntervalSince(last) < 300  // 5 min
+        }
+        return true  // No timing info — assume live until endedAt is set
     }
 
     var displaySource: String {
