@@ -1397,13 +1397,16 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
             }
             let event = GatewayEvent.from(type: type, payload: payload)
             let sessionID = params["session_id"] as? String
-            recordDebugEvent(.inbound, name: type, sessionID: sessionID)
 
-            if case .sessionInfo(let info) = event {
-                sessionInfo = info
+            // Defer all @Published mutations to next main runloop tick
+            // to avoid SwiftUI re-entrancy when events arrive during render.
+            Task { @MainActor in
+                recordDebugEvent(.inbound, name: type, sessionID: sessionID)
+                if case .sessionInfo(let info) = event {
+                    sessionInfo = info
+                }
+                eventStream.send((event, sessionID))
             }
-
-            eventStream.send((event, sessionID))
         }
     }
 
