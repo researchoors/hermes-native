@@ -632,6 +632,10 @@ struct ContentView: View {
     /// main-actor turn before doing selection side effects so the list binding
     /// can finish its update transaction first.
     private func handleSelectionChangeAfterViewUpdate(_ newID: String?) {
+        // Guard: don't resume sessions while a non-owned session observer is open.
+        // The onChange fires when we reset List selection after opening a sheet,
+        // which would re-enter resumeSession during the transition and crash.
+        guard observerSession == nil else { return }
         Task { @MainActor in
             await Task.yield()
             handleSessionSelection(newID)
