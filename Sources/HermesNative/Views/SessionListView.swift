@@ -45,7 +45,7 @@ struct SessionListView: View {
                     .fill(Theme.border)
                     .frame(height: 1)
 
-                List(selection: $sessionList.activeSessionID) {
+                List {
                 // My Sessions
                 Section {
                 if !mySessionsCollapsed {
@@ -76,7 +76,10 @@ struct SessionListView: View {
                                 runState: session.displayRunState
                             )
                             .sessionListRowStyle(isActive: session.id == sessionList.activeSessionID)
-                            .tag(session.id)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                sessionList.selectSession(id: session.id)
+                            }
                             .contextMenu {
                                 Button {
                                     sessionList.togglePinned(id: session.id)
@@ -155,7 +158,10 @@ struct SessionListView: View {
                                 runState: session.displayRunState
                             )
                             .sessionListRowStyle(isActive: session.id == sessionList.activeSessionID)
-                            .tag(session.id)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                sessionList.selectSession(id: session.id)
+                            }
                             .contextMenu {
                                 Button {
                                     sessionList.togglePinned(id: session.id)
@@ -225,7 +231,10 @@ struct SessionListView: View {
                                 runState: session.displayRunState
                             )
                             .sessionListRowStyle(isActive: session.id == sessionList.activeSessionID)
-                            .tag(session.id)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                sessionList.selectSession(id: session.id)
+                            }
                             .contextMenu {
                                 Button {
                                     sessionList.togglePinned(id: session.id)
@@ -273,7 +282,10 @@ struct SessionListView: View {
                                 runState: session.displayRunState
                             )
                             .sessionListRowStyle(isActive: session.id == sessionList.activeSessionID)
-                            .tag(session.id)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                sessionList.selectSession(id: session.id)
+                            }
                             .contextMenu {
                                 Button {
                                     sessionList.togglePinned(id: session.id)
