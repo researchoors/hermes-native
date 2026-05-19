@@ -694,11 +694,11 @@ struct ContentView: View {
             // Non-owned session — open observer view, but preserve List selection.
             previousActiveSessionID = sessionList.activeSessionID
             observerSession = session
-            // Reset the List back to the previously selected owned session so the
-            // sidebar does not stay highlighted on a non-owned session. This
-            // avoids layout recursion inside SwiftUI's List(selection:) when a
-            // sheet is presented from the same update pass.
-            sessionList.activeSessionID = previousActiveSessionID
+            // Defer the List selection reset so it doesn't happen during the
+            // same layout pass as the sheet presentation, which causes recursion.
+            DispatchQueue.main.async {
+                self.sessionList.activeSessionID = self.previousActiveSessionID
+            }
         }
     }
 
