@@ -682,13 +682,10 @@ struct ContentView: View {
     private func handleSessionSelection(_ newID: String?) {
         guard let newID else { return }
 
-        // Don't resume during session creation — the newly created session
-        // will be set as active after creation completes.  The guard on
-        // pendingCreatedSessionID below would catch this if it ran early,
-        // but createGeneration.onChange can fire during the suspend point
-        // inside ChatViewModel.createSession (await applyEphemeralPrompt),
-        // before pendingCreatedSessionID is assigned.
-        if chatViewModel.isCreatingSession { return }
+        // Don't resume while a session is being created — use a sentinel
+        // that persists across all activeSessionID changes (the title
+        // discovery task can flip activeSessionID from shortHexID to dbID).
+        if pendingCreatedSessionID != nil { return }
 
         // Find the session and use its database ID for resume.
         guard let session = sessionList.sessions.first(where: { $0.id == newID }) else { return }
@@ -696,10 +693,6 @@ struct ContentView: View {
 
         if session.isOwned {
             previousActiveSessionID = nil
-            if pendingCreatedSessionID == newID || pendingCreatedSessionID == rpcID {
-                pendingCreatedSessionID = nil
-                return
-            }
 
             pushOwnedSessionOnIOS(newID)
 
@@ -779,6 +772,7 @@ struct ContentView: View {
 
         log.info("createAndSwitchToNewSession starting session.create")
         shouldSuppressNextCreateGenerationPush = true
+        pendingCreatedSessionID = "__creating__"
         await chatViewModel.createSession()
 
         if let error = chatViewModel.error {
@@ -801,6 +795,8 @@ struct ContentView: View {
         spawnTreeStore.createTree(sessionID: sid)
         spawnTreeStore.bindRuntimeSession(displayID: sid, runtimeID: sid)
         pushOwnedSessionOnIOS(sid)
+        await Task.yield()
+        pendingCreatedSessionID = nil
     }
 
     // MARK: - Mission Control
