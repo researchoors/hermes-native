@@ -45,6 +45,7 @@ jobs:
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin \
             <<< "$(security cms -D -i "$PP_DIR/AppStore.mobileprovision")")
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          mv "$PP_DIR/AppStore.mobileprovision" "$PP_DIR/$PROFILE_UUID.mobileprovision"
 
           echo "=== Keychain search list ==="
           security list-keychains -d user
@@ -67,7 +68,7 @@ jobs:
             -archivePath build/HermesNative.xcarchive \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            "HermesNative-iOS.PROVISIONING_PROFILE_SPECIFIER=${{ env.PROFILE_UUID }}" \
+            "HermesNative-iOS.PROVISIONING_PROFILE=${{ env.PROFILE_UUID }}" \
             DEVELOPMENT_TEAM="${{ secrets.TEAM_ID }}" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             OTHER_CODE_SIGN_FLAGS="--keychain=$HOME/Library/Keychains/signing_temp.keychain-db"
