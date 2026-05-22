@@ -668,17 +668,21 @@ struct ContentView: View {
     private func handleSessionSelection(_ newID: String?) {
         guard let newID else { return }
 
-        // Don't resume while a session is being created — use a sentinel
-        // that persists across all activeSessionID changes (the title
-        // discovery task can flip activeSessionID from shortHexID to dbID).
-        if pendingCreatedSessionID != nil { return }
-
         // Find the session and use its database ID for resume.
         guard let session = sessionList.sessions.first(where: { $0.id == newID }) else { return }
         let rpcID = session.rpcID
 
         if session.isOwned {
             previousActiveSessionID = nil
+
+            // Don't resume the session we just finished creating — the sentinel
+            // is set before createSession and stays set until the user clicks a
+            // different session, so all activeSessionID changes during creation
+            // (including the title-discovery dbID flip) are silently ignored.
+            if pendingCreatedSessionID == newID || pendingCreatedSessionID == rpcID {
+                return
+            }
+            pendingCreatedSessionID = nil
 
             pushOwnedSessionOnIOS(newID)
 
@@ -781,8 +785,6 @@ struct ContentView: View {
         spawnTreeStore.createTree(sessionID: sid)
         spawnTreeStore.bindRuntimeSession(displayID: sid, runtimeID: sid)
         pushOwnedSessionOnIOS(sid)
-        await Task.yield()
-        pendingCreatedSessionID = nil
     }
 
     // MARK: - Mission Control
