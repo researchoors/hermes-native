@@ -199,10 +199,15 @@ final class ChatViewModel: ObservableObject {
         // Subscribe to gateway events. Events are multiplexed over one app-level
         // WebSocket, so only apply events whose session_id matches this chat's
         // current session. Legacy/global events may have no session_id.
+        // Use collect(.byTimeOrCount) to batch rapid events (e.g. reasoning.delta
+        // floods) into fewer main-thread dispatches, preventing layout recursion
+        // and spinning-wheel freezes during heavy streaming.
         client.eventStream
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] event, eventSessionID in
-                self?.handleEvent(event, eventSessionID: eventSessionID)
+            .collect(.byTimeOrCount(DispatchQueue.main, .milliseconds(16), 10))
+            .sink { [weak self] batch in
+                for (event, eventSessionID) in batch {
+                    self?.handleEvent(event, eventSessionID: eventSessionID)
+                }
             }
             .store(in: &cancellables)
 
