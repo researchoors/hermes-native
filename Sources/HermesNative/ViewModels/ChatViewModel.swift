@@ -120,7 +120,7 @@ final class ChatViewModel: ObservableObject {
     private var streamingMessageID: UUID?
     private var streamStartDate: Date?
     private var cancellables = Set<AnyCancellable>()
-    private var isCreatingSession = false  // Guard against double-trigger
+    private(set) var isCreatingSession = false
     private var isStopping = false
     private var pendingVisibleEventFlush: Task<Void, Never>?
     private var pendingVisibleMessageDelta = ""
