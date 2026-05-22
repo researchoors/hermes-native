@@ -693,7 +693,7 @@ struct ContentView: View {
             // is set before createSession and stays set until the user clicks a
             // different session, so all activeSessionID changes during creation
             // (including the title-discovery dbID flip) are silently ignored.
-            if pendingCreatedSessionID == newID || pendingCreatedSessionID == rpcID {
+            if pendingCreatedSessionID == newID || pendingCreatedSessionID == rpcID || pendingCreatedSessionID == "__creating__" {
                 return
             }
             pendingCreatedSessionID = nil
