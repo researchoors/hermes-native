@@ -605,13 +605,13 @@ final class ChatViewModel: ObservableObject {
             return
         }
         let query = String(text.dropFirst()).lowercased().trimmingCharacters(in: .whitespaces)
-        let all = SkillCache.shared.skills
+        let all = SkillStore.shared.skills
         slashSuggestions = all.filter {
             let nameMatch = $0.name.lowercased().contains(query)
             let cmdMatch = $0.slashCommand.lowercased().contains(query)
             return nameMatch || cmdMatch
         }.sorted { $0.name < $1.name }
-        slashMode = true
+        slashMode = !slashSuggestions.isEmpty
         slashSelectedIndex = 0
     }
 
@@ -625,7 +625,7 @@ final class ChatViewModel: ObservableObject {
         Task {
             // Lazy-load full content if needed
             if skill.skillMdFullContent == nil,
-               let content = await SkillCache.shared.readSkillContent(name: skill.name),
+               let content = await SkillStore.shared.readSkillContent(name: skill.name),
                let idx = activeSkills.firstIndex(where: { $0.name == skill.name }) {
                 activeSkills[idx].skillMdFullContent = content
             }
@@ -1390,7 +1390,7 @@ final class ChatViewModel: ObservableObject {
             break
         }
 
-        // Persist state for lifecycle events on every session.  Delta events
+// Persist state for lifecycle events on every session.  Delta events
         // for visible sessions are persisted by the coalesced flush timer
         // (snapshotCurrentSessionState); background delta events return early
         // above to avoid saturating the main thread with COW copies of the
