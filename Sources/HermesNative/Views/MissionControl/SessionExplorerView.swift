@@ -728,4 +728,3 @@ struct NodeTranscriptSheet: View {
         }
     }
 }
-
