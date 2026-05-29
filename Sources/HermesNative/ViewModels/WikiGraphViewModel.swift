@@ -1,24 +1,17 @@
 import SwiftUI
 import Combine
 import os.log
+import simd
 
 private let log = Logger(subsystem: "com.researchoors.HermesNative", category: "WikiGraphViewModel")
 
-/// Force-directed graph simulation adapted from rayfix/ForceDirectedGraph.
-/// Uses a simple spring-charge model with centering force.
 @MainActor
 final class WikiGraphViewModel: ObservableObject {
-
-    // MARK: - Published
 
     @Published var graph: WikiGraph = .empty
     @Published var selectedPage: WikiPage?
     @Published var showPageDetail = false
-
-    /// Currently selected node index (not page, local sim index).
     @Published var selectedNodeIndex: Int?
-
-    /// Node currently hovered (macOS) — highlights node + its connections.
     @Published var hoveredNodeIndex: Int?
 
     var selectedNodeTitle: String? {
@@ -28,12 +21,12 @@ final class WikiGraphViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
-    // MARK: - Simulation State
-
     struct SimNode: Identifiable {
         let id: String
         var position: CGPoint
         var velocity: CGVector = .zero
+        var position3D: SIMD3<Float> = .zero
+        var velocity3D: SIMD3<Float> = .zero
         var isDragging = false
         let type: String
         let label: String
@@ -41,11 +34,8 @@ final class WikiGraphViewModel: ObservableObject {
 
     @Published var simNodes: [SimNode] = []
     @Published var simLinks: [(sourceIndex: Int, targetIndex: Int)] = []
-
-    /// Connection count per node (degree centrality) — drives node sizing.
     private(set) var degrees: [Int] = []
 
-    // Simulation parameters (tuned for ~20-50 nodes)
     private let friction: CGFloat = 0.92
     private let springLength: CGFloat = 120
     private let springConstant: CGFloat = 0.008
@@ -55,150 +45,115 @@ final class WikiGraphViewModel: ObservableObject {
     private let maxVelocity: CGFloat = 30
     private let maxRepulsionForce: CGFloat = 500
 
-    // Simulated annealing — energy decays so the graph settles into a calm,
-    // stable layout instead of wiggling forever. Reheated on setup/drag.
     private var alpha: CGFloat = 1.0
-    private let alphaDecay: CGFloat = 0.0228   // ~300 ticks to settle
+    private let alphaDecay: CGFloat = 0.0228
     private let alphaMin: CGFloat = 0.002
-    private let alphaReheat: CGFloat = 0.5
+    private let dragReheat: CGFloat = 0.15
+    var simAlpha: CGFloat { alpha }
+    var is3D = false
 
-    // View transforms
+    private let springLength3D: Float = 160
+    private let centerPull3D: Float = 0.0008
+    private let maxVelocity3D: Float = 30
+
     @Published var zoom: CGFloat = 1.0
     @Published var panOffset: CGSize = .zero
     var canvasSize: CGSize = .zero
 
-    // MARK: - Color mapping
-
     func color(for type: String) -> Color {
         switch type {
-        case "entity": return Color(hex: "7c7cff")!    // purple
-        case "concept": return Color(hex: "5cb85c")!   // green
-        case "comparison": return Color(hex: "e8a838")! // orange
-        case "query": return Color(hex: "ff6b9d")!     // pink
-        case "raw": return Color(hex: "888888")!       // gray
+        case "entity": return Color(hex: "7c7cff")!
+        case "concept": return Color(hex: "5cb85c")!
+        case "comparison": return Color(hex: "e8a838")!
+        case "query": return Color(hex: "ff6b9d")!
+        case "raw": return Color(hex: "888888")!
         default: return Color(hex: "aaaaaa")!
         }
     }
 
-    func nodeRadius(for type: String) -> CGFloat {
-        type == "entity" ? 7 : 5
-    }
+    func nodeRadius(for type: String) -> CGFloat { type == "entity" ? 7 : 5 }
 
-    /// Degree-aware radius: hubs (many connections) render larger so the
-    /// most-connected pages in the "second brain" stand out.
     func nodeRadius(at index: Int) -> CGFloat {
         guard simNodes.indices.contains(index) else { return 5 }
         let base = nodeRadius(for: simNodes[index].type)
         let degree = degrees.indices.contains(index) ? degrees[index] : 0
-        // Logarithmic growth so a 50-link hub isn't absurdly large.
         let bonus = min(CGFloat(degree) * 0.9, 10)
         return base + log2(CGFloat(degree) + 1) * 1.4 + bonus * 0.15
     }
-
-    // MARK: - Gateway
 
     @Published var selectedWikiPath: String?
     @Published var availableWikis: [String] = []
 
     func load(client: GatewayClient, wiki: String? = nil) async {
-        isLoading = true
-        error = nil
-        defer { isLoading = false }
+        isLoading = true; error = nil; defer { isLoading = false }
         do {
             let newGraph = try await client.wikiScan(wiki: wiki)
             self.graph = newGraph
-            if canvasSize != .zero {
-                setupSimulation()
-            }
+            if canvasSize != .zero { setupSimulation() }
         } catch {
             log.error("wiki.scan failed: \(error.localizedDescription)")
             self.error = error.localizedDescription
         }
     }
 
-    /// Discover available wikis from the server-side registry.
     func discoverWikis(client: GatewayClient) async {
-        do {
-            let wikis = try await client.wikiList()
-            self.availableWikis = wikis.map { $0.name }
-        } catch {
-            log.warning("wiki.list failed: \(error.localizedDescription)")
-            // Non-fatal — the menu will just show "No wikis discovered"
-        }
+        do { let wikis = try await client.wikiList(); self.availableWikis = wikis.map { $0.name } }
+        catch { log.warning("wiki.list failed: \(error.localizedDescription)") }
     }
 
     func loadPage(client: GatewayClient, path: String, wiki: String? = nil) async -> WikiPageContent? {
-        do {
-            return try await client.wikiPage(path: path, wiki: wiki)
-        } catch {
-            log.error("wiki.page failed: \(error.localizedDescription)")
-            return nil
-        }
+        do { return try await client.wikiPage(path: path, wiki: wiki) }
+        catch { log.error("wiki.page failed: \(error.localizedDescription)"); return nil }
     }
-
-    // MARK: - Simulation Setup
 
     func setupSimulation() {
         guard canvasSize != .zero, !graph.pages.isEmpty else { return }
+        is3D ? setup3D() : setup2D()
+    }
 
+    private func setup2D() {
         let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
         var rng = SystemRandomNumberGenerator()
-
         simNodes = graph.pages.map { page in
             let angle = Double.random(in: 0...(2 * .pi), using: &rng)
             let dist = Double.random(in: 50...200, using: &rng)
-            return SimNode(
-                id: page.id,
-                position: CGPoint(
-                    x: center.x + cos(angle) * dist,
-                    y: center.y + sin(angle) * dist
-                ),
-                type: page.type,
-                label: page.title
-            )
+            return SimNode(id: page.id, position: CGPoint(x: center.x + cos(angle) * dist, y: center.y + sin(angle) * dist), type: page.type, label: page.title)
         }
+        finishSetup()
+    }
 
-        // Deduplicate nodes by ID — graph data may contain duplicates
+    private func setup3D() {
+        var rng = SystemRandomNumberGenerator()
+        simNodes = graph.pages.map { page in
+            let phi = Float.random(in: 0...(2 * .pi), using: &rng)
+            let theta = Float.random(in: (-Float.pi / 3)...(Float.pi / 3), using: &rng)
+            let r = Float.random(in: 60...180, using: &rng)
+            return SimNode(id: page.id, position: .zero, position3D: SIMD3(r * cos(theta) * cos(phi), r * cos(theta) * sin(phi), r * sin(theta)), type: page.type, label: page.title)
+        }
+        finishSetup()
+    }
+
+    private func finishSetup() {
         var seenIds = Set<String>()
-        simNodes = simNodes.filter { node in
-            guard !seenIds.contains(node.id) else { return false }
-            seenIds.insert(node.id)
-            return true
-        }
-
+        simNodes = simNodes.filter { node in guard !seenIds.contains(node.id) else { return false }; seenIds.insert(node.id); return true }
         let idToIndex = Dictionary(uniqueKeysWithValues: simNodes.enumerated().map { ($1.id, $0) })
         simLinks = graph.links.compactMap { link -> (Int, Int)? in
-            guard let si = idToIndex[link.source],
-                  let ti = idToIndex[link.target] else { return nil }
+            guard let si = idToIndex[link.source], let ti = idToIndex[link.target] else { return nil }
             return (si, ti)
         }
-
-        // Compute degree (connection count) per node for sizing.
         degrees = Array(repeating: 0, count: simNodes.count)
-        for (si, ti) in simLinks {
-            if degrees.indices.contains(si) { degrees[si] += 1 }
-            if degrees.indices.contains(ti) { degrees[ti] += 1 }
-        }
-
-        // Reheat the simulation so it animates into a fresh layout.
+        for (si, ti) in simLinks { if degrees.indices.contains(si) { degrees[si] += 1 }; if degrees.indices.contains(ti) { degrees[ti] += 1 } }
         alpha = 1.0
     }
 
-    // MARK: - Simulation Step
+    func tick() { is3D ? tick3D() : tick2D() }
 
-    func tick() {
+    private func tick2D() {
         guard canvasSize != .zero, simNodes.count > 1 else { return }
-
-        // Once the layout has cooled below alphaMin it is stable — stop
-        // integrating so nodes stay put (no perpetual wiggle).  Dragging
-        // re-heats via dragNode(), so interaction always animates.
         let anyDragging = simNodes.contains { $0.isDragging }
         guard alpha > alphaMin || anyDragging else { return }
-
         for _ in 0..<iterationsPerFrame {
             var forces = Array(repeating: CGVector.zero, count: simNodes.count)
-
-            // Repulsion (charge) with softening and force cap
             for i in 0..<simNodes.count {
                 guard !simNodes[i].isDragging else { continue }
                 for j in (i + 1)..<simNodes.count {
@@ -209,31 +164,21 @@ final class WikiGraphViewModel: ObservableObject {
                     let rawForce = chargeConstant / distSq
                     let force = min(rawForce, maxRepulsionForce)
                     let dist = sqrt(distSq)
-                    let fx = (dx / dist) * force
-                    let fy = (dy / dist) * force
-                    forces[i].dx += fx
-                    forces[i].dy += fy
-                    forces[j].dx -= fx
-                    forces[j].dy -= fy
+                    let fx = (dx / dist) * force; let fy = (dy / dist) * force
+                    forces[i].dx += fx; forces[i].dy += fy
+                    forces[j].dx -= fx; forces[j].dy -= fy
                 }
             }
-
-            // Spring forces (links)
             for (si, ti) in simLinks {
                 let dx = simNodes[ti].position.x - simNodes[si].position.x
                 let dy = simNodes[ti].position.y - simNodes[si].position.y
                 let dist = sqrt(dx * dx + dy * dy)
                 guard dist > 0 else { continue }
                 let force = (dist - springLength) * springConstant
-                let fx = (dx / dist) * force
-                let fy = (dy / dist) * force
-                forces[si].dx += fx
-                forces[si].dy += fy
-                forces[ti].dx -= fx
-                forces[ti].dy -= fy
+                let fx = (dx / dist) * force; let fy = (dy / dist) * force
+                forces[si].dx += fx; forces[si].dy += fy
+                forces[ti].dx -= fx; forces[ti].dy -= fy
             }
-
-            // Centering force
             let meanX = simNodes.reduce(0) { $0 + $1.position.x } / CGFloat(simNodes.count)
             let meanY = simNodes.reduce(0) { $0 + $1.position.y } / CGFloat(simNodes.count)
             let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
@@ -242,55 +187,85 @@ final class WikiGraphViewModel: ObservableObject {
                 forces[i].dx += (center.x - meanX) * centerPull
                 forces[i].dy += (center.y - meanY) * centerPull
             }
-
-            // Integrate with velocity clamp, scaled by annealing energy (alpha)
             for i in 0..<simNodes.count {
                 guard !simNodes[i].isDragging else { continue }
                 var v = simNodes[i].velocity
                 v.dx = (v.dx + forces[i].dx * alpha) * friction
                 v.dy = (v.dy + forces[i].dy * alpha) * friction
                 let speed = sqrt(v.dx * v.dx + v.dy * v.dy)
-                if speed > maxVelocity {
-                    let scale = maxVelocity / speed
-                    v.dx *= scale
-                    v.dy *= scale
-                }
+                if speed > maxVelocity { let scale = maxVelocity / speed; v.dx *= scale; v.dy *= scale }
                 simNodes[i].velocity = v
-                simNodes[i].position.x += v.dx
-                simNodes[i].position.y += v.dy
+                simNodes[i].position.x += v.dx; simNodes[i].position.y += v.dy
             }
         }
-
-        // Cool down. Dragging holds energy high so neighbors keep following.
-        if anyDragging {
-            alpha = max(alpha, alphaReheat)
-        } else {
-            alpha += (alphaMin - alpha) * alphaDecay
-        }
+        if anyDragging { alpha = max(alpha, dragReheat) } else { alpha += (alphaMin - alpha) * alphaDecay }
     }
 
-    // MARK: - Interaction
+    private func tick3D() {
+        guard simNodes.count > 1 else { return }
+        let anyDragging = simNodes.contains { $0.isDragging }
+        guard alpha > alphaMin || anyDragging else { return }
+        let charge: Float = Float(chargeConstant)
+        let maxForce: Float = Float(maxRepulsionForce)
+        let springK: Float = Float(springConstant)
+        for _ in 0..<iterationsPerFrame {
+            var forces = Array(repeating: SIMD3<Float>.zero, count: simNodes.count)
+            for i in 0..<simNodes.count {
+                guard !simNodes[i].isDragging else { continue }
+                for j in (i + 1)..<simNodes.count {
+                    let d = simNodes[i].position3D - simNodes[j].position3D
+                    let distSq = simd_length_squared(d)
+                    guard distSq > 0.01 else { continue }
+                    let raw = charge / distSq
+                    let f = min(raw, maxForce)
+                    let dir = d / sqrt(distSq)
+                    forces[i] += dir * f; forces[j] -= dir * f
+                }
+            }
+            for (si, ti) in simLinks {
+                let d = simNodes[ti].position3D - simNodes[si].position3D
+                let dist = simd_length(d)
+                guard dist > 0 else { continue }
+                let f = (dist - springLength3D) * springK
+                let dir = d / dist
+                forces[si] += dir * f; forces[ti] -= dir * f
+            }
+            var mean = SIMD3<Float>.zero
+            for n in simNodes { mean += n.position3D }
+            mean /= Float(simNodes.count)
+            for i in 0..<simNodes.count {
+                guard !simNodes[i].isDragging else { continue }
+                forces[i] -= mean * centerPull3D
+            }
+            let fAlpha = Float(CGFloat(alpha))
+            for i in 0..<simNodes.count {
+                guard !simNodes[i].isDragging else { continue }
+                var v = simNodes[i].velocity3D
+                v = (v + forces[i] * fAlpha) * Float(friction)
+                let speed = simd_length(v)
+                if speed > maxVelocity3D { v *= maxVelocity3D / speed }
+                simNodes[i].velocity3D = v
+                simNodes[i].position3D += v
+            }
+        }
+        if anyDragging { alpha = max(alpha, dragReheat) } else { alpha += (alphaMin - alpha) * alphaDecay }
+    }
 
     func hitTest(point: CGPoint) -> Int? {
-        // Convert view point to model space
         let mx = (point.width - panOffset.width) / zoom
         let my = (point.height - panOffset.height) / zoom
         let modelPoint = CGPoint(x: mx, y: my)
-
         for (index, node) in simNodes.enumerated().reversed() {
-            let r = nodeRadius(for: node.type) + 4 // hit padding
-            if abs(node.position.x - modelPoint.x) < r && abs(node.position.y - modelPoint.y) < r {
-                return index
-            }
+            let r = nodeRadius(for: node.type) + 4
+            if abs(node.position.x - modelPoint.x) < r && abs(node.position.y - modelPoint.y) < r { return index }
         }
         return nil
     }
 
     func startDragging(index: Int, at point: CGPoint) {
         guard simNodes.indices.contains(index) else { return }
-        simNodes[index].isDragging = true
-        simNodes[index].velocity = .zero
-        alpha = max(alpha, alphaReheat)
+        simNodes[index].isDragging = true; simNodes[index].velocity = .zero
+        alpha = max(alpha, dragReheat)
     }
 
     func dragNode(index: Int, to point: CGPoint) {
@@ -298,71 +273,33 @@ final class WikiGraphViewModel: ObservableObject {
         let mx = (point.x - panOffset.width) / zoom
         let my = (point.y - panOffset.height) / zoom
         simNodes[index].position = CGPoint(x: mx, y: my)
-        alpha = max(alpha, alphaReheat)
+        alpha = max(alpha, dragReheat)
     }
 
-    func stopDragging(index: Int) {
-        guard simNodes.indices.contains(index) else { return }
-        simNodes[index].isDragging = false
-    }
-
-    /// Update hovered node from a screen point (macOS hover highlight).
-    func updateHover(at point: CGPoint) {
-        let idx = hitTest(point: CGPoint(x: point.x, y: point.y))
-        if idx != hoveredNodeIndex {
-            hoveredNodeIndex = idx
-        }
-    }
-
-    func clearHover() {
-        if hoveredNodeIndex != nil { hoveredNodeIndex = nil }
-    }
-
-    /// Highlight context: a node is "active" if there's no selection/hover,
-    /// or it is the selected/hovered node or one of its neighbors.
-    var highlightAnchor: Int? {
-        selectedNodeIndex ?? hoveredNodeIndex
-    }
+    func stopDragging(index: Int) { guard simNodes.indices.contains(index) else { return }; simNodes[index].isDragging = false }
+    func updateHover(at point: CGPoint) { let idx = hitTest(point: CGPoint(x: point.x, y: point.y)); if idx != hoveredNodeIndex { hoveredNodeIndex = idx } }
+    func clearHover() { if hoveredNodeIndex != nil { hoveredNodeIndex = nil } }
+    var highlightAnchor: Int? { selectedNodeIndex ?? hoveredNodeIndex }
 
     func handleTap(at point: CGPoint) {
         if let index = hitTest(point: point) {
-            if selectedNodeIndex == index {
-                // Double-tap: open detail
-                let pageID = simNodes[index].id
-                if let page = graph.pages.first(where: { $0.id == pageID }) {
-                    selectedPage = page
-                    showPageDetail = true
-                }
-            } else {
-                selectedNodeIndex = index
-            }
-        } else {
-            selectedNodeIndex = nil
-        }
+            if selectedNodeIndex == index { if let page = graph.pages.first(where: { $0.id == simNodes[index].id }) { selectedPage = page; showPageDetail = true } }
+            else { selectedNodeIndex = index }
+        } else { selectedNodeIndex = nil }
     }
 
-    func deselectNode() {
-        selectedNodeIndex = nil
-    }
-
-    // MARK: - Selection Helpers
+    func deselectNode() { selectedNodeIndex = nil }
 
     func selectedNodeNeighbors() -> [Int] {
         guard let sel = selectedNodeIndex else { return [] }
         var result = Set<Int>()
-        for (si, ti) in simLinks {
-            if si == sel { result.insert(ti) }
-            if ti == sel { result.insert(si) }
-        }
+        for (si, ti) in simLinks { if si == sel { result.insert(ti) }; if ti == sel { result.insert(si) } }
         return Array(result)
     }
 
     private func neighbors(of anchor: Int) -> Set<Int> {
         var result = Set<Int>()
-        for (si, ti) in simLinks {
-            if si == anchor { result.insert(ti) }
-            if ti == anchor { result.insert(si) }
-        }
+        for (si, ti) in simLinks { if si == anchor { result.insert(ti) }; if ti == anchor { result.insert(si) } }
         return result
     }
 
@@ -379,28 +316,15 @@ final class WikiGraphViewModel: ObservableObject {
 
     func zoomAtPoint(factor: CGFloat, around point: CGPoint) {
         guard factor.isFinite, factor > 0 else { return }
-        let oldZoom = zoom
-        let newZoom = max(0.3, min(5.0, oldZoom * factor))
+        let oldZoom = zoom; let newZoom = max(0.3, min(5.0, oldZoom * factor))
         guard newZoom != oldZoom else { return }
-        // Adjust pan so the point under the cursor stays fixed
         panOffset.width += point.x * (oldZoom - newZoom)
         panOffset.height += point.y * (oldZoom - newZoom)
         zoom = newZoom
     }
 
-    func resetView() {
-        panOffset = .zero
-        zoom = 1.0
-    }
+    func resetView() { panOffset = .zero; zoom = 1.0 }
 }
 
-// MARK: - Helpers
-
-extension CGPoint {
-    var width: CGFloat { x }
-    var height: CGFloat { y }
-}
-
-extension CGVector {
-    static let zero = CGVector(dx: 0, dy: 0)
-}
+extension CGPoint { var width: CGFloat { x }; var height: CGFloat { y } }
+extension CGVector { static let zero = CGVector(dx: 0, dy: 0) }

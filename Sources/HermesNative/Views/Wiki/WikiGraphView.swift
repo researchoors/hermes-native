@@ -126,30 +126,38 @@ struct WikiGraphView: View {
         case idle, deciding, panning, draggingNode
     }
 
+    private enum GraphViewMode { case twoD, threeD }
+
     private let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+
+    @State private var viewMode: GraphViewMode = .twoD
 
     var body: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
                 ZStack {
-                    graphCanvas
+                    if viewMode == .threeD {
+                        WikiGraph3DView(viewModel: viewModel)
+                    } else {
+                        graphCanvas
 
-                    #if os(macOS)
-                    GraphMouseInterceptor(
-                        onMouseDown: { pt in handleMouseDown(pt) },
-                        onMouseDragged: { pt in handleMouseDragged(pt) },
-                        onMouseUp: { pt in handleMouseUp(pt) },
-                        onScrollWheel: { delta in handleScrollWheel(delta) },
-                        onMouseMoved: { pt in
-                            if mouseState == .idle { viewModel.updateHover(at: pt) }
-                        },
-                        onMouseExited: { viewModel.clearHover() }
-                    )
-                    #else
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .gesture(iosDragGesture)
-                    #endif
+                        #if os(macOS)
+                        GraphMouseInterceptor(
+                            onMouseDown: { pt in handleMouseDown(pt) },
+                            onMouseDragged: { pt in handleMouseDragged(pt) },
+                            onMouseUp: { pt in handleMouseUp(pt) },
+                            onScrollWheel: { delta in handleScrollWheel(delta) },
+                            onMouseMoved: { pt in
+                                if mouseState == .idle { viewModel.updateHover(at: pt) }
+                            },
+                            onMouseExited: { viewModel.clearHover() }
+                        )
+                        #else
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .gesture(iosDragGesture)
+                        #endif
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onReceive(timer) { _ in
@@ -689,6 +697,19 @@ struct WikiGraphView: View {
                     .font(.system(size: 12, weight: .medium))
             }
             .buttonStyle(.borderless)
+
+            Divider().frame(height: 14)
+
+            Button {
+                viewMode = viewMode == .twoD ? .threeD : .twoD
+                viewModel.is3D = viewMode == .threeD
+                viewModel.setupSimulation()
+            } label: {
+                Image(systemName: viewMode == .twoD ? "cube.transparent" : "square.grid.2x2")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.borderless)
+            .help(viewMode == .twoD ? "Switch to 3D" : "Switch to 2D")
 
             Divider().frame(height: 14)
 
