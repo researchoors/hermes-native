@@ -18,6 +18,9 @@ final class WikiGraphViewModel: ObservableObject {
     /// Currently selected node index (not page, local sim index).
     @Published var selectedNodeIndex: Int?
 
+    /// Node currently hovered (macOS) — highlights node + its connections.
+    @Published var hoveredNodeIndex: Int?
+
     var selectedNodeTitle: String? {
         guard let idx = selectedNodeIndex, simNodes.indices.contains(idx) else { return nil }
         return simNodes[idx].label
@@ -39,6 +42,9 @@ final class WikiGraphViewModel: ObservableObject {
     @Published var simNodes: [SimNode] = []
     @Published var simLinks: [(sourceIndex: Int, targetIndex: Int)] = []
 
+    /// Connection count per node (degree centrality) — drives node sizing.
+    private(set) var degrees: [Int] = []
+
     // Simulation parameters (tuned for ~20-50 nodes)
     private let friction: CGFloat = 0.92
     private let springLength: CGFloat = 120
@@ -48,6 +54,13 @@ final class WikiGraphViewModel: ObservableObject {
     private let iterationsPerFrame = 2
     private let maxVelocity: CGFloat = 30
     private let maxRepulsionForce: CGFloat = 500
+
+    // Simulated annealing — energy decays so the graph settles into a calm,
+    // stable layout instead of wiggling forever. Reheated on setup/drag.
+    private var alpha: CGFloat = 1.0
+    private let alphaDecay: CGFloat = 0.0228   // ~300 ticks to settle
+    private let alphaMin: CGFloat = 0.002
+    private let alphaReheat: CGFloat = 0.5
 
     // View transforms
     @Published var zoom: CGFloat = 1.0
@@ -69,6 +82,17 @@ final class WikiGraphViewModel: ObservableObject {
 
     func nodeRadius(for type: String) -> CGFloat {
         type == "entity" ? 7 : 5
+    }
+
+    /// Degree-aware radius: hubs (many connections) render larger so the
+    /// most-connected pages in the "second brain" stand out.
+    func nodeRadius(at index: Int) -> CGFloat {
+        guard simNodes.indices.contains(index) else { return 5 }
+        let base = nodeRadius(for: simNodes[index].type)
+        let degree = degrees.indices.contains(index) ? degrees[index] : 0
+        // Logarithmic growth so a 50-link hub isn't absurdly large.
+        let bonus = min(CGFloat(degree) * 0.9, 10)
+        return base + log2(CGFloat(degree) + 1) * 1.4 + bonus * 0.15
     }
 
     // MARK: - Gateway
@@ -148,12 +172,28 @@ final class WikiGraphViewModel: ObservableObject {
                   let ti = idToIndex[link.target] else { return nil }
             return (si, ti)
         }
+
+        // Compute degree (connection count) per node for sizing.
+        degrees = Array(repeating: 0, count: simNodes.count)
+        for (si, ti) in simLinks {
+            if degrees.indices.contains(si) { degrees[si] += 1 }
+            if degrees.indices.contains(ti) { degrees[ti] += 1 }
+        }
+
+        // Reheat the simulation so it animates into a fresh layout.
+        alpha = 1.0
     }
 
     // MARK: - Simulation Step
 
     func tick() {
         guard canvasSize != .zero, simNodes.count > 1 else { return }
+
+        // Once the layout has cooled below alphaMin it is stable — stop
+        // integrating so nodes stay put (no perpetual wiggle).  Dragging
+        // re-heats via dragNode(), so interaction always animates.
+        let anyDragging = simNodes.contains { $0.isDragging }
+        guard alpha > alphaMin || anyDragging else { return }
 
         for _ in 0..<iterationsPerFrame {
             var forces = Array(repeating: CGVector.zero, count: simNodes.count)
@@ -203,12 +243,12 @@ final class WikiGraphViewModel: ObservableObject {
                 forces[i].dy += (center.y - meanY) * centerPull
             }
 
-            // Integrate with velocity clamp
+            // Integrate with velocity clamp, scaled by annealing energy (alpha)
             for i in 0..<simNodes.count {
                 guard !simNodes[i].isDragging else { continue }
                 var v = simNodes[i].velocity
-                v.dx = (v.dx + forces[i].dx) * friction
-                v.dy = (v.dy + forces[i].dy) * friction
+                v.dx = (v.dx + forces[i].dx * alpha) * friction
+                v.dy = (v.dy + forces[i].dy * alpha) * friction
                 let speed = sqrt(v.dx * v.dx + v.dy * v.dy)
                 if speed > maxVelocity {
                     let scale = maxVelocity / speed
@@ -219,6 +259,13 @@ final class WikiGraphViewModel: ObservableObject {
                 simNodes[i].position.x += v.dx
                 simNodes[i].position.y += v.dy
             }
+        }
+
+        // Cool down. Dragging holds energy high so neighbors keep following.
+        if anyDragging {
+            alpha = max(alpha, alphaReheat)
+        } else {
+            alpha += (alphaMin - alpha) * alphaDecay
         }
     }
 
@@ -243,6 +290,7 @@ final class WikiGraphViewModel: ObservableObject {
         guard simNodes.indices.contains(index) else { return }
         simNodes[index].isDragging = true
         simNodes[index].velocity = .zero
+        alpha = max(alpha, alphaReheat)
     }
 
     func dragNode(index: Int, to point: CGPoint) {
@@ -250,11 +298,30 @@ final class WikiGraphViewModel: ObservableObject {
         let mx = (point.x - panOffset.width) / zoom
         let my = (point.y - panOffset.height) / zoom
         simNodes[index].position = CGPoint(x: mx, y: my)
+        alpha = max(alpha, alphaReheat)
     }
 
     func stopDragging(index: Int) {
         guard simNodes.indices.contains(index) else { return }
         simNodes[index].isDragging = false
+    }
+
+    /// Update hovered node from a screen point (macOS hover highlight).
+    func updateHover(at point: CGPoint) {
+        let idx = hitTest(point: CGPoint(x: point.x, y: point.y))
+        if idx != hoveredNodeIndex {
+            hoveredNodeIndex = idx
+        }
+    }
+
+    func clearHover() {
+        if hoveredNodeIndex != nil { hoveredNodeIndex = nil }
+    }
+
+    /// Highlight context: a node is "active" if there's no selection/hover,
+    /// or it is the selected/hovered node or one of its neighbors.
+    var highlightAnchor: Int? {
+        selectedNodeIndex ?? hoveredNodeIndex
     }
 
     func handleTap(at point: CGPoint) {
@@ -290,15 +357,24 @@ final class WikiGraphViewModel: ObservableObject {
         return Array(result)
     }
 
+    private func neighbors(of anchor: Int) -> Set<Int> {
+        var result = Set<Int>()
+        for (si, ti) in simLinks {
+            if si == anchor { result.insert(ti) }
+            if ti == anchor { result.insert(si) }
+        }
+        return result
+    }
+
     func isNodeConnectedToSelection(_ index: Int) -> Bool {
-        guard let sel = selectedNodeIndex else { return true }
-        if index == sel { return true }
-        return selectedNodeNeighbors().contains(index)
+        guard let anchor = highlightAnchor else { return true }
+        if index == anchor { return true }
+        return neighbors(of: anchor).contains(index)
     }
 
     func linkIsConnectedToSelection(_ source: Int, _ target: Int) -> Bool {
-        guard let sel = selectedNodeIndex else { return true }
-        return source == sel || target == sel
+        guard let anchor = highlightAnchor else { return true }
+        return source == anchor || target == anchor
     }
 
     func zoomAtPoint(factor: CGFloat, around point: CGPoint) {
