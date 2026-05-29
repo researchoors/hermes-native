@@ -639,10 +639,12 @@ struct DiagramPreviewBlock: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            MermaidDiagramView(mermaidCode: mermaidCode)
+            Color.clear
                 .frame(height: 180)
+                .overlay(
+                    MermaidDiagramView(mermaidCode: mermaidCode)
+                )
                 .clipped()
-                .drawingGroup()
                 .allowsHitTesting(false)
                 .contentShape(Rectangle())
                 .onTapGesture {
