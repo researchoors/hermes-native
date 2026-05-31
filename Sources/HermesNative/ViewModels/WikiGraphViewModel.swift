@@ -20,6 +20,32 @@ final class WikiGraphViewModel: ObservableObject {
     }
     @Published var isLoading = false
     @Published var error: String?
+    @Published var searchQuery = "" {
+        didSet { updateFilteredNodes() }
+    }
+
+    /// Node indices that match the current search query. Empty = show all.
+    var filteredNodeIndices: Set<Int> = []
+    private var cachedQuery: String = ""
+
+    var isFiltering: Bool { !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    private func updateFilteredNodes() {
+        let q = searchQuery.trimmingCharacters(in: .whitespaces).lowercased()
+        guard cachedQuery != q else { return }
+        cachedQuery = q
+        if q.isEmpty {
+            filteredNodeIndices.removeAll()
+            return
+        }
+        let terms = q.split(separator: " ").map(String.init)
+        filteredNodeIndices = Set(simNodes.indices.filter { idx in
+            guard simNodes.indices.contains(idx) else { return false }
+            let node = simNodes[idx]
+            let haystack = "\(node.label.lowercased()) \(node.type.lowercased())"
+            return terms.allSatisfy { haystack.contains($0) }
+        })
+    }
 
     struct SimNode: Identifiable {
         let id: String
@@ -144,6 +170,7 @@ final class WikiGraphViewModel: ObservableObject {
         degrees = Array(repeating: 0, count: simNodes.count)
         for (si, ti) in simLinks { if degrees.indices.contains(si) { degrees[si] += 1 }; if degrees.indices.contains(ti) { degrees[ti] += 1 } }
         alpha = 1.0
+        updateFilteredNodes()
     }
 
     func tick() { is3D ? tick3D() : tick2D() }

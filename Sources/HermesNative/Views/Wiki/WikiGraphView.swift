@@ -242,6 +242,46 @@ struct WikiGraphView: View {
                 Text("\(viewModel.graph.pages.count) pages · \(viewModel.graph.links.count) links")
                     .font(.caption)
                     .foregroundStyle(Theme.secondary)
+
+                if viewModel.isFiltering {
+                    HStack(spacing: 6) {
+                        Image(systemName: "line.3.horizontal.decrease")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.accent)
+                        Text("\(viewModel.filteredNodeIndices.count) of \(viewModel.simNodes.count) nodes")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.accent)
+                        Button {
+                            viewModel.searchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(Theme.tertiary)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+
+                HStack(spacing: 4) {
+                    TextField("Search…", text: $viewModel.searchQuery)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                        .frame(minWidth: 80)
+                        .onSubmit { /* just focus — filtering is live */ }
+                    if !viewModel.searchQuery.isEmpty {
+                        Button {
+                            viewModel.searchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(Theme.tertiary)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Theme.background, in: RoundedRectangle(cornerRadius: 5))
             }
             .padding(10)
             .background(Theme.surface.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
@@ -384,6 +424,8 @@ struct WikiGraphView: View {
                 }
 
                 let hasSelection = viewModel.highlightAnchor != nil
+                let filtering = viewModel.isFiltering
+                let filteredSet = viewModel.filteredNodeIndices
 
                 context.translateBy(x: viewModel.panOffset.width, y: viewModel.panOffset.height)
                 context.scaleBy(x: viewModel.zoom, y: viewModel.zoom)
@@ -394,7 +436,8 @@ struct WikiGraphView: View {
                           viewModel.simNodes.indices.contains(ti) else { continue }
 
                     let isConnected = !hasSelection || viewModel.linkIsConnectedToSelection(si, ti)
-                    let opacity: CGFloat = isConnected ? 0.55 : 0.06
+                    let linkFilterMatch = !filtering || (filteredSet.contains(si) || filteredSet.contains(ti))
+                    let opacity: CGFloat = isConnected ? (linkFilterMatch ? 0.55 : 0.06) : 0.06
                     let lineWidth: CGFloat = isConnected ? 1.6 : 0.5
                     let color = isConnected
                         ? Color(hex: "8a8aff")!.opacity(opacity)
@@ -450,7 +493,8 @@ struct WikiGraphView: View {
                     let isSelected = viewModel.selectedNodeIndex == index
                     let isHovered = viewModel.hoveredNodeIndex == index
                     let isConnected = !hasSelection || viewModel.isNodeConnectedToSelection(index)
-                    let baseOpacity: CGFloat = isConnected ? 1.0 : 0.18
+                    let matchFilter = !filtering || filteredSet.contains(index)
+                    let baseOpacity: CGFloat = isConnected ? (matchFilter ? 1.0 : 0.13) : 0.18
                     let r = viewModel.nodeRadius(at: index)
                     let base = viewModel.color(for: node.type)
                     let pos = node.position

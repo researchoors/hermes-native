@@ -64,7 +64,7 @@ private func makeSceneView(context: Any) -> SCNView {
 
     let cameraNode = SCNNode()
     cameraNode.camera = SCNCamera()
-    cameraNode.camera?.zFar = 2000
+    cameraNode.camera?.zFar = 10000
     cameraNode.camera?.fieldOfView = 45
     cameraNode.position = SCNVector3(0, 80, 480)
     cameraNode.look(at: SCNVector3(0, 0, 0))
@@ -129,12 +129,19 @@ private final class Coordinator: NSObject {
             return
         }
 
-        updatePositions(from: vm)
+        let isActive = vm.simAlpha > 0.003 || vm.simNodes.contains(where: { $0.isDragging })
+        if isActive {
+            updatePositions(from: vm)
+        }
 
-        if vm.simAlpha <= 0.003 && !vm.simNodes.contains(where: { $0.isDragging }) {
+        let currentIndex = vm.selectedNodeIndex
+        if currentIndex != lastHighlightedIndex {
             updateSelectionHighlight(from: vm)
+            lastHighlightedIndex = currentIndex
         }
     }
+
+    private var lastHighlightedIndex: Int?
 
     @MainActor
     private func rebuildScene(from vm: WikiGraphViewModel, in scnView: SCNView) {
@@ -233,13 +240,28 @@ private final class Coordinator: NSObject {
 
     @MainActor
     private func updatePositions(from vm: WikiGraphViewModel) {
+        let selectedID: String? = vm.selectedNodeIndex.flatMap { idx in
+            vm.simNodes.indices.contains(idx) ? vm.simNodes[idx].id : nil
+        }
+        let neighborIDs: Set<String> = {
+            guard let selIdx = vm.selectedNodeIndex else { return [] }
+            var ids = Set<String>()
+            for (si, ti) in vm.simLinks {
+                if si == selIdx, vm.simNodes.indices.contains(ti) { ids.insert(vm.simNodes[ti].id) }
+                if ti == selIdx, vm.simNodes.indices.contains(si) { ids.insert(vm.simNodes[si].id) }
+            }
+            return ids
+        }()
+
         for simNode in vm.simNodes {
             guard let scnNode = nodeMap[simNode.id] else { continue }
             scnNode.position = SCNVector3(simNode.position3D)
 
             if let labelNode = labelContainer?.childNode(withName: "label:\(simNode.id)", recursively: false) {
                 labelNode.position = SCNVector3(simNode.position3D.x, simNode.position3D.y + 7, simNode.position3D.z)
-                labelNode.isHidden = abs(simNode.position3D.z) > labelDistanceThreshold
+                let isImportant = simNode.id == selectedID || neighborIDs.contains(simNode.id)
+                let isClose = abs(simNode.position3D.z) < labelDistanceThreshold
+                labelNode.isHidden = !isImportant && !isClose
             }
         }
 
@@ -273,11 +295,18 @@ private final class Coordinator: NSObject {
             return ids
         }()
 
+        let filtering = vm.isFiltering
+        let filteredSet = vm.filteredNodeIndices
+
         for (id, scnNode) in nodeMap {
             guard let geom = scnNode.geometry else { continue }
             let isSelected = id == selectedID
             let isNeighbor = neighborIDs.contains(id)
             let hasSelection = selectedID != nil && !neighborIDs.isEmpty
+
+            let idx = vm.simNodes.firstIndex(where: { $0.id == id })
+            let matchesFilter = !filtering || (idx != nil && filteredSet.contains(idx!))
+            let filterDim: CGFloat = matchesFilter ? 1.0 : 0.12
 
             if isSelected {
                 #if os(macOS)
@@ -292,15 +321,15 @@ private final class Coordinator: NSObject {
                 scnNode.runAction(.repeatForever(pulse))
             } else if hasSelection && !isNeighbor {
                 #if os(macOS)
-                geom.firstMaterial?.diffuse.contents = NSColor(white: 0.25, alpha: 1.0)
+                geom.firstMaterial?.diffuse.contents = NSColor(white: 0.25 * filterDim, alpha: 1.0)
                 #else
-                geom.firstMaterial?.diffuse.contents = UIColor(white: 0.25, alpha: 1.0)
+                geom.firstMaterial?.diffuse.contents = UIColor(white: 0.25 * filterDim, alpha: 1.0)
                 #endif
                 scnNode.removeAllActions()
             } else {
                 let nodeType = vm.simNodes.first(where: { $0.id == id })?.type ?? ""
                 let nodeColor = vm.color(for: nodeType)
-                geom.firstMaterial?.diffuse.contents = PlatformColor(nodeColor)
+                geom.firstMaterial?.diffuse.contents = PlatformColor(nodeColor).withAlphaComponent(filterDim)
                 scnNode.removeAllActions()
             }
         }
