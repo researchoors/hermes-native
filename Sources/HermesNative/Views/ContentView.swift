@@ -205,8 +205,7 @@ struct ContentView: View {
                 }
             }
             .onOpenURL { url in
-                guard url.scheme == "hermesnative", url.host == "new-session" else { return }
-                Task { await createAndSwitchToNewSession() }
+                handleDeepLink(url)
             }
         }
         .onChange(of: sessionList.activeSessionID) { _, newID in
@@ -290,6 +289,9 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
+        .onOpenURL { url in
+            handleDeepLink(url)
+        }
         .sheet(isPresented: $showGatewayDebugSheet) {
             GatewayDebugPanelView(client: gatewayClientWrapper.client)
                 .frame(minWidth: 560, minHeight: 620)
@@ -880,6 +882,26 @@ spawnTreeStore.subscribe(to: client)
     private func switchToSession(from notification: Notification) {
         if let sessionID = notification.userInfo?["session_id"] as? String {
             sessionList.selectSession(id: sessionID)
+        }
+    }
+
+    /// Dispatch `hermesnative://` URLs to the right in-app action. Both
+    /// platforms attach this to their root view via `.onOpenURL`. The URL
+    /// scheme is registered in HermesNative-{macOS,iOS}/Info.plist; see
+    /// `HermesNativeDeepLink` for the canonical URL grammar.
+    private func handleDeepLink(_ url: URL) {
+        guard let link = HermesNativeDeepLink(url: url) else {
+            log.debug("handleDeepLink: ignoring unrecognised URL \(url.absoluteString)")
+            return
+        }
+        switch link {
+        case .newSession:
+            Task { await createAndSwitchToNewSession() }
+        case .session(let id):
+            log.info("handleDeepLink: switching to session \(id)")
+            sessionList.selectSession(id: id)
+        case .activity:
+            showActivitySheet = true
         }
     }
 
