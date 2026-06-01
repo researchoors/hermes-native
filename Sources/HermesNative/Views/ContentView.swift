@@ -79,8 +79,11 @@ struct ContentView: View {
         }
         .task {
             if settings.isConfigured {
-                _ = await gatewayClientWrapper.connectIfNeeded(using: settings)
+                await gatewayClientWrapper.connectIfNeeded(using: settings)
                 wireUpClient()
+                if gatewayClientWrapper.isConnected {
+                    await sessionList.refreshSessions()
+                }
             }
         }
         .onChange(of: gatewayClientWrapper.isConnected) { _, connected in
