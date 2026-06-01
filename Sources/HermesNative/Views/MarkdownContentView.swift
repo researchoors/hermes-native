@@ -24,7 +24,7 @@ struct MarkdownContentView: View, Equatable {
                 switch block {
                 case .codeBlock(let language, let code):
                     if MarkdownParser.isDiagramLanguage(language) {
-                        DiagramPreviewBlock(mermaidCode: code, language: language)
+                        DiagramPreviewBlock(mermaidCode: code, language: language, isStreaming: isStreaming)
                     } else if MarkdownParser.isHTMLLanguage(language) {
                         HTMLBlockView(html: code)
                     } else {
@@ -635,16 +635,15 @@ struct CodeBlockView: View {
 struct DiagramPreviewBlock: View {
     let mermaidCode: String
     let language: String
+    let isStreaming: Bool
     @State private var isOpen = false
 
     var body: some View {
         VStack(spacing: 0) {
-            Color.clear
-                .frame(height: 180)
-                .overlay(
-                    MermaidDiagramView(mermaidCode: mermaidCode)
-                )
+MermaidDiagramView(mermaidCode: mermaidCode, isStreaming: isStreaming)
+                .frame(minHeight: 200, idealHeight: 400)
                 .clipped()
+                .drawingGroup()
                 .allowsHitTesting(false)
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -1144,7 +1143,7 @@ struct OpenableBlockSheet: View {
                 // Content — diagram or HTML, clipped so zoom/pan never overlaps the title bar
                 Group {
                     if MarkdownParser.isDiagramLanguage(language) {
-                        MermaidDiagramView(mermaidCode: content)
+                        MermaidDiagramView(mermaidCode: content, isStreaming: false)
                     } else {
                         InlineHTMLView(html: content)
                     }
