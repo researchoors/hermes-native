@@ -546,9 +546,14 @@ struct WikiGraphView: View {
 
                 // ── Labels (screen space, unscaled) ──
                 context.transform = .identity
+                let neighborSet = Set(viewModel.selectedNodeNeighbors())
                 for (index, node) in viewModel.simNodes.enumerated() {
                     let isConnected = !hasSelection || viewModel.isNodeConnectedToSelection(index)
-                    guard isConnected else { continue }
+                    let matchesFilter = !filtering || filteredSet.contains(index)
+                    guard isConnected && matchesFilter else { continue }
+                    let isAnchor = viewModel.selectedNodeIndex == index || viewModel.hoveredNodeIndex == index
+                    let isNeighbor = neighborSet.contains(index)
+                    if viewModel.zoom < 0.7 && !isAnchor && !isNeighbor { continue }
                     let r = viewModel.nodeRadius(at: index)
                     let screenPos = CGPoint(
                         x: node.position.x * viewModel.zoom + viewModel.panOffset.width + r * viewModel.zoom + 4,
@@ -556,7 +561,6 @@ struct WikiGraphView: View {
                     )
                     guard screenPos.x > -50, screenPos.x < size.width + 50,
                           screenPos.y > -20, screenPos.y < size.height + 20 else { continue }
-                    let isAnchor = viewModel.selectedNodeIndex == index || viewModel.hoveredNodeIndex == index
                     context.draw(
                         Text(node.label)
                             .font(.system(size: isAnchor ? 12 : 11,

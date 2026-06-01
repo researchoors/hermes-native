@@ -134,7 +134,7 @@ final class WikiGraphViewModel: ObservableObject {
 
     func setupSimulation() {
         guard canvasSize != .zero, !graph.pages.isEmpty else { return }
-        is3D ? setup3D() : setup2D()
+        if is3D { setup3D() } else { setup2D() }
     }
 
     private func setup2D() {
@@ -173,7 +173,7 @@ final class WikiGraphViewModel: ObservableObject {
         updateFilteredNodes()
     }
 
-    func tick() { is3D ? tick3D() : tick2D() }
+    func tick() { if is3D { tick3D() } else { tick2D() } }
 
     private func tick2D() {
         guard canvasSize != .zero, simNodes.count > 1 else { return }
