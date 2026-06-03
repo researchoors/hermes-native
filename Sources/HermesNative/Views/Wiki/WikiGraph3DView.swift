@@ -116,7 +116,7 @@ private final class Coordinator: NSObject {
     private var lastTopologyKey: String = ""
     private let labelDistanceThreshold: Float = 350
     private let cameraMinDistance: Float = 100
-    private let cameraMaxDistance: Float = 4000
+private let cameraMaxDistance: Float = 4000
 
     init(viewModel: WikiGraphViewModel) {
         self.viewModel = viewModel
