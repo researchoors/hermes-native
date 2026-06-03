@@ -169,7 +169,7 @@ struct SkillsView: View {
 
     private var loadingState: some View {
         HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
+            ProgressView().scaleEffect(0.7)
             Text("Loading skills…")
                 .font(.caption)
                 .foregroundStyle(Theme.secondary)
@@ -301,7 +301,7 @@ struct SkillsView: View {
 
             if viewModel.isSearching {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().scaleEffect(0.7)
                     Text("Searching...")
                         .font(.caption)
                         .foregroundStyle(Theme.secondary)
@@ -454,7 +454,7 @@ struct SkillCard: View {
 
             if let status = installStatus {
                 if status == "installing" || status == "uninstalling" {
-                    ProgressView().controlSize(.small)
+                    ProgressView().scaleEffect(0.7)
                 } else if status == "installed" {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(Theme.success)
@@ -713,7 +713,7 @@ private struct HubResultRow: View {
             Spacer()
             if let status = installStatus {
                 if status == "installing" {
-                    ProgressView().controlSize(.small)
+                    ProgressView().scaleEffect(0.7)
                 } else if status == "installed" {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(Theme.success)
