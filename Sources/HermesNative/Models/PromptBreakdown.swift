@@ -70,8 +70,8 @@ extension PromptBreakdown {
                     id: "persona",
                     name: "Persona",
                     source: "~/.hermes/personas/default.md",
-                    contentPreview: "You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code...",
-                    fullContent: "You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code, analyzing information, creative work, and executing actions via your tools. You communicate clearly, admit uncertainty when appropriate, and prioritize being genuinely useful over being verbose.",
+                    contentPreview: "You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist...",
+                    fullContent: "You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist...",
                     tokenCount: 800,
                     charCount: 472,
                     colorHex: "#7c7cff"
@@ -80,8 +80,8 @@ extension PromptBreakdown {
                     id: "memory",
                     name: "Memory",
                     source: "~/.hermes/memories/MEMORY.md",
-                    contentPreview: "User prefers concise answers. Works primarily in Python and Swift. Has a background in machine learning and systems programming. Favorite editor is VS Code. Prefers dark mode interfaces.",
-                    fullContent: "User prefers concise answers. Works primarily in Python and Swift. Has a background in machine learning and systems programming. Favorite editor is VS Code. Prefers dark mode interfaces. Located in the PST timezone.",
+                    contentPreview: "User prefers concise answers. Works primarily in Python and Swift. Has a background in machine learning and systems programming. F...",
+                    fullContent: "User prefers concise answers. Works primarily in Python and Swift. Has a background in machine learning and systems programming. F...",
                     tokenCount: 400,
                     charCount: 218,
                     colorHex: "#4ecdc4"
@@ -91,7 +91,7 @@ extension PromptBreakdown {
                     name: "User Profile",
                     source: "~/.hermes/memories/USER.md",
                     contentPreview: "OS: macOS 26.3\nHome directory: /Users/inference2\nCurrent working directory: /Users/inference2/.hermes/hermes-agent\nShell: zsh",
-                    fullContent: "OS: macOS 26.3\nHome directory: /Users/inference2\nCurrent working directory: /Users/inference2/.hermes/hermes-agent\nShell: zsh\nPreferred languages: English",
+                    fullContent: "OS: macOS 26.3\nHome directory: /Users/inference2\nCurrent working directory: /Users/inference2/.hermes/hermes-agent\nShell: zsh\n...",
                     tokenCount: 200,
                     charCount: 152,
                     colorHex: "#ff6b6b"
@@ -100,8 +100,8 @@ extension PromptBreakdown {
                     id: "ephemeral-prompt",
                     name: "Ephemeral Prompt",
                     source: "(session.set_prompt)",
-                    contentPreview: "Current date: Wednesday, June 03, 2026\nActive conversation context: discussing prompt assembly visualizer implementation for HermesNative.\nRecent focus: SwiftUI multiplatform architecture.",
-                    fullContent: "Current date: Wednesday, June 03, 2026\nActive conversation context: discussing prompt assembly visualizer implementation for HermesNative.\nRecent focus: SwiftUI multiplatform architecture.\nSession started: 10:30 AM PST.",
+                    contentPreview: "Current date: Wednesday, June 03, 2026\nActive conversation context: discussing prompt assembly visualizer implementation for Herm...",
+                    fullContent: "Current date: Wednesday, June 03, 2026\nActive conversation context: discussing prompt assembly visualizer implementation for Herm...",
                     tokenCount: 500,
                     charCount: 245,
                     colorHex: "#ffe66d"
@@ -110,8 +110,8 @@ extension PromptBreakdown {
                     id: "active-skills",
                     name: "Active Skills",
                     source: "(session.attach_skills)",
-                    contentPreview: "# Active Skills\n\n- **swift-codebase**: Navigate and understand Swift/SwiftUI codebases. Provides guidance on project structure, build systems, and idiomatic patterns.\n- **hermes-agent**: Configuration and usage...",
-                    fullContent: "# Active Skills\n\n- **swift-codebase**: Navigate and understand Swift/SwiftUI codebases. Provides guidance on project structure, build systems, and idiomatic patterns.\n- **hermes-agent**: Configuration and usage of Hermes Agent itself including profiles, skills, plugins, and cron jobs.\n- **git-worktree**: Manage git worktrees for parallel development, including creation, navigation, and cleanup workflows.\n- **prompt-engineering**: Best practices for crafting effective system prompts and agent instructions.",
+                    contentPreview: "# Active Skills\n\n- **swift-codebase**: Navigate and understand Swift/SwiftUI codebases. Provides guidance on project structure, ...",
+                    fullContent: "# Active Skills\n\n- **swift-codebase**: Navigate and understand Swift/SwiftUI codebases. Provides guidance on project structure, ...",
                     tokenCount: 1200,
                     charCount: 498,
                     colorHex: "#a8e6cf"
