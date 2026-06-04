@@ -532,10 +532,10 @@ struct ExportSheet: View {
 
 #if DEBUG
 #Preview {
-    SessionPlaybackView_Previews.previews
+    SessionPlaybackViewPreviews.previews
 }
 
-enum SessionPlaybackView_Previews {
+enum SessionPlaybackViewPreviews {
     static var previews: some View {
         SessionPlaybackViewInternalPreview()
             .preferredColorScheme(.dark)
