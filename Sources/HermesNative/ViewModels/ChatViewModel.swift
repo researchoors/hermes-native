@@ -1431,6 +1431,14 @@ final class ChatViewModel: ObservableObject {
             if isVisibleSession {
                 sessionStates[displayID] = state
             } else {
+                // For non-visible sessions, persist messages to disk before
+                // discarding them from the in-memory slim state.  Otherwise
+                // messageComplete events for background sessions would be
+                // lost — the saveHistoryDebounced() call below only saves
+                // the *visible* session's messages.
+                if case .messageComplete = event {
+                    ChatHistoryStore.shared.saveMessages(state.messages, forSession: displayID)
+                }
                 // Persist only minimal metadata for sidebar display
                 var slimState = sessionStates[displayID] ?? SessionRuntimeState()
                 slimState.isStreaming = state.isStreaming
