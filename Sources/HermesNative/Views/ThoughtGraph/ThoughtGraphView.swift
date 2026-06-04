@@ -794,7 +794,7 @@ private extension ThoughtNodeStatus {
 // MARK: - Previews
 
 #if DEBUG
-struct ThoughtGraphView_Previews: PreviewProvider {
+struct ThoughtGraphViewPreviews: PreviewProvider {
     @MainActor
     static var previews: some View {
         let engine = ThoughtGraphLayoutEngine()
