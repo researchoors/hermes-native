@@ -157,7 +157,7 @@ enum DurationFormatter {
 // MARK: - Previews
 
 #if DEBUG
-struct ThoughtGraphNodeView_Previews: PreviewProvider {
+struct ThoughtGraphNodeViewPreviews: PreviewProvider {
     static var previews: some View {
         let layout = ThoughtGraphLayout(
             nodeID: "preview", x: 0, y: 0,
