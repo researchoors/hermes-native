@@ -294,8 +294,7 @@ struct ThoughtGraphView: View {
                 // Small green check drawn on top-right of completed nodes,
                 // independent of zoom to stay readable.
                 context.transform = .identity
-                let completedNodes = engine.layouts.compactMap {
-                    layout -> (ThoughtGraphLayout, ThoughtGraphNode)? in
+                let completedNodes = engine.layouts.compactMap { layout -> (ThoughtGraphLayout, ThoughtGraphNode)? in
                     guard let n = node(for: layout.nodeID),
                           n.status == .completed else { return nil }
                     return (layout, n)
