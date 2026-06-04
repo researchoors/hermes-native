@@ -288,10 +288,10 @@ struct PlaybackEventRow: View {
 
 #if DEBUG
 #Preview {
-    PlaybackEventRow_Previews.previews
+    PlaybackEventRowPreviews.previews
 }
 
-enum PlaybackEventRow_Previews {
+enum PlaybackEventRowPreviews {
     static var previews: some View {
         PlaybackEventRowInternalPreview()
             .preferredColorScheme(.dark)
@@ -301,7 +301,7 @@ enum PlaybackEventRow_Previews {
 }
 
 private struct PlaybackEventRowInternalPreview: View {
-    @State private var selectedID: String? = nil
+    @State private var selectedID: String?
 
     private let baseTimestamp = Date().timeIntervalSince1970 - 15.0
 
