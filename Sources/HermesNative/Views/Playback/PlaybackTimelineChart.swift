@@ -392,10 +392,10 @@ struct PlaybackTimelineChart: View {
 
 #if DEBUG
 #Preview {
-    PlaybackTimelineChart_Previews.previews
+    PlaybackTimelineChartPreviews.previews
 }
 
-enum PlaybackTimelineChart_Previews {
+enum PlaybackTimelineChartPreviews {
     static var previews: some View {
         PlaybackTimelineChartInternalPreview()
             .preferredColorScheme(.dark)
@@ -406,7 +406,7 @@ enum PlaybackTimelineChart_Previews {
 
 /// Internal wrapper that manages the selection binding for the preview.
 private struct PlaybackTimelineChartInternalPreview: View {
-    @State private var selectedID: String? = nil
+    @State private var selectedID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
