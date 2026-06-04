@@ -525,12 +525,14 @@ private struct SectionRowView: View {
             let beforeStart = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: searchStart))
             let beforeEnd = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: matchRange.lowerBound))
             if beforeStart < beforeEnd {
+                // swiftlint:disable:next shorthand_operator
                 result = result + Text(text[beforeStart..<beforeEnd]).foregroundStyle(Theme.primary)
             }
 
             // Highlighted match
             let highlightStart = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: matchRange.lowerBound))
             let highlightEnd = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: matchRange.upperBound))
+                // swiftlint:disable:next shorthand_operator
             result = result + Text(text[highlightStart..<highlightEnd])
                 .foregroundStyle(Color.yellow)
                 .bold()
@@ -541,6 +543,7 @@ private struct SectionRowView: View {
         // Remaining text after last match
         let remainderStart = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: searchStart))
         if remainderStart < text.endIndex {
+                // swiftlint:disable:next shorthand_operator
             result = result + Text(text[remainderStart...]).foregroundStyle(Theme.primary)
         }
 
