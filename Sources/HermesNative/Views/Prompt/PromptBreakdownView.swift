@@ -346,6 +346,7 @@ struct PromptBreakdownView: View {
             Divider()
                 .background(Theme.border)
 
+            // swiftlint:disable:next line_length
             Text("\(breakdown.toolDefinitionsCount) tool definitions are available for the agent to use. These include function signatures, parameter schemas, and descriptions consumed by the model's tool-calling capabilities.")
                 .font(.caption)
                 .foregroundStyle(Theme.secondary)
@@ -524,13 +525,13 @@ private struct SectionRowView: View {
             let beforeStart = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: searchStart))
             let beforeEnd = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: matchRange.lowerBound))
             if beforeStart < beforeEnd {
-                result = result + Text(text[beforeStart..<beforeEnd]).foregroundStyle(Theme.primary)
+                result += Text(text[beforeStart..<beforeEnd]).foregroundStyle(Theme.primary)
             }
 
             // Highlighted match
             let highlightStart = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: matchRange.lowerBound))
             let highlightEnd = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: matchRange.upperBound))
-            result = result + Text(text[highlightStart..<highlightEnd])
+            result += Text(text[highlightStart..<highlightEnd])
                 .foregroundStyle(Color.yellow)
                 .bold()
 
@@ -540,7 +541,7 @@ private struct SectionRowView: View {
         // Remaining text after last match
         let remainderStart = text.index(text.startIndex, offsetBy: lower.distance(from: lower.startIndex, to: searchStart))
         if remainderStart < text.endIndex {
-            result = result + Text(text[remainderStart...]).foregroundStyle(Theme.primary)
+            result += Text(text[remainderStart...]).foregroundStyle(Theme.primary)
         }
 
         return result
