@@ -71,10 +71,12 @@ struct ChatView: View {
     private var thoughtGraphNodes: [ThoughtGraphNode] {
         let tools = Array(chatViewModel.activeToolCalls.values)
             .sorted { $0.id < $1.id }
-        return ThoughtGraphLayoutEngine.inferAndLayout(
+        var nodes = ThoughtGraphLayoutEngine.inferAndLayout(
             tools: tools,
-            canvasSize: .zero  // size not used during inference
+            canvasSize: .zero
         )
+        nodes.append(contentsOf: chatViewModel.reasoningGraph.reasoningNodes)
+        return nodes
     }
 
     private var chatBottomContentPadding: CGFloat {
