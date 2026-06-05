@@ -27,6 +27,7 @@ struct SessionExplorerView: View {
 
     enum ExplorerTab: String, CaseIterable {
         case tree = "Agents"
+        case graph = "Graph"
         case chat = "Chat"
         case history = "History"
         case usage = "Usage"
@@ -62,6 +63,8 @@ struct SessionExplorerView: View {
                     switch selectedTab {
                     case .tree:
                         treeOrEmpty
+                    case .graph:
+                        graphOrEmpty
                     case .chat:
                         chatContent
                     case .history:
@@ -245,6 +248,58 @@ struct SessionExplorerView: View {
         }
         .navigationTitle(tree.root.goal.isEmpty ? "Mission Control" : String(tree.root.goal.prefix(50)))
     }
+
+    // MARK: - Graph Tab
+
+    @ViewBuilder
+    private var graphOrEmpty: some View {
+        if let tree, !tree.root.children.isEmpty {
+            graphContent(tree: tree)
+        } else {
+            emptyGraphState
+        }
+    }
+
+    private func graphContent(tree: SessionTree) -> some View {
+        VStack(spacing: 0) {
+            sessionHUD(tree: tree)
+                .padding(.horizontal)
+                .padding(.top, 8)
+
+            ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                SpawnCallGraphView(
+                    root: tree.root,
+                    selectedNodeID: $selectedNodeID,
+                    onNodeTap: { node in
+                        selectedNodeID = node.id
+                        showTranscriptFor = node
+                    }
+                )
+                .padding()
+                .frame(minWidth: 800)
+            }
+        }
+    }
+
+    private var emptyGraphState: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "point.bottomleft.filled.forward.to.point.topright.scurvepath")
+                .font(.system(size: 48))
+                .foregroundStyle(.tertiary)
+            Text("No Subagents")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            Text("This session has a root prompt only. Run a task with delegation to see the call graph.")
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            Spacer()
+        }
+    }
+
+    // MARK: - Empty Tree
 
     private var emptyTreeState: some View {
         VStack(spacing: 16) {
