@@ -70,7 +70,7 @@ struct SpawnCallGraphView: View {
 
                     // Count badge inside node
                     let countText = "\(node.children.count)"
-                    let textSize = context.resolve(Text(countText).font(.system(size: 10, weight: .bold)).foregroundColor(.white))
+                    let _ = context.resolve(Text(countText).font(.system(size: 10, weight: .bold)).foregroundColor(.white))
                         .measure(in: CGSize(width: 100, height: 20))
                     context.draw(
                         Text(countText).font(.system(size: 10, weight: .bold)).foregroundColor(.white),
