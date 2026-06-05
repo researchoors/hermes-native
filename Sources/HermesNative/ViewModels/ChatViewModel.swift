@@ -213,7 +213,7 @@ final class ChatViewModel: ObservableObject {
         // Use collect(.byTimeOrCount) to batch rapid events (e.g. reasoning.delta
         // floods) into fewer main-thread dispatches, preventing layout recursion
         // and spinning-wheel freezes during heavy streaming.
-        client.eventStream
+client.eventStream
             .collect(.byTimeOrCount(RunLoop.main, .milliseconds(32), 30))
             .sink { [weak self] batch in
                 DispatchQueue.main.async {
