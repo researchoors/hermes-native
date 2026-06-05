@@ -133,6 +133,7 @@
 		8E74DC3A495E0BBA739D1664 /* ActivityItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80C19CE5657AD3FD6547FC3D /* ActivityItem.swift */; };
 		8F458FFEDAD45A56D8C4F800 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342D787380CE678F4DDFEB8F /* ChatViewModel.swift */; };
 		9050E9BF45207715254D5340 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 292A20D0397566BF1454F5E4 /* SettingsViewModel.swift */; };
+		90F76F46D7DA1E440696C34D /* ToolCallFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D01C62D7F9E9F4482310FA5 /* ToolCallFlowView.swift */; };
 		9173E4A3FBF0AD9AE57E9F26 /* CFAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3179815C2A0EC7D43C9213AC /* CFAuthView.swift */; };
 		931B84E5C3C6E084C355F5F9 /* ToolCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55AE31FDF73C19D9F3762143 /* ToolCallView.swift */; };
 		949710C0980DCAAF18C1BD89 /* HermesNativeSmokeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE1B098714AA8CADED2118F6 /* HermesNativeSmokeUITests.swift */; };
@@ -199,6 +200,7 @@
 		DBA1D4F8C373253219786210 /* ThumbnailImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CCAEA30C82BE9DEAAB6E59F /* ThumbnailImageView.swift */; };
 		DC32BA16DE76CD9121AEEABB /* SpawnNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7471C7C26357969AFAF4154 /* SpawnNode.swift */; };
 		DC83AA4EBCD584E9E3A42199 /* Persona.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8510CDBA7652A23723C1FA1 /* Persona.swift */; };
+		DCA15D9D01FA4CDC6D02AB71 /* ToolCallFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D01C62D7F9E9F4482310FA5 /* ToolCallFlowView.swift */; };
 		DEC17FA02D6B7CEDBAFA3EFA /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DDB760C7DE7962EDD68FE92 /* ChatMessage.swift */; };
 		E02D36976178876AD11C9D01 /* WikiPageDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E6A9686B2761BE8EB687B1 /* WikiPageDetailView.swift */; };
 		E18E4CAC79D565554493CA83 /* WikiGraph3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 036752590B5CB027B0AC7E23 /* WikiGraph3DView.swift */; };
@@ -273,6 +275,7 @@
 		34DE48DC34DE5ECC63525DDC /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		38EA8CC2DBF51DFC5F57CA8F /* HermesNativeDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesNativeDeepLink.swift; sourceTree = "<group>"; };
 		3A6DB7DECBA8B2BCE7989B62 /* GatewayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayClient.swift; sourceTree = "<group>"; };
+		3D01C62D7F9E9F4482310FA5 /* ToolCallFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallFlowView.swift; sourceTree = "<group>"; };
 		3DDB760C7DE7962EDD68FE92 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
 		438F3AF894E195EF4007BAE9 /* confused.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = confused.json; sourceTree = "<group>"; };
 		4392D892650CECEFE61D5A72 /* MarkdownContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownContentView.swift; sourceTree = "<group>"; };
@@ -521,6 +524,7 @@
 				27ED7E5FCE51907EC21E5388 /* SessionRunTimelineView.swift */,
 				EA3B85B277F45FC12C34E028 /* SessionsDashboard.swift */,
 				03A021FE1B6ED47B52648805 /* SpawnCallGraphView.swift */,
+				3D01C62D7F9E9F4482310FA5 /* ToolCallFlowView.swift */,
 				FCCD3141656594B639005AAD /* TreeNodeView.swift */,
 			);
 			path = MissionControl;
@@ -915,6 +919,7 @@
 				5F1EF0C955652716DCC9AF34 /* ThoughtGraphNodeView.swift in Sources */,
 				E8E9840D183EB7DB712F61E2 /* ThoughtGraphView.swift in Sources */,
 				9D77260B5C0167683494801A /* ThumbnailImageView.swift in Sources */,
+				DCA15D9D01FA4CDC6D02AB71 /* ToolCallFlowView.swift in Sources */,
 				24CA7775DE2F52CF366C5485 /* ToolCallView.swift in Sources */,
 				9D846F746180F16291C70E15 /* ToolPillView.swift in Sources */,
 				56ACF05DAC83D02819DED0B0 /* TreeNodeView.swift in Sources */,
@@ -1037,6 +1042,7 @@
 				879AC9C0FB803E3EB32AE3B1 /* ThoughtGraphNodeView.swift in Sources */,
 				FDB8EA4B6AED9483F89AD2FB /* ThoughtGraphView.swift in Sources */,
 				DBA1D4F8C373253219786210 /* ThumbnailImageView.swift in Sources */,
+				90F76F46D7DA1E440696C34D /* ToolCallFlowView.swift in Sources */,
 				931B84E5C3C6E084C355F5F9 /* ToolCallView.swift in Sources */,
 				FA1C5B2A19F7A20073A78341 /* ToolPillView.swift in Sources */,
 				3F132ED582BFB260BD55D500 /* TreeNodeView.swift in Sources */,

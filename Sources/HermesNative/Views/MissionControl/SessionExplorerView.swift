@@ -28,6 +28,7 @@ struct SessionExplorerView: View {
     enum ExplorerTab: String, CaseIterable {
         case tree = "Agents"
         case graph = "Graph"
+        case toolCalls = "Tool Calls"
         case chat = "Chat"
         case history = "History"
         case usage = "Usage"
@@ -65,6 +66,8 @@ struct SessionExplorerView: View {
                         treeOrEmpty
                     case .graph:
                         graphOrEmpty
+                    case .toolCalls:
+                        toolCallsOrEmpty
                     case .chat:
                         chatContent
                     case .history:
@@ -297,6 +300,30 @@ struct SessionExplorerView: View {
                 .padding(.horizontal, 40)
             Spacer()
         }
+    }
+
+    // MARK: - Tool Calls Tab
+
+    @ViewBuilder
+    private var toolCallsOrEmpty: some View {
+        let targetNode = findSelectedNode ?? tree?.root
+        if let targetNode {
+            ToolCallFlowView(node: targetNode)
+        } else {
+            emptyTreeState
+        }
+    }
+
+    private var findSelectedNode: SpawnNode? {
+        guard let sid = selectedNodeID, let tree else { return nil }
+        func find(in node: SpawnNode) -> SpawnNode? {
+            if node.id == sid { return node }
+            for child in node.children {
+                if let found = find(in: child) { return found }
+            }
+            return nil
+        }
+        return find(in: tree.root)
     }
 
     // MARK: - Empty Tree
