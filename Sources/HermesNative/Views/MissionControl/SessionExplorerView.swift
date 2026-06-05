@@ -111,7 +111,7 @@ struct SessionExplorerView: View {
     private var chatContent: some View {
         Group {
             if isLoadingChat {
-                ProgressView("Loading conversation…")
+                HermesProgressView(label: "Loading conversation…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = chatError {
                 VStack(spacing: 16) {
@@ -502,7 +502,7 @@ struct SessionExplorerView: View {
     private var usageContent: some View {
         Group {
             if isLoadingUsage {
-                ProgressView("Loading usage…")
+                HermesProgressView(label: "Loading usage…")
             } else if let error = usageError {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")

@@ -89,7 +89,7 @@ struct CronListView: View {
 
     private var loadingState: some View {
         HStack(spacing: 8) {
-            ProgressView().scaleEffect(0.7)
+            HermesProgressView().scaleEffect(0.7)
             Text("Loading cron jobs…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
