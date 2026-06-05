@@ -467,7 +467,7 @@ struct ChatView: View {
 
             if !chatViewModel.isSessionReady && chatViewModel.error == nil {
                 HStack(spacing: 4) {
-                    ProgressView()
+                    HermesProgressView()
                         .scaleEffect(0.7)
                     Text("Creating session…")
                         .font(.caption)

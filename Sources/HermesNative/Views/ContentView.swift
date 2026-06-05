@@ -768,7 +768,7 @@ struct ContentView: View {
         if isCreatingSession || sessionCreationError != nil || chatViewModel.error != nil {
             HStack(spacing: 8) {
                 if isCreatingSession {
-                    ProgressView()
+                    HermesProgressView()
                         .scaleEffect(0.7)
                     Text("Connecting…")
                         .font(.caption)

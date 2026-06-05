@@ -111,6 +111,7 @@
 		78E71F57F73E679647805228 /* CronDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE7F6C318B11174A754F38A /* CronDashboardView.swift */; };
 		7989F3D46D0A0BF03C275071 /* LottieCharacterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDB000F6D0C975615D7F80F /* LottieCharacterView.swift */; };
 		79F8332C74A0AF69F0CAF780 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30743804431E0415F8F6D1F8 /* ContentView.swift */; };
+		7CF9AD0A4933A807D0853201 /* HermesProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5947E5D1704228B981F401BD /* HermesProgressView.swift */; };
 		7DDD74B3B3868AD3CEEF5786 /* GatewayClient+Wiki.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF80D004081F32919E4B20A6 /* GatewayClient+Wiki.swift */; };
 		7E1BCCCADCFDD000491A7271 /* MessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3AB049C24CAF89E13F3FA25 /* MessageBubbleView.swift */; };
 		7F7E9984E8457B5BC402254F /* GatewayClient+Wiki.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF80D004081F32919E4B20A6 /* GatewayClient+Wiki.swift */; };
@@ -158,6 +159,7 @@
 		B4DA9E350E5426C6650152D3 /* CronDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE7F6C318B11174A754F38A /* CronDashboardView.swift */; };
 		B5327CFB026788C047E6C4D7 /* HermesNativeVisionDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82587B61F3E0F931D857D35F /* HermesNativeVisionDemoUITests.swift */; };
 		B6A29D66D4C44BC31B0E4EF6 /* thinking.json in Resources */ = {isa = PBXBuildFile; fileRef = E1110949F66962E0E6B6DF6E /* thinking.json */; };
+		B6BAF397AEF4B6231A3F4865 /* HermesProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5947E5D1704228B981F401BD /* HermesProgressView.swift */; };
 		B6CD7C750A37A6EC4E5B41A5 /* PromptBreakdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98EAA5520C82637C026B91DB /* PromptBreakdown.swift */; };
 		B75E70AA622F66F64A597DCF /* MacInputTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFB387E7528E2CB1156D8314 /* MacInputTextField.swift */; };
 		B7A2ACFD1E4703732703EE24 /* MacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41979884D456FA9522F47D6 /* MacApp.swift */; };
@@ -276,6 +278,7 @@
 		57621A872836514CD5BC0F5B /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		581833B777AC84A1607DBD1F /* DarkMangaSkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkMangaSkin.swift; sourceTree = "<group>"; };
 		585DA7FCBAB60B91E45207CD /* SessionPlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPlaybackView.swift; sourceTree = "<group>"; };
+		5947E5D1704228B981F401BD /* HermesProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesProgressView.swift; sourceTree = "<group>"; };
 		5CCAEA30C82BE9DEAAB6E59F /* ThumbnailImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailImageView.swift; sourceTree = "<group>"; };
 		60E6A9686B2761BE8EB687B1 /* WikiPageDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiPageDetailView.swift; sourceTree = "<group>"; };
 		6294FDA258010F40BDDF42C3 /* StreamingStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingStatusBar.swift; sourceTree = "<group>"; };
@@ -392,6 +395,7 @@
 				D2350443FCFD79CA0CC60484 /* CronListView.swift */,
 				FE6DCDA4383E8AB84CFB90AE /* GatewayDebugPanelView.swift */,
 				A4F3A8DCE4BC4EE7005ABAEB /* GitHubLinkCard.swift */,
+				5947E5D1704228B981F401BD /* HermesProgressView.swift */,
 				F82B26CC4D53A1A8AD7A15A4 /* LongResponseView.swift */,
 				DBDB000F6D0C975615D7F80F /* LottieCharacterView.swift */,
 				4392D892650CECEFE61D5A72 /* MarkdownContentView.swift */,
@@ -841,6 +845,7 @@
 				03AAEAC08629D75C76094B59 /* HermesCapabilitiesStore.swift in Sources */,
 				3D8A9421202DEC219E546408 /* HermesNativeApp.swift in Sources */,
 				561D0FA41D659B38528B51BE /* HermesNativeDeepLink.swift in Sources */,
+				7CF9AD0A4933A807D0853201 /* HermesProgressView.swift in Sources */,
 				55FD8528E6AC5E7D7B294A11 /* IOSApp.swift in Sources */,
 				2C3618331E3F2AA253AC1699 /* JSONRPCRequest.swift in Sources */,
 				4F00EAC9C54FAF6B2FE39E2E /* JSONRPCResponse.swift in Sources */,
@@ -959,6 +964,7 @@
 				4F9265805827A9DAC48D6960 /* HermesCapabilitiesStore.swift in Sources */,
 				636E6271A60453754BEC74F1 /* HermesNativeApp.swift in Sources */,
 				BDC97F8DC661A548E1DFF2B5 /* HermesNativeDeepLink.swift in Sources */,
+				B6BAF397AEF4B6231A3F4865 /* HermesProgressView.swift in Sources */,
 				BC148807643E7DA972AF796F /* JSONRPCRequest.swift in Sources */,
 				6A125FB74D9B1C28E38E3666 /* JSONRPCResponse.swift in Sources */,
 				CEEF97E31350F2523D53C4ED /* KeychainStore.swift in Sources */,
