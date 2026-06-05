@@ -191,7 +191,9 @@ Reasoning:
 
         await ensureLoaded()
         guard isReady, let session = session else {
-            return await HeuristicReasoningSummarizer().summarize()
+            let fallback = HeuristicReasoningSummarizer()
+            fallback.feed(delta: text)
+            return await fallback.summarize()
         }
 
         let input = String(text.prefix(1200))

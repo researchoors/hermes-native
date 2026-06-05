@@ -1288,6 +1288,7 @@ final class ChatViewModel: ObservableObject {
             }
             if displaySessionID(for: sessionID ?? "") == displayID {
                 streamingMessageID = state.streamingMessageID
+                reasoningGraph.reset()
             }
             if let sid = sessionID ?? currentSessionID {
                 SessionRunHistoryStore.shared.recordRunStart(sessionID: sid)
@@ -1309,6 +1310,7 @@ final class ChatViewModel: ObservableObject {
                 flushPendingVisibleEventDeltas()
                 // Reload state to pick up flushed reasoning from snapshot
                 state = sessionStates[displayID] ?? state
+                Task { await reasoningGraph.finalize() }
             }
             guard let msgID = state.streamingMessageID,
                   let idx = state.messages.firstIndex(where: { $0.id == msgID }) else {
@@ -1371,6 +1373,7 @@ final class ChatViewModel: ObservableObject {
                 if displaySessionID(for: sessionID ?? "") == displayID {
                     pendingVisibleReasoningDelta += text
                     scheduleVisibleEventFlush()
+                    reasoningGraph.feed(delta: text)
                 }
             }
 
@@ -1379,6 +1382,7 @@ final class ChatViewModel: ObservableObject {
             if state.messages.last(where: { $0.role == .assistant && $0.isStreaming }) != nil {
                 if displaySessionID(for: sessionID ?? "") == displayID {
                     appendPendingVisibleThinkingDelta(text, separator: "\n")
+                    reasoningGraph.feed(delta: text)
                 }
             }
 
