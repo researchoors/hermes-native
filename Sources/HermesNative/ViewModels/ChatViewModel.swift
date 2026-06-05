@@ -210,7 +210,7 @@ final class ChatViewModel: ObservableObject {
         // floods) into fewer main-thread dispatches, preventing layout recursion
         // and spinning-wheel freezes during heavy streaming.
         client.eventStream
-            .collect(.byTimeOrCount(DispatchQueue.main, .milliseconds(32), 30))
+            .collect(.byTimeOrCount(RunLoop.main, .milliseconds(32), 30))
             .sink { [weak self] batch in
                 DispatchQueue.main.async {
                     for (event, eventSessionID) in batch {

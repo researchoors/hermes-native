@@ -107,6 +107,7 @@
 		6FF03CBBC5F7ACE0D5AB2C74 /* SkillsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0929E0C0571B4C1249D20DAC /* SkillsViewModel.swift */; };
 		71D6DCD896DD343FFA4BE0C7 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 292A20D0397566BF1454F5E4 /* SettingsViewModel.swift */; };
 		72702471AFD1438083841D2F /* WikiGraph3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 036752590B5CB027B0AC7E23 /* WikiGraph3DView.swift */; };
+		745DCFB89DEB136EF5A72AF1 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 7F080CFCB98790A5A5B09488 /* Tokenizers */; };
 		74D78F006607330660628F4F /* SessionExplorerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F48805BABC59EDB80428C1A0 /* SessionExplorerView.swift */; };
 		75C11FF675CE3ECE889E401B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04413B7162C8D0EAA432920E /* SettingsView.swift */; };
 		76E7B0F9046AB44AB1B1E5C0 /* ActivityInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A49E74E10C41B44D3C49C8 /* ActivityInboxView.swift */; };
@@ -140,7 +141,10 @@
 		95006EACD8FAE6B2373C7E9D /* GatewayDebugSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0648368C04972EB1614B4374 /* GatewayDebugSnapshot.swift */; };
 		95678EA6F547C8AB0F9ED9B8 /* SessionRunEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7FF38A450D5792CD5FBD622 /* SessionRunEvent.swift */; };
 		96AE5EBED2A3EE2AA17626F9 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B2F649BE0F12B966FAF6C47 /* Extensions.swift */; };
+		976ADC4A1BA0363F681A6C0F /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = F19F60780D55F06B71895705 /* HuggingFace */; };
+		9771D8420E9A40ABB54DD732 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 732289EF5858884F6B2019DF /* MLXLMCommon */; };
 		982CDFF6ACCAF4EF8B9FCAA9 /* HermesNativeE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03F119AA20F2FA922F50012C /* HermesNativeE2ETests.swift */; };
+		99B568E578154657238796E4 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 1BC88E0CAA3C0BE61BF7D7EF /* MLXLLM */; };
 		9B4FAE7AD46C36480B9C7D2A /* SkillGraph3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D003F1AD32BA1637BC7C1C2 /* SkillGraph3DView.swift */; };
 		9BE0318E1407535425F5E48A /* PlaybackEventRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F66EEB8C56477DC447D5E1D0 /* PlaybackEventRow.swift */; };
 		9BEF3885B4A263FBDAC9F1B3 /* AttachmentChipView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93ABC37DAEF78165B9F9173C /* AttachmentChipView.swift */; };
@@ -153,6 +157,7 @@
 		A3043705F5A86394FE492ED9 /* idle.json in Resources */ = {isa = PBXBuildFile; fileRef = E75C11A7DC7195F4353C93DA /* idle.json */; };
 		A53723E8CA76B5D576505DD9 /* happy.json in Resources */ = {isa = PBXBuildFile; fileRef = E1CB9DFBFC6F7CC67D8359F5 /* happy.json */; };
 		AA22CB30D10808E7ECA86070 /* CFAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3179815C2A0EC7D43C9213AC /* CFAuthView.swift */; };
+		AD140C8B8A12AC67BF370F9E /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = FE55711F07D88DCBCA72F824 /* MLXLMCommon */; };
 		AD25BB03261A6956C0A45285 /* SpawnTreeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65BA414BA13AEA29C4CC7A03 /* SpawnTreeModels.swift */; };
 		AD61DDE2588D762FF1CE882C /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3D7AE79773431722873482 /* Theme.swift */; };
 		AEBEC273DC598A14283BB649 /* GatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6DB7DECBA8B2BCE7989B62 /* GatewayClient.swift */; };
@@ -170,6 +175,7 @@
 		B7A2ACFD1E4703732703EE24 /* MacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41979884D456FA9522F47D6 /* MacApp.swift */; };
 		BAC17B3A35FCE50C20CC2BF4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F2B04CED033B45A8BC5F71F5 /* Assets.xcassets */; };
 		BC148807643E7DA972AF796F /* JSONRPCRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E22AF9B26D11278DD62B6 /* JSONRPCRequest.swift */; };
+		BCD27430404D7001FFF847CB /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 34CEED05A66980B463C2FAC3 /* MLXLLM */; };
 		BDC97F8DC661A548E1DFF2B5 /* HermesNativeDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38EA8CC2DBF51DFC5F57CA8F /* HermesNativeDeepLink.swift */; };
 		BEB6F88789F30562EE7A8704 /* WikiGraphViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F108D3D10510DF750A0CC06 /* WikiGraphViewModel.swift */; };
 		BF38ABA9B6F9DF39FE9E9766 /* MediaAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1669F694E957B7E101B2C51 /* MediaAttachment.swift */; };
@@ -177,6 +183,7 @@
 		C14E532CB0CE45CBB4B3EEA3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F2B04CED033B45A8BC5F71F5 /* Assets.xcassets */; };
 		C1551C4EC0BA077469198667 /* BeautifulMermaid in Frameworks */ = {isa = PBXBuildFile; productRef = 3B1D253A1B6E0624203E28E4 /* BeautifulMermaid */; };
 		C2EC3B58E28D3010EF444E86 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AF7C8FD90209C14BD37A45 /* NotificationService.swift */; };
+		C363CEDD15EF180248E0E3DD /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = D8E8A256BEBA815C53BE4C28 /* Tokenizers */; };
 		C5010057984A50A213B8790C /* ReasoningSummarizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DFAD60A0B5D0CF3069AF59 /* ReasoningSummarizer.swift */; };
 		C50238D57DB0F48A1064C65E /* SpawnNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7471C7C26357969AFAF4154 /* SpawnNode.swift */; };
 		C639B17446988C825619F345 /* SkillCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E50848877F195F3F5628E4 /* SkillCache.swift */; };
@@ -223,6 +230,7 @@
 		F094DC32731644D93CBAD59A /* CronListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2350443FCFD79CA0CC60484 /* CronListView.swift */; };
 		F17CA871D2D2C04861369BB1 /* SkillModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E92CD7D282D79F69DD027BFE /* SkillModels.swift */; };
 		F2B713AEA0BB1C5242CB1873 /* PromptBreakdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6AE9BC7BFA54E190252B742 /* PromptBreakdownView.swift */; };
+		F3D2BF917B9730AF3E996E5C /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 1DDB54E4692D6A49CA6B1DD0 /* HuggingFace */; };
 		F49E9B9BBC80BBD77656D4DD /* CronPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = F428854475FA67BF7A39BF19 /* CronPoller.swift */; };
 		F7BDD355C6FFA1D4ADDA7F2D /* CronRunHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98F83FBEE2240F4A57B1FB0D /* CronRunHistory.swift */; };
 		FA1C5B2A19F7A20073A78341 /* ToolPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A7665D966524A9EA9F3483 /* ToolPillView.swift */; };
@@ -377,6 +385,10 @@
 				B4C8AD263E87573995FC2518 /* Lottie in Frameworks */,
 				81F35CECDF184270505E77CB /* Highlightr in Frameworks */,
 				C1551C4EC0BA077469198667 /* BeautifulMermaid in Frameworks */,
+				BCD27430404D7001FFF847CB /* MLXLLM in Frameworks */,
+				9771D8420E9A40ABB54DD732 /* MLXLMCommon in Frameworks */,
+				976ADC4A1BA0363F681A6C0F /* HuggingFace in Frameworks */,
+				C363CEDD15EF180248E0E3DD /* Tokenizers in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -387,6 +399,10 @@
 				800DE74CC13CFCDAB5420029 /* Lottie in Frameworks */,
 				3D83490DD79DE8C63FAD28C3 /* Highlightr in Frameworks */,
 				572FC941473369A47BB11D30 /* BeautifulMermaid in Frameworks */,
+				99B568E578154657238796E4 /* MLXLLM in Frameworks */,
+				AD140C8B8A12AC67BF370F9E /* MLXLMCommon in Frameworks */,
+				F3D2BF917B9730AF3E996E5C /* HuggingFace in Frameworks */,
+				745DCFB89DEB136EF5A72AF1 /* Tokenizers in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -699,6 +715,10 @@
 				7ABDD72800FF9093DC07B9C8 /* Lottie */,
 				066A8C773BEA50BCC352CF5A /* Highlightr */,
 				17913B8F364C9A50033D271C /* BeautifulMermaid */,
+				1BC88E0CAA3C0BE61BF7D7EF /* MLXLLM */,
+				FE55711F07D88DCBCA72F824 /* MLXLMCommon */,
+				1DDB54E4692D6A49CA6B1DD0 /* HuggingFace */,
+				7F080CFCB98790A5A5B09488 /* Tokenizers */,
 			);
 			productName = "HermesNative-iOS";
 			productReference = E996AFDAC3ACF6290E04567F /* HermesNative-iOS.app */;
@@ -721,6 +741,10 @@
 				FA354F81CE5E1F32F3D3FE79 /* Lottie */,
 				6F0058522539F20E74EE6346 /* Highlightr */,
 				3B1D253A1B6E0624203E28E4 /* BeautifulMermaid */,
+				34CEED05A66980B463C2FAC3 /* MLXLLM */,
+				732289EF5858884F6B2019DF /* MLXLMCommon */,
+				F19F60780D55F06B71895705 /* HuggingFace */,
+				D8E8A256BEBA815C53BE4C28 /* Tokenizers */,
 			);
 			productName = "HermesNative-macOS";
 			productReference = EDFF359835C2716C43ADF249 /* HermesNative-macOS.app */;
@@ -780,6 +804,9 @@
 				5961CD81EC38B9F107CF82DC /* XCRemoteSwiftPackageReference "beautiful-mermaid-swift" */,
 				41A94046CD428EDBB9967345 /* XCRemoteSwiftPackageReference "Highlightr" */,
 				327DBA77A65E00A1D8FA0229 /* XCRemoteSwiftPackageReference "lottie-spm" */,
+				0279E4A5727E90E4D888842A /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				66F831DE01C5F5939B464C8A /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				EBDC2707588DDB8AA31BE136 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DFF5ED6F1B797010DEEE8E3E /* Products */;
@@ -1357,6 +1384,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		0279E4A5727E90E4D888842A /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.31.3;
+			};
+		};
 		327DBA77A65E00A1D8FA0229 /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/airbnb/lottie-spm";
@@ -1381,6 +1416,22 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		66F831DE01C5F5939B464C8A /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+		EBDC2707588DDB8AA31BE136 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1394,6 +1445,21 @@
 			package = 5961CD81EC38B9F107CF82DC /* XCRemoteSwiftPackageReference "beautiful-mermaid-swift" */;
 			productName = BeautifulMermaid;
 		};
+		1BC88E0CAA3C0BE61BF7D7EF /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0279E4A5727E90E4D888842A /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		1DDB54E4692D6A49CA6B1DD0 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 66F831DE01C5F5939B464C8A /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		34CEED05A66980B463C2FAC3 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0279E4A5727E90E4D888842A /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
 		3B1D253A1B6E0624203E28E4 /* BeautifulMermaid */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5961CD81EC38B9F107CF82DC /* XCRemoteSwiftPackageReference "beautiful-mermaid-swift" */;
@@ -1404,15 +1470,40 @@
 			package = 41A94046CD428EDBB9967345 /* XCRemoteSwiftPackageReference "Highlightr" */;
 			productName = Highlightr;
 		};
+		732289EF5858884F6B2019DF /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0279E4A5727E90E4D888842A /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
 		7ABDD72800FF9093DC07B9C8 /* Lottie */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 327DBA77A65E00A1D8FA0229 /* XCRemoteSwiftPackageReference "lottie-spm" */;
 			productName = Lottie;
 		};
+		7F080CFCB98790A5A5B09488 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EBDC2707588DDB8AA31BE136 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		D8E8A256BEBA815C53BE4C28 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EBDC2707588DDB8AA31BE136 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		F19F60780D55F06B71895705 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 66F831DE01C5F5939B464C8A /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
 		FA354F81CE5E1F32F3D3FE79 /* Lottie */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 327DBA77A65E00A1D8FA0229 /* XCRemoteSwiftPackageReference "lottie-spm" */;
 			productName = Lottie;
+		};
+		FE55711F07D88DCBCA72F824 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0279E4A5727E90E4D888842A /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
