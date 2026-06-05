@@ -90,14 +90,160 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
 
 // MARK: - MLX-Powered Summarizer (Apple Silicon)
 
-#if canImport(MLXLLM) && canImport(MLXLMCommon)
+#if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
 
 import MLXLLM
 import MLXLMCommon
+import HuggingFace
+import Tokenizers
+
+private struct HFHubDownloader: MLXLMCommon.Downloader {
+    private let upstream = HubClient()
+
+    func download(
+        id: String, revision: String?, matching patterns: [String],
+        useLatest: Bool, progressHandler: @Sendable @escaping (Progress) -> Void
+    ) async throws -> URL {
+        guard let repoID = HuggingFace.Repo.ID(rawValue: id) else {
+            throw SummarizerError.downloadFailed("Invalid repo: \(id)")
+        }
+        return try await upstream.downloadSnapshot(
+            of: repoID, revision: revision ?? "main", matching: patterns,
+            progressHandler: { @MainActor p in progressHandler(p) }
+        )
+    }
+}
+
+private struct HFTokenizerWrapper: MLXLMCommon.Tokenizer, @unchecked Sendable {
+    let tokenizer: Tokenizers.Tokenizer
+
+    func encode(text: String, addSpecialTokens: Bool) -> [Int] {
+        tokenizer.encode(text: text, addSpecialTokens: addSpecialTokens)
+    }
+    func decode(tokenIds: [Int], skipSpecialTokens: Bool) -> String {
+        tokenizer.decode(tokens: tokenIds, skipSpecialTokens: skipSpecialTokens)
+    }
+    func convertTokenToId(_ token: String) -> Int? {
+        tokenizer.convertTokenToId(token)
+    }
+    func convertIdToToken(_ id: Int) -> String? {
+        tokenizer.convertIdToToken(id)
+    }
+    var bosToken: String? { tokenizer.bosToken }
+    var eosToken: String? { tokenizer.eosToken }
+    var unknownToken: String? { tokenizer.unknownToken }
+
+    func applyChatTemplate(
+        messages: [[String: any Sendable]],
+        tools: [[String: any Sendable]]?,
+        additionalContext: [String: any Sendable]?
+    ) throws -> [Int] {
+        try tokenizer.applyChatTemplate(messages: messages, tools: tools, additionalContext: additionalContext)
+    }
+}
+
+private struct HFTokenizerLoaderWrapper: MLXLMCommon.TokenizerLoader {
+    func load(from directory: URL) async throws -> any MLXLMCommon.Tokenizer {
+        let tk = try await AutoTokenizer.from(pretrained: directory.path)
+        return HFTokenizerWrapper(tokenizer: tk)
+    }
+}
+
+enum SummarizerError: LocalizedError {
+    case downloadFailed(String)
+    case loadFailed(String)
+    var errorDescription: String? {
+        switch self {
+        case .downloadFailed(let m): return "Download failed: \(m)"
+        case .loadFailed(let m): return "Load failed: \(m)"
+        }
+    }
+}
 
 /// MLX-accelerated summarizer using Gemma 3 1B 4-bit on Apple Silicon.
 /// Model downloads from HuggingFace on first use (~600MB, cached).
-/// Requires HuggingFace tokenizer/downloader adapters to be wired before use.
+@MainActor
+final class MLXReasoningSummarizer: ReasoningSummarizing {
+    private(set) var isReady: Bool = false
+    private var buffer: String = ""
+    private var session: ChatSession?
+    private var loadTask: Task<Void, Never>?
+
+    private let extractionPrompt = """
+You are a reasoning-structure extractor. Given an agent's reasoning trace, extract decision points, trade-offs, or multi-step analysis patterns. Output ONLY valid JSON with no other text.
+
+Rules:
+- Only extract explicit decisions or analysis. If none, return empty array.
+- Labels must be <80 chars.
+- Use the EXACT JSON format shown.
+
+{"decisions":[{"id":"d1","label":"Choose X over Y","reasoning":"X is faster than Y","options":["X","Y"]}],"summary":null}
+
+Reasoning:
+"""
+
+    func feed(delta: String) { buffer += delta }
+
+    func summarize() async -> ReasoningSummary? {
+        let text = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        buffer = ""
+        guard !text.isEmpty, text.count >= 100 else { return nil }
+
+        await ensureLoaded()
+        guard isReady, let session = session else {
+            return await HeuristicReasoningSummarizer().summarize()
+        }
+
+        let input = String(text.prefix(1200))
+        let prompt = extractionPrompt + input
+
+        do {
+            let response = try await session.respond(to: prompt)
+            guard let jsonStart = response.firstIndex(of: "{"),
+                  let jsonEnd = response.lastIndex(of: "}"), jsonStart < jsonEnd else {
+                return nil
+            }
+            let json = String(response[jsonStart...jsonEnd])
+            guard let data = json.data(using: .utf8),
+                  let summary = try? JSONDecoder().decode(ReasoningSummary.self, from: data) else {
+                return nil
+            }
+            return summary
+        } catch {
+            log.warning("MLX summarization failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    func reset() { buffer = "" }
+
+    private func ensureLoaded() async {
+        if isReady { return }
+        if loadTask != nil { await loadTask?.value; return }
+
+        loadTask = Task {
+            do {
+                let config = LLMRegistry.gemma3_1B_qat_4bit
+                let container = try await LLMModelFactory.shared.loadContainer(
+                    from: HFHubDownloader(),
+                    using: HFTokenizerLoaderWrapper(),
+                    configuration: config
+                )
+                self.session = ChatSession(container)
+                self.isReady = true
+                log.info("MLX Gemma 3 1B loaded (first launch downloads ~600MB)")
+            } catch {
+                log.error("MLX model load failed: \(error.localizedDescription)")
+                self.isReady = false
+            }
+            self.loadTask = nil
+        }
+        await loadTask?.value
+    }
+}
+
+#else
+
 @MainActor
 final class MLXReasoningSummarizer: ReasoningSummarizing {
     let isReady: Bool = false
