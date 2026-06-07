@@ -48,16 +48,29 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
 
     private func extractDecisions(from text: String) -> [ReasoningDecision] {
         var results: [ReasoningDecision] = []
-        let pattern = try? NSRegularExpression(pattern: "(?:I (?:should|will|decided to|could|might|need to|want to))\\s*(.+?)(?:\\s*(?:instead of|rather than|over|versus|vs\\.?|or)\\s*(.+?))?(?:\\s*(?:because|since|as|due to)\\s*(.+?))?[.!]|(?:choose|pick|opt for|go with)\\s*(.+?)(?:\\s*(?:over|instead of|rather than|versus|vs\\.?)\\s*(.+?))?", options: [.caseInsensitive])
-        if let pattern {
+
+        // Pattern 1: "I..." decisions — "I should", "I'll", "I need to", "Let me", "I will"
+        let choicePattern = try? NSRegularExpression(
+            pattern: "(?:I (?:should|will|decided to|could|might|need to|want to|can|would|'ll|recommend|suggest|think|believe|suspect))\\s*(.+?)(?:\\s*(?:instead of|rather than|over|versus|vs\\.?|or)\\s*(.+?))?(?:\\s*(?:because|since|as|due to|given that)\\s*(.+?))?[.!]|(?:Let me|I'll|I will)\\s*(.+?)[.!]|(?:choose|pick|opt for|go with|prefer)\\s*(.+?)(?:\\s*(?:over|instead of|rather than|versus|vs\\.?)\\s*(.+?))?",
+            options: [.caseInsensitive]
+        )
+        if let pattern = choicePattern {
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
             for match in pattern.matches(in: text, range: range) {
                 let nsText = text as NSString
-                let choice = nsText.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces)
-                let alt = match.range(at: 2).location != NSNotFound ? nsText.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespaces) : nil
-                let because = match.range(at: 3).location != NSNotFound ? nsText.substring(with: match.range(at: 3)).trimmingCharacters(in: .whitespaces) : nil
-                let label = alt.map { "\(choice) vs \($0)" } ?? choice
-                var options = [choice]; if let alt { options.append(alt) }
+                var choice = ""
+                var alternative: String? = nil
+                var because: String? = nil
+                if match.range(at: 1).location != NSNotFound { choice = nsText.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces) }
+                if match.range(at: 4).location != NSNotFound { choice = nsText.substring(with: match.range(at: 4)).trimmingCharacters(in: .whitespaces) }
+                if choice.isEmpty { continue }
+                if match.range(at: 2).location != NSNotFound { alternative = nsText.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespaces) }
+                if match.range(at: 3).location != NSNotFound { because = nsText.substring(with: match.range(at: 3)).trimmingCharacters(in: .whitespaces) }
+                if match.range(at: 5).location != NSNotFound { choice = nsText.substring(with: match.range(at: 5)).trimmingCharacters(in: .whitespaces) }
+                if match.range(at: 6).location != NSNotFound { alternative = nsText.substring(with: match.range(at: 6)).trimmingCharacters(in: .whitespaces) }
+
+                let label = alternative.map { "\(choice) vs \($0)" } ?? choice
+                var options = [choice]; if let alt = alternative { options.append(alt) }
                 idCounter += 1
                 results.append(ReasoningDecision(id: "decision-\(idCounter)", label: String(label.prefix(80)), reasoning: because ?? choice, options: options))
             }
@@ -82,6 +95,21 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
                 let pro = (text as NSString).substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
                 idCounter += 1
                 results.append(ReasoningDecision(id: "tradeoff-\(idCounter)", label: "Trade-off analysis", reasoning: String(pro.prefix(120)), options: []))
+            }
+        }
+        if results.isEmpty, let firstLine = text.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            let cleaned = firstLine.trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: "**", with: "")
+                .replacingOccurrences(of: "##", with: "")
+                .replacingOccurrences(of: "###", with: "")
+            if cleaned.count >= 10 {
+                idCounter += 1
+                results.append(ReasoningDecision(
+                    id: "reason-\(idCounter)",
+                    label: String(cleaned.prefix(80)),
+                    reasoning: String(text.prefix(200)),
+                    options: []
+                ))
             }
         }
         return results

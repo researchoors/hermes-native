@@ -31,8 +31,7 @@ final class ReasoningGraphIntegrator: ObservableObject {
         deltaBuffer += delta
 
         let shouldSummarize =
-            deltaBuffer.count >= 200
-            || (delta.hasSuffix(".\n") || delta.hasSuffix(".\n\n"))
+            deltaBuffer.count >= 100
 
         guard shouldSummarize else { return }
 

@@ -122,10 +122,10 @@ final class ChatViewModel: ObservableObject {
     var fileDownloadManager = FileDownloadManager()
     /// Live reasoning summarization — extracts decision trees from agent thought traces
     /// in real-time during streaming. Results feed into the ThoughtGraphView.
-    /// Uses MLX-powered Gemma 3 1B local inference on Apple Silicon when available,
-    /// falling back to heuristic pattern-matching otherwise.
+    /// Uses heuristic pattern-matching (zero dep, works immediately).
+    /// Set summarizer: MLXReasoningSummarizer() for local LLM inference.
     lazy var reasoningGraph = ReasoningGraphIntegrator(
-        summarizer: MLXReasoningSummarizer()
+        summarizer: HeuristicReasoningSummarizer()
     )
     private var sessionStates: [String: SessionRuntimeState] = [:]
     private var streamingMessageID: UUID?
