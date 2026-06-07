@@ -31,7 +31,6 @@ protocol ReasoningSummarizing: AnyObject {
 final class HeuristicReasoningSummarizer: ReasoningSummarizing {
     @MainActor var isReady: Bool = true
     private var buffer: String = ""
-    private var idCounter = 0
 
     @MainActor func feed(delta: String) { buffer += delta }
 
@@ -44,10 +43,12 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
         return ReasoningSummary(decisions: decisions, summary: nil)
     }
 
-    @MainActor func reset() { buffer = ""; idCounter = 0 }
+    @MainActor func reset() { buffer = "" }
 
     private func extractDecisions(from text: String) -> [ReasoningDecision] {
         var results: [ReasoningDecision] = []
+        var counter = 0
+        func nextID(_ prefix: String) -> String { counter += 1; return "\(prefix)-\(counter)-\(UUID().uuidString.prefix(6))" }
 
         // Pattern 1: "I..." decisions — "I should", "I'll", "I need to", "Let me", "I will"
         let choicePattern = try? NSRegularExpression(
@@ -71,8 +72,7 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
 
                 let label = alternative.map { "\(choice) vs \($0)" } ?? choice
                 var options = [choice]; if let alt = alternative { options.append(alt) }
-                idCounter += 1
-                results.append(ReasoningDecision(id: "decision-\(idCounter)", label: String(label.prefix(80)), reasoning: because ?? choice, options: options))
+                results.append(ReasoningDecision(id: nextID("decision"), label: String(label.prefix(80)), reasoning: because ?? choice, options: options))
             }
         }
         if results.isEmpty {
@@ -82,8 +82,7 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
                 if pattern.matches(in: text, range: r).count >= 2 {
                     for m in pattern.matches(in: text, range: r) {
                         let s = (text as NSString).substring(with: m.range(at: 2)).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "\n", with: " ")
-                        idCounter += 1
-                        results.append(ReasoningDecision(id: "step-\(idCounter)", label: String(s.prefix(80)), reasoning: s, options: []))
+                        results.append(ReasoningDecision(id: nextID("step"), label: String(s.prefix(80)), reasoning: s, options: []))
                     }
                 }
             }
@@ -93,8 +92,7 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
             if let pattern = tradeoffPattern,
                let m = pattern.firstMatch(in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)) {
                 let pro = (text as NSString).substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
-                idCounter += 1
-                results.append(ReasoningDecision(id: "tradeoff-\(idCounter)", label: "Trade-off analysis", reasoning: String(pro.prefix(120)), options: []))
+                results.append(ReasoningDecision(id: nextID("tradeoff"), label: "Trade-off analysis", reasoning: String(pro.prefix(120)), options: []))
             }
         }
         if results.isEmpty, let firstLine = text.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
@@ -103,9 +101,8 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
                 .replacingOccurrences(of: "##", with: "")
                 .replacingOccurrences(of: "###", with: "")
             if cleaned.count >= 10 {
-                idCounter += 1
                 results.append(ReasoningDecision(
-                    id: "reason-\(idCounter)",
+                    id: nextID("reason"),
                     label: String(cleaned.prefix(80)),
                     reasoning: String(text.prefix(200)),
                     options: []
