@@ -133,6 +133,9 @@ final class ChatViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private(set) var isCreatingSession = false
     private var isStopping = false
+    /// True when the active session hasn't been properly resumed on the gateway
+    /// (e.g. after WebSocket reconnection). Prompt submission will auto-resume first.
+    private var needsGatewayResume = false
     private var pendingVisibleEventFlush: Task<Void, Never>?
     private var pendingVisibleMessageDelta = ""
     private var pendingVisibleReasoningDelta = ""
@@ -232,7 +235,8 @@ client.eventStream
                 case .connected:
                     self?.error = nil
                 case .reconnecting:
-                    self?.error = nil  // Clear errors — reconnect in progress
+                    self?.error = nil
+                    self?.needsGatewayResume = true
                     // Do not mark the active turn as stopped during a transient
                     // reconnect. The gateway agent may still be running, and
                     // clearing isStreaming makes later frames look stale.
@@ -273,8 +277,8 @@ client.eventStream
                 self.createGeneration += 1
                 self.isSessionReady = true
                 self.error = nil
-            } else if let sid = self.sessionID, self.isSessionReady,
-                      self.gatewayClient?.activeSessionID == nil {
+} else if let sid = self.sessionID, self.isSessionReady,
+                       self.gatewayClient?.activeSessionID == nil {
                 // Gateway didn't auto-resume — explicitly re-resume so the
                 // session is re-registered and streaming events will flow.
                 let displayID = self.displaySessionID(for: sid)
@@ -286,6 +290,7 @@ client.eventStream
                     }
                     self.isSessionReady = true
                     self.error = nil
+                    self.needsGatewayResume = false
                 }
             }
         }
@@ -494,6 +499,7 @@ client.eventStream
         }
         guard case .connected = client.connectionState else {
             if generation == sessionSwitchGeneration {
+                needsGatewayResume = true
                 self.error = "Not connected to gateway"
             }
             return false
@@ -570,9 +576,11 @@ client.eventStream
             }
 
             await applyEphemeralPrompt(for: result.sessionID, using: client)
+            needsGatewayResume = false
             return true
         } catch {
             if generation == sessionSwitchGeneration {
+                self.needsGatewayResume = true
                 self.error = "Session resume failed: \(error.localizedDescription)"
             }
             return false
@@ -771,6 +779,17 @@ client.eventStream
         guard !isStreaming && !isStopping else {
             log.info("ChatViewModel submitPrompt ignored while streaming/stopping")
             return
+        }
+
+        if needsGatewayResume, let sid = sessionID {
+            let key = displaySessionID(for: sid)
+            log.info("Auto-resume before submit: key=\(key)")
+            if await resumeSession(key: key) {
+                needsGatewayResume = false
+            } else {
+                self.error = "Session connection lost. Please try again."
+                return
+            }
         }
 
         inputText = ""
