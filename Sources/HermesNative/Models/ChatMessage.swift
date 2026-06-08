@@ -25,9 +25,13 @@ struct ChatMessage: Identifiable, Codable {
     var userAttachments: [MediaAttachment] = []
 
     /// Content with MEDIA: lines stripped (for rendering in bubbles).
+    /// Computed eagerly on messageComplete; empty during streaming (raw content used).
     var contentWithoutAttachments: String {
-        MediaParser.stripMediaTags(from: content)
+        _contentWithoutAttachments ?? MediaParser.stripMediaTags(from: content)
     }
+
+/// Cached value — set eagerly to avoid repeated regex scanning during renders.
+    var _contentWithoutAttachments: String?
 
     enum CodingKeys: String, CodingKey {
         case id, role, content, isStreaming, toolCalls, reasoning, thinkingTrace

@@ -374,7 +374,13 @@ client.eventStream
     }
 
     private func restoreSessionState(displayID: String, runtimeID: String? = nil) -> Bool {
-        guard let state = sessionStates[displayID] else { return false }
+        guard var state = sessionStates[displayID] else { return false }
+        // Lazy-reload messages evicted on session switch
+        if state.messages.isEmpty && !state.isStreaming,
+           let cached = ChatHistoryStore.shared.loadMessages(forSession: displayID) {
+            state.messages = cached
+            sessionStates[displayID] = state
+        }
         sessionID = runtimeID ?? runtimeSessionID(for: displayID)
         messages = state.messages
         isStreaming = state.isStreaming
@@ -442,6 +448,15 @@ client.eventStream
     func beginSwitchToSession(key: String) -> Int {
         flushPendingVisibleEventDeltas()
         snapshotCurrentSessionState()
+        // Evict messages from the session we're leaving (but keep streaming
+        // sessions intact — deltas are in-flight and ChatHistoryStore is stale).
+        if let oldDisplayID = sessionID.map({ displaySessionID(for: $0) }),
+           oldDisplayID != key,
+           var oldState = sessionStates[oldDisplayID],
+           !oldState.isStreaming {
+            oldState.messages = []
+            sessionStates[oldDisplayID] = oldState
+        }
         sessionSwitchGeneration += 1
         let generation = sessionSwitchGeneration
 
@@ -1341,6 +1356,7 @@ client.eventStream
             state.messages[idx].usage = payload.usage
             state.messages[idx].status = payload.status
             state.messages[idx].attachments = MediaParser.extractAttachments(from: payload.text)
+            state.messages[idx]._contentWithoutAttachments = MediaParser.stripMediaTags(from: payload.text)
             finishThinkingTrace(on: &state.messages[idx], finalReasoning: payload.reasoning)
             state.messages[idx].toolCalls = Array(state.activeToolCalls.values)
             state.activeToolCalls = [:]
@@ -1432,16 +1448,35 @@ client.eventStream
             break
         }
 
-// Persist state for lifecycle events on every session.  Delta events
-        // for visible sessions are persisted by the coalesced flush timer
-        // (snapshotCurrentSessionState); background delta events return early
-        // above to avoid saturating the main thread with COW copies of the
-        // full messages array.
+        // Persist state for lifecycle events, but use slim metadata for
+        // background (non-visible) sessions. The full [ChatMessage] array
+        // is a COW clone on every write — for sessions with 1,000+ messages
+        // running in the background this saturates the main thread.
+        // Background session messages are persisted to ChatHistoryStore on
+        // messageComplete so the session.resume RPC can reload them later.
+        let isVisibleSession = displaySessionID(for: sessionID ?? "") == displayID
         switch event {
         case .messageDelta, .reasoningDelta, .thinkingDelta:
             break
         default:
-            sessionStates[displayID] = state
+            if isVisibleSession {
+                sessionStates[displayID] = state  // full clone
+            } else {
+                // Persist messages to disk BEFORE discarding from state
+                if case .messageComplete = event {
+                    ChatHistoryStore.shared.saveMessages(state.messages, forSession: displayID)
+                }
+                var slimState = sessionStates[displayID] ?? SessionRuntimeState()
+                slimState.isStreaming = state.isStreaming
+                slimState.isSessionReady = state.isSessionReady
+                slimState.pendingApproval = state.pendingApproval
+                slimState.activeToolCalls = state.activeToolCalls
+                slimState.error = state.error
+                slimState.avatarState = state.avatarState
+                slimState.sessionTitle = state.sessionTitle
+                slimState.streamingMessageID = state.streamingMessageID
+                sessionStates[displayID] = slimState
+            }
         }
         let isVisibleCoalescedDelta: Bool
         switch event {
