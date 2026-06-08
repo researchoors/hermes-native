@@ -135,8 +135,8 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
 
 #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
 
-import MLXLLM
-import MLXLMCommon
+@preconcurrency import MLXLLM
+@preconcurrency import MLXLMCommon
 import HuggingFace
 import Tokenizers
 

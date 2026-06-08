@@ -287,7 +287,7 @@ struct OnboardingView: View {
     }
     #endif
 
-    private func testConnection() {
+    func testConnection() {
         testing = true
         testResult = nil
 
