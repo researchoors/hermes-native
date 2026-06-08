@@ -52,7 +52,14 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
 
         // Pattern 1: "I..." decisions — "I should", "I'll", "I need to", "Let me", "I will"
         let choicePattern = try? NSRegularExpression(
-            pattern: "(?:I (?:should|will|decided to|could|might|need to|want to|can|would|'ll|recommend|suggest|think|believe|suspect))\\s*(.+?)(?:\\s*(?:instead of|rather than|over|versus|vs\\.?|or)\\s*(.+?))?(?:\\s*(?:because|since|as|due to|given that)\\s*(.+?))?[.!]|(?:Let me|I'll|I will)\\s*(.+?)[.!]|(?:choose|pick|opt for|go with|prefer)\\s*(.+?)(?:\\s*(?:over|instead of|rather than|versus|vs\\.?)\\s*(.+?))?",
+            pattern: "(?:I (?:should|will|decided to|could|might|need to|"
+                + "want to|can|would|'ll|recommend|suggest|think|believe|suspect))"
+                + "\\s*(.+?)(?:\\s*(?:instead of|rather than|over|versus|"
+                + "vs\\.?|or)\\s*(.+?))?(?:\\s*(?:because|since|as|due to|"
+                + "given that)\\s*(.+?))?[.!]|(?:Let me|I'll|I will)\\s*"
+                + "(.+?)[.!]|(?:choose|pick|opt for|go with|prefer)\\s*"
+                + "(.+?)(?:\\s*(?:over|instead of|rather than|versus|vs\\.?)"
+                + "\\s*(.+?))?",
             options: [.caseInsensitive]
         )
         if let pattern = choicePattern {
@@ -60,8 +67,8 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
             for match in pattern.matches(in: text, range: range) {
                 let nsText = text as NSString
                 var choice = ""
-                var alternative: String? = nil
-                var because: String? = nil
+                var alternative: String?
+                var because: String?
                 if match.range(at: 1).location != NSNotFound { choice = nsText.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces) }
                 if match.range(at: 4).location != NSNotFound { choice = nsText.substring(with: match.range(at: 4)).trimmingCharacters(in: .whitespaces) }
                 if choice.isEmpty { continue }
@@ -72,11 +79,17 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
 
                 let label = alternative.map { "\(choice) vs \($0)" } ?? choice
                 var options = [choice]; if let alt = alternative { options.append(alt) }
-                results.append(ReasoningDecision(id: nextID("decision"), label: String(label.prefix(80)), reasoning: because ?? choice, options: options))
+                results.append(ReasoningDecision(
+                    id: nextID("decision"), label: String(label.prefix(80)),
+                    reasoning: because ?? choice, options: options))
             }
         }
         if results.isEmpty {
-            let stepPattern = try? NSRegularExpression(pattern: "(?:Step|Phase|Stage)\\s*(\\d+)[:.)]\\s*(.+?)(?=(?:Step|Phase|Stage)\\s*\\d+|$)", options: [.caseInsensitive, .dotMatchesLineSeparators])
+            let stepPattern = try? NSRegularExpression(
+                pattern: "(?:Step|Phase|Stage)\\s*(\\d+)[:.)]\\s*"
+                    + "(.+?)(?=(?:Step|Phase|Stage)\\s*\\d+|$)",
+                options: [.caseInsensitive, .dotMatchesLineSeparators]
+            )
             if let pattern = stepPattern {
                 let r = NSRange(text.startIndex..<text.endIndex, in: text)
                 if pattern.matches(in: text, range: r).count >= 2 {
@@ -88,7 +101,12 @@ final class HeuristicReasoningSummarizer: ReasoningSummarizing {
             }
         }
         if results.isEmpty {
-            let tradeoffPattern = try? NSRegularExpression(pattern: "(?:pros?:|advantages?:|benefits?:)\\s*(.+?)(?:cons?:|disadvantages?:|drawbacks?:|however|but|on the other hand)", options: [.caseInsensitive, .dotMatchesLineSeparators])
+            let tradeoffPattern = try? NSRegularExpression(
+                pattern: "(?:pros?:|advantages?:|benefits?:)\\s*"
+                    + "(.+?)(?:cons?:|disadvantages?:|drawbacks?:|"
+                    + "however|but|on the other hand)",
+                options: [.caseInsensitive, .dotMatchesLineSeparators]
+            )
             if let pattern = tradeoffPattern,
                let m = pattern.firstMatch(in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)) {
                 let pro = (text as NSString).substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -195,7 +213,9 @@ final class MLXReasoningSummarizer: ReasoningSummarizing {
     private var loadTask: Task<Void, Never>?
 
     private let extractionPrompt = """
-You are a reasoning-structure extractor. Given an agent's reasoning trace, extract decision points, trade-offs, or multi-step analysis patterns. Output ONLY valid JSON with no other text.
+You are a reasoning-structure extractor. Given an agent's reasoning trace,
+extract decision points, trade-offs, or multi-step analysis patterns.
+Output ONLY valid JSON with no other text.
 
 Rules:
 - Only extract explicit decisions or analysis. If none, return empty array.

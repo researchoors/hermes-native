@@ -108,13 +108,11 @@ struct SpawnCallGraphView: View {
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let pt):
-                    for (id, pos) in layout.positions {
-                        if hypot(pt.x - pos.x, pt.y - pos.y) <= nodeRadius + 8 {
+                    for (id, pos) in layout.positions where hypot(pt.x - pos.x, pt.y - pos.y) <= nodeRadius + 8 {
                             hoveredNodeID = id
                             return
                         }
-                    }
-                    hoveredNodeID = nil
+                        hoveredNodeID = nil
                 case .ended:
                     hoveredNodeID = nil
                 }

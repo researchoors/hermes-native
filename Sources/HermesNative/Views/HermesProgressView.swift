@@ -4,7 +4,7 @@ import SwiftUI
 /// "Unable to render flattened version of PlatformViewRepresentableAdaptor<AppKitProgressView>"
 /// diagnostic by using a SwiftUI-native spinner instead of the AppKit NSProgressIndicator.
 struct HermesProgressView: View {
-    var label: String? = nil
+    var label: String?
 
     var body: some View {
         HStack(spacing: 6) {
