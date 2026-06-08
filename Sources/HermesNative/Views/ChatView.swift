@@ -112,6 +112,26 @@ struct ChatView: View {
             Divider()
             #endif
 
+            #if os(macOS)
+            HStack {
+                Spacer()
+                // TTS toggle
+                Button {
+                    ttsService.toggle()
+                } label: {
+                    Label(ttsService.isEnabled ? "Speaking" : "Muted",
+                          systemImage: ttsService.isEnabled ? "speaker.wave.3.fill" : "speaker.slash")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(ttsService.isEnabled ? Theme.accent : Theme.secondary)
+                .help(ttsService.isEnabled ? "Text-to-speech enabled" : "Text-to-speech disabled")
+                .padding(.horizontal, 8)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            #endif
+
             // ── Thought Graph (collapsible) ──
             if shouldShowThoughtGraphToggle {
                 thoughtGraphSection
