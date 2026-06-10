@@ -902,7 +902,7 @@ private struct CronJobCard: View {
                             Text(record.status)
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(Theme.tertiary)
-                            if record.duration != nil {
+                            if let dur = record.duration {
                                 Text(dur < 60 ? String(format: "%.1fs", dur) : String(format: "%.1fm", dur / 60))
                                     .font(.caption2.monospacedDigit())
                                     .foregroundStyle(Theme.tertiary)
