@@ -71,7 +71,7 @@ struct ContentView: View {
             }
 
             // Celebration overlay — positive reinforcement effects
-            if let _ = celebrationManager.activeCelebration {
+            if celebrationManager.activeCelebration != nil {
                 CelebrationOverlay(
                     particles: ConfettiParticle.burst(count: 60),
                     onComplete: { celebrationManager.activeCelebration = nil }
