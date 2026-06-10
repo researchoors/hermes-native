@@ -144,7 +144,7 @@ private struct NativeMermaidRenderer: View {
                 ErrorCard(error: error, source: source)
             } else {
                 VStack(spacing: 8) {
-                    ProgressView()
+                    HermesProgressView()
                     Text("Rendering diagram…")
                         .font(.caption2)
                         .foregroundStyle(Theme.tertiary)
@@ -239,15 +239,21 @@ private final class MermaidSharedRenderer: NSObject, WKNavigationDelegate {
     private let webView: WKWebView
     private var pendingCompletion: ((PlatformImage?) -> Void)?
     private var isBusy = false
+    private var activeRenderCount = 0
+    private let maxActiveRenders = 2
     private var queue: [(String, (PlatformImage?) -> Void)] = []
 
     override init() {
         let config = WKWebViewConfiguration()
-//         config.processPool = Self.processPool
+        config.processPool = Self.processPool
+        // Disable features that trigger sandbox errors
+        config.preferences.isTextInteractionEnabled = false
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
         super.init()
         webView.navigationDelegate = self
+        // Pre-warm with a blank page to spin up the WebContent process once
+        webView.loadHTMLString("<html><body></body></html>", baseURL: nil)
         // Place off-screen in a hidden window so it can render
         let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1200, height: 800),
                              styleMask: .borderless, backing: .buffered, defer: true)
@@ -257,10 +263,15 @@ private final class MermaidSharedRenderer: NSObject, WKNavigationDelegate {
     }
 
     func render(source: String, completion: @escaping (PlatformImage?) -> Void) {
+        if activeRenderCount >= maxActiveRenders {
+            queue.append((source, completion))
+            return
+        }
         if isBusy {
             queue.append((source, completion))
             return
         }
+        activeRenderCount += 1
         isBusy = true
         pendingCompletion = completion
         webView.loadHTMLString(makeMermaidHTML(source: source), baseURL: nil)
@@ -274,7 +285,7 @@ private final class MermaidSharedRenderer: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self else { return }
             let config = WKSnapshotConfiguration()
             self.webView.takeSnapshot(with: config) { [weak self] image, error in
@@ -284,6 +295,7 @@ private final class MermaidSharedRenderer: NSObject, WKNavigationDelegate {
                 }
                 self.pendingCompletion?(image)
                 self.pendingCompletion = nil
+                self.activeRenderCount -= 1
                 self.processQueue()
             }
         }
@@ -302,6 +314,8 @@ private final class MermaidSharedRenderer: NSObject, WKNavigationDelegate {
     private let webView: WKWebView
     private var pendingCompletion: ((PlatformImage?) -> Void)?
     private var isBusy = false
+    private var activeRenderCount = 0
+    private let maxActiveRenders = 2
     private var queue: [(String, (PlatformImage?) -> Void)] = []
 
     override init() {
@@ -315,10 +329,15 @@ private final class MermaidSharedRenderer: NSObject, WKNavigationDelegate {
     }
 
     func render(source: String, completion: @escaping (PlatformImage?) -> Void) {
+        if activeRenderCount >= maxActiveRenders {
+            queue.append((source, completion))
+            return
+        }
         if isBusy {
             queue.append((source, completion))
             return
         }
+        activeRenderCount += 1
         isBusy = true
         pendingCompletion = completion
         webView.loadHTMLString(makeMermaidHTML(source: source), baseURL: nil)
@@ -332,7 +351,7 @@ private final class MermaidSharedRenderer: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self else { return }
             let config = WKSnapshotConfiguration()
             self.webView.takeSnapshot(with: config) { [weak self] image, error in
@@ -342,6 +361,7 @@ private final class MermaidSharedRenderer: NSObject, WKNavigationDelegate {
                 }
                 self.pendingCompletion?(image)
                 self.pendingCompletion = nil
+                self.activeRenderCount -= 1
                 self.processQueue()
             }
         }
@@ -376,7 +396,7 @@ private struct WebMermaidRenderer: View {
                 ZoomableDiagram(image: image)
             } else {
                 VStack(spacing: 8) {
-                    ProgressView()
+                    HermesProgressView()
                     Text("Rendering diagram…")
                         .font(.caption2)
                         .foregroundStyle(Theme.tertiary)

@@ -40,7 +40,7 @@ struct MessageBubbleView: View {
                             .textSelection(.enabled)
                     }
 
-                    let attachments = MediaParser.extractAttachments(from: message.content)
+                    let attachments = message.attachments
                     if !attachments.isEmpty {
                         VStack(spacing: 4) {
                             ForEach(attachments) { attachment in
@@ -101,7 +101,7 @@ struct MessageBubbleView: View {
                     }
 
                     // File attachments from MEDIA: tags
-                    let attachments = MediaParser.extractAttachments(from: message.content)
+                    let attachments = message.attachments
                     if !attachments.isEmpty {
                         VStack(spacing: 4) {
                             ForEach(attachments) { attachment in
@@ -154,7 +154,7 @@ struct MessageBubbleView: View {
                     }
                 }
 
-                let attachments = MediaParser.extractAttachments(from: message.content)
+                let attachments = message.attachments
                 if !attachments.isEmpty {
                     VStack(spacing: 4) {
                         ForEach(attachments) { attachment in
@@ -220,8 +220,8 @@ private struct ThinkingTraceSection: View {
                         .font(.caption2)
                         .foregroundStyle(Theme.tertiary)
                     if trace.isStreaming {
-                        ProgressView()
-                            .controlSize(.mini)
+                        HermesProgressView()
+                            .scaleEffect(0.6)
                     }
                 }
             }
@@ -296,8 +296,8 @@ private struct ReasoningSection: View {
                         .font(.system(.caption, weight: .medium))
                         .foregroundStyle(Theme.accent)
                     if isStreaming {
-                        ProgressView()
-                            .controlSize(.mini)
+                        HermesProgressView()
+                            .scaleEffect(0.6)
                     }
                 }
             }
