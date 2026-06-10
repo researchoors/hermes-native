@@ -6,7 +6,7 @@ extension GatewayClient {
                  limit: Int = 50, offset: Int = 0) async throws -> FeedResponse {
         var params: [String: AnyCodable] = [:]
         if let s = sources { params["sources"] = .array(s.map(AnyCodable.init)) }
-        if let d = since    { params["since"] = AnyCodable(d) }
+        if let d = since { params["since"] = AnyCodable(d) }
         params["limit"] = AnyCodable(limit)
         params["offset"] = AnyCodable(offset)
 

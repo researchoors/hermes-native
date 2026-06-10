@@ -79,8 +79,8 @@ struct SourceFilterBar: View {
         let order = ["arxiv", "github", "blog", "twitter"]
         var result: [(String, Int)] = []
         for key in order { if let count = sources[key], count > 0 { result.append((key, count)) } }
-        for (key, count) in sources.sorted(by: { $0.value > $1.value }) {
-            if !order.contains(key) { result.append((key, count)) }
+        for (key, count) in sources.sorted(by: { $0.value > $1.value }) where !order.contains(key) {
+            result.append((key, count))
         }
         return result
     }

@@ -8,7 +8,7 @@ private let log = Logger(subsystem: "com.researchoors.HermesNative", category: "
 final class FeedViewModel: ObservableObject {
     @Published var articles: [FeedArticle] = []
     @Published var sourceCounts: [String: Int] = [:]
-    @Published var selectedSource: String? = nil
+    @Published var selectedSource: String?
     @Published var isLoading = false
     @Published var isLoadingMore = false
     @Published var error: String?
