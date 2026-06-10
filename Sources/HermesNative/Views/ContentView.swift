@@ -144,12 +144,14 @@ struct ContentView: View {
                 }
                 .tag(3)
 
-            FeedView()
-                .environmentObject(gatewayClientWrapper)
-                .tabItem {
-                    Label("Feed", systemImage: "newspaper")
-                }
-                .tag(4)
+            NavigationStack {
+                FeedView()
+                    .environmentObject(gatewayClientWrapper)
+            }
+            .tabItem {
+                Label("Feed", systemImage: "newspaper")
+            }
+            .tag(4)
         }
     }
 
@@ -434,6 +436,7 @@ struct ContentView: View {
                 showActivitySheet = false
                 showSkills = false
                 showWikiGraph = false
+                showFeedSheet = false
                 chatViewModel.refocusInput += 1
             } label: {
                 HStack(spacing: 6) {
