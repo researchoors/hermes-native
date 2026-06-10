@@ -537,7 +537,7 @@ struct CronDashboardView: View {
                     Text(record.status)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(record.isOk ? Theme.success : .red)
-                    if let dur = record.duration {
+                    if record.duration != nil {
                         Text(record.durationLabel)
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(Theme.tertiary)
@@ -565,7 +565,7 @@ struct CronDashboardView: View {
 
             detailRow("Status", value: record.status.capitalized)
             detailRow("Fired", value: record.firedAt, format: .dateTime.month().day().hour().minute().second())
-            if let dur = record.duration {
+            if record.duration != nil {
                 detailRow("Duration", value: record.durationLabel)
             }
             detailRow("Job ID", value: String(record.jobID.prefix(12)))
@@ -902,7 +902,7 @@ private struct CronJobCard: View {
                             Text(record.status)
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(Theme.tertiary)
-                            if let dur = record.duration {
+                            if record.duration != nil {
                                 Text(dur < 60 ? String(format: "%.1fs", dur) : String(format: "%.1fm", dur / 60))
                                     .font(.caption2.monospacedDigit())
                                     .foregroundStyle(Theme.tertiary)

@@ -319,9 +319,9 @@ struct OnboardingView: View {
                     testResult = "✓ Gateway reachable"
                     Task {
                         if let client = await gatewayClientWrapper.connectedClient(using: settings, timeout: 12) {
-                            await capabilitiesStore.refresh(using: client)
+                            capabilitiesStore.refresh(using: client)
                         } else {
-                            await capabilitiesStore.reset(reason: "Gateway is reachable, but WebSocket did not connect")
+                            capabilitiesStore.reset(reason: "Gateway is reachable, but WebSocket did not connect")
                         }
                     }
                 } else if let http = response as? HTTPURLResponse, http.statusCode == 401 {

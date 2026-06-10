@@ -156,7 +156,7 @@ final class ChatViewModel: ObservableObject {
         Task.detached(priority: .background) {
             if FileManager.default.fileExists(atPath: url.path),
                let handle = try? FileHandle(forWritingTo: url) {
-                try? handle.seekToEnd()
+                _ = try? handle.seekToEnd()
                 try? handle.write(contentsOf: data)
                 try? handle.close()
             } else {
@@ -1671,7 +1671,7 @@ final class ChatViewModel: ObservableObject {
             // Subagent delegation events — handled by SpawnTreeStore
             break
 
-        case .backgroundComplete(let taskID, let text):
+        case .backgroundComplete(let taskID, let _):
             break
 
         case .clarifyRequest:
