@@ -177,11 +177,6 @@ struct ContentView: View {
                 HStack {
                     EditButton()
                     Spacer()
-                    Button("New Session") {
-                        Task { await createAndSwitchToNewSession() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("newSessionButton")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
