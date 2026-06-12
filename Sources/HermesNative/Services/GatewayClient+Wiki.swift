@@ -43,8 +43,7 @@ extension GatewayClient {
             let tagPath: [String] = d["tag_path"]?.arrayValue?.compactMap { $0.stringValue } ?? []
 
             // Parse integration_links — new field
-            let integrationLinks: [IntegrationLink] = (d["integration_links"]?.arrayValue ?? []).compactMap {
-                linkItem -> IntegrationLink? in
+            let integrationLinks: [IntegrationLink] = (d["integration_links"]?.arrayValue ?? []).compactMap { linkItem -> IntegrationLink? in
                 guard let linkStr = linkItem.stringValue, linkStr.contains(":") else { return nil }
                 let parts = linkStr.split(separator: ":", maxSplits: 1)
                 guard parts.count == 2 else { return nil }

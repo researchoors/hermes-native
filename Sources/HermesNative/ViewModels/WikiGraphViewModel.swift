@@ -27,7 +27,7 @@ final class WikiGraphViewModel: ObservableObject {
     /// Node indices that match the current search query OR taxonomy filter. Empty = show all.
     var filteredNodeIndices: Set<Int> = []
     private var cachedQuery: String = ""
-    private var cachedTaxonomyPath: String? = nil
+    private var cachedTaxonomyPath: String?
 
     /// Whether filtering is active (search or taxonomy)
     var isFiltering: Bool {
