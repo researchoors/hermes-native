@@ -199,6 +199,45 @@ struct SourcePill: View {
     }
 }
 
+// MARK: - Hero Image
+
+/// Async-loaded article/release image with rounded social-card styling.
+/// Collapses to nothing on failure so broken URLs never leave a gap.
+struct FeedHeroImage: View {
+    let url: URL
+    @State private var failed = false
+
+    var body: some View {
+        if !failed {
+            AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: 280)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.secondary.opacity(0.12), lineWidth: 0.5)
+                        )
+                case .empty:
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.secondary.opacity(0.08))
+                        .frame(height: 160)
+                        .overlay(ProgressView().controlSize(.small))
+                case .failure:
+                    Color.clear.frame(height: 0)
+                        .onAppear { failed = true }
+                @unknown default:
+                    Color.clear.frame(height: 0)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Feed Card
 
 struct FeedCard: View {
@@ -244,12 +283,26 @@ struct FeedCard: View {
                 .lineLimit(isExpanded ? nil : 2)
                 .padding(.top, 10)
 
-            // Summary — full text, cleaned by displaySummary
+            // Hero image — screenshots from release notes / article image
+            if let heroURL = article.heroImageURL {
+                FeedHeroImage(url: heroURL)
+                    .padding(.top, 10)
+            }
+
+            // Summary. Collapsed: compact text preview. Expanded: the full
+            // block-level markdown renderer (headings, lists, code blocks) so
+            // release notes read as formatted prose, not a flattened string.
             if !article.displaySummary.isEmpty {
-                MarkdownText(text: article.displaySummary)
-                    .font(.subheadline).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 6)
+                if isExpanded {
+                    MarkdownContentView(text: article.displaySummary)
+                        .padding(.top, 8)
+                } else {
+                    MarkdownText(text: article.previewSummary)
+                        .font(.subheadline).foregroundColor(.secondary)
+                        .lineLimit(5)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 6)
+                }
             }
 
             // Tags
@@ -375,7 +428,7 @@ struct FeedCard: View {
 // MARK: - Video Feed Card
 
 /// Feed card variant with inline video player via AVKit.
-/// Shows a thumbnail + play button; expands to native AVPlayerViewController.
+/// Shows a thumbnail + play button; expands to native AVPlayer.
 struct VideoFeedCard: View {
     let article: FeedArticle
     @State private var isExpanded = false
@@ -418,7 +471,7 @@ struct VideoFeedCard: View {
 
             // Summary
             if !article.displaySummary.isEmpty {
-                MarkdownText(text: article.displaySummary)
+                MarkdownText(text: article.previewSummary)
                     .font(.subheadline).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 6)
@@ -435,7 +488,6 @@ struct VideoFeedCard: View {
                 .cornerRadius(12)
                 .padding(.top, 10)
             } else {
-                // Thumbnail poster with play overlay
                 ZStack {
                     if let thumbURL = URL(string: article.thumbnailUrl), !article.thumbnailUrl.isEmpty {
                         AsyncImage(url: thumbURL) { phase in
@@ -456,7 +508,6 @@ struct VideoFeedCard: View {
                 .clipped()
                 .cornerRadius(12)
                 .overlay(
-                    // Play button
                     ZStack {
                         Circle()
                             .fill(.ultraThinMaterial)
@@ -492,13 +543,8 @@ struct VideoFeedCard: View {
                 Button {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         isExpanded.toggle()
-                        if isExpanded {
-                            isPlaying = true
-                        } else {
-                            isPlaying = false
-                            player?.pause()
-                            player = nil
-                        }
+                        if isExpanded { isPlaying = true }
+                        else { isPlaying = false; player?.pause(); player = nil }
                     }
                 } label: {
                     HStack(spacing: 4) {
@@ -516,28 +562,17 @@ struct VideoFeedCard: View {
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 16).fill(Theme.surface))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.secondary.opacity(0.08), lineWidth: 0.5)
-        )
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.secondary.opacity(0.08), lineWidth: 0.5))
         .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
         .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(.easeInOut(duration: 0.3)) {
                 isExpanded.toggle()
-                if isExpanded {
-                    isPlaying = true
-                } else {
-                    isPlaying = false
-                    player?.pause()
-                    player = nil
-                }
+                if isExpanded { isPlaying = true }
+                else { isPlaying = false; player?.pause(); player = nil }
             }
         }
-        .onDisappear {
-            player?.pause()
-            player = nil
-        }
+        .onDisappear { player?.pause(); player = nil }
     }
 
     private var thumbnailPlaceholder: some View {
@@ -570,7 +605,6 @@ struct VideoPlayerView: View {
     @Binding var isPlaying: Bool
 
     @State private var player: AVPlayer?
-    @State private var playerItem: AVPlayerItem?
 
     var body: some View {
         VideoPlayer(player: player)
@@ -584,15 +618,12 @@ struct VideoPlayerView: View {
 
     private func setupPlayer() {
         guard let url = URL(string: videoURL) else { return }
-        let item = AVPlayerItem(url: url)
-        playerItem = item
-        player = AVPlayer(playerItem: item)
+        player = AVPlayer(url: url)
         if isPlaying { player?.play() }
     }
 
     private func tearDown() {
         player?.pause()
         player = nil
-        playerItem = nil
     }
 }
