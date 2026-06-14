@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 
 // MARK: - Feed View
 
@@ -47,13 +48,18 @@ struct FeedView: View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 ForEach(vm.articles) { article in
-                    FeedCard(article: article)
-                        .padding(.horizontal, 12)
-                        .onAppear {
-                            if article.id == vm.articles.last?.id {
-                                Task { await vm.loadMore(client: gatewayClientWrapper.client) }
+                    if article.hasVideo {
+                        VideoFeedCard(article: article)
+                            .padding(.horizontal, 12)
+                    } else {
+                        FeedCard(article: article)
+                            .padding(.horizontal, 12)
+                            .onAppear {
+                                if article.id == vm.articles.last?.id {
+                                    Task { await vm.loadMore(client: gatewayClientWrapper.client) }
+                                }
                             }
-                        }
+                    }
                 }
 
                 if vm.isLoadingMore {
@@ -127,7 +133,7 @@ struct SourceFilterBar: View {
     let onSelect: (String?) -> Void
 
     private var orderedSources: [(String, Int)] {
-        let order = ["arxiv", "github", "blog", "twitter"]
+        let order = ["arxiv", "github", "blog", "twitter", "digest_video"]
         var result: [(String, Int)] = []
         for key in order { if let count = sources[key], count > 0 { result.append((key, count)) } }
         for (key, count) in sources.sorted(by: { $0.value > $1.value }) where !order.contains(key) {
@@ -162,6 +168,7 @@ struct SourceFilterBar: View {
         case "github": return "Releases"
         case "blog": return "Blogs"
         case "twitter": return "X"
+        case "digest_video": return "Video"
         default: return s.capitalized
         }
     }
@@ -171,6 +178,7 @@ struct SourceFilterBar: View {
         case "github": return "chevron.left.slash.chevron.right"
         case "blog": return "text.bubble"
         case "twitter": return "bird"
+        case "digest_video": return "play.rectangle"
         default: return "newspaper"
         }
     }
@@ -358,7 +366,233 @@ struct FeedCard: View {
         case "github": return .purple
         case "blog": return .orange
         case "twitter": return .cyan
+        case "digest_video": return .red
         default: return .gray
         }
+    }
+}
+
+// MARK: - Video Feed Card
+
+/// Feed card variant with inline video player via AVKit.
+/// Shows a thumbnail + play button; expands to native AVPlayerViewController.
+struct VideoFeedCard: View {
+    let article: FeedArticle
+    @State private var isExpanded = false
+    @State private var isPlaying = false
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header — same as FeedCard
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(sourceColor(article.source).opacity(0.15))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: article.sourceIcon)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(sourceColor(article.source))
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(article.sourceLabel)
+                        .font(.subheadline).fontWeight(.semibold)
+                    Text(article.relativeTime)
+                        .font(.caption2).foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption2).foregroundColor(.secondary)
+                    .padding(6)
+                    .background(Circle().fill(Color.secondary.opacity(0.08)))
+            }
+
+            // Title
+            MarkdownText(text: article.title)
+                .font(.body).fontWeight(.semibold)
+                .lineLimit(isExpanded ? nil : 2)
+                .padding(.top, 10)
+
+            // Summary
+            if !article.displaySummary.isEmpty {
+                MarkdownText(text: article.displaySummary)
+                    .font(.subheadline).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+            }
+
+            // Video thumbnail / player
+            if isExpanded {
+                VideoPlayerView(
+                    videoURL: article.videoUrl,
+                    thumbnailURL: article.thumbnailUrl,
+                    isPlaying: $isPlaying
+                )
+                .frame(height: 220)
+                .cornerRadius(12)
+                .padding(.top, 10)
+            } else {
+                // Thumbnail poster with play overlay
+                ZStack {
+                    if let thumbURL = URL(string: article.thumbnailUrl), !article.thumbnailUrl.isEmpty {
+                        AsyncImage(url: thumbURL) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().aspectRatio(16/9, contentMode: .fill)
+                            case .failure, .empty:
+                                thumbnailPlaceholder
+                            @unknown default:
+                                thumbnailPlaceholder
+                            }
+                        }
+                    } else {
+                        thumbnailPlaceholder
+                    }
+                }
+                .frame(height: 180)
+                .clipped()
+                .cornerRadius(12)
+                .overlay(
+                    // Play button
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 52, height: 52)
+                        Image(systemName: "play.fill")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                            .offset(x: 1)
+                    }
+                )
+                .padding(.top, 10)
+            }
+
+            // Tags
+            if !article.tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(article.tags.prefix(5), id: \.self) { tag in
+                            Text(tag)
+                                .font(.caption2)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(sourceColor(article.source).opacity(0.08))
+                                .foregroundColor(sourceColor(article.source))
+                                .cornerRadius(6)
+                        }
+                    }
+                }
+                .padding(.top, 8)
+            }
+
+            // Bottom bar
+            HStack(spacing: 24) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        isExpanded.toggle()
+                        if isExpanded {
+                            isPlaying = true
+                        } else {
+                            isPlaying = false
+                            player?.pause()
+                            player = nil
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.caption2)
+                        Text(isExpanded ? "Collapse" : "Watch").font(.caption2)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(sourceColor(article.source))
+
+                Spacer()
+            }
+            .padding(.top, 10)
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.surface))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.secondary.opacity(0.08), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                isExpanded.toggle()
+                if isExpanded {
+                    isPlaying = true
+                } else {
+                    isPlaying = false
+                    player?.pause()
+                    player = nil
+                }
+            }
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
+    }
+
+    private var thumbnailPlaceholder: some View {
+        ZStack {
+            Rectangle().fill(sourceColor(article.source).opacity(0.12))
+            Image(systemName: "play.rectangle")
+                .font(.largeTitle)
+                .foregroundColor(sourceColor(article.source).opacity(0.4))
+        }
+    }
+
+    private func sourceColor(_ s: String) -> Color {
+        switch s {
+        case "arxiv": return .blue
+        case "github": return .purple
+        case "blog": return .orange
+        case "twitter": return .cyan
+        case "digest_video": return .red
+        default: return .gray
+        }
+    }
+}
+
+// MARK: - Video Player (Inline)
+
+/// Inline AVPlayer wrapper — plays local file:// or remote https:// video.
+struct VideoPlayerView: View {
+    let videoURL: String
+    let thumbnailURL: String
+    @Binding var isPlaying: Bool
+
+    @State private var player: AVPlayer?
+    @State private var playerItem: AVPlayerItem?
+
+    var body: some View {
+        VideoPlayer(player: player)
+            .onAppear { setupPlayer() }
+            .onDisappear { tearDown() }
+            .onChange(of: isPlaying) { _, playing in
+                if playing { player?.play() }
+                else { player?.pause() }
+            }
+    }
+
+    private func setupPlayer() {
+        guard let url = URL(string: videoURL) else { return }
+        let item = AVPlayerItem(url: url)
+        playerItem = item
+        player = AVPlayer(playerItem: item)
+        if isPlaying { player?.play() }
+    }
+
+    private func tearDown() {
+        player?.pause()
+        player = nil
+        playerItem = nil
     }
 }
