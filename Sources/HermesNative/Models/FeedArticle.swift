@@ -1,5 +1,6 @@
 import Foundation
 
+/// Social-media-style curated feed from the digest pipeline.
 struct FeedArticle: Codable, Identifiable, Hashable {
     let id: String
     let title: String
@@ -8,6 +9,8 @@ struct FeedArticle: Codable, Identifiable, Hashable {
     let source: String
     let tags: [String]
     let imageUrl: String
+    let videoUrl: String
+    let thumbnailUrl: String
     let ts: String
 
     /// Clean summary ready for markdown rendering — strips HTML tags and
@@ -75,6 +78,7 @@ struct FeedArticle: Codable, Identifiable, Hashable {
         case "github":      return "chevron.left.slash.chevron.right"
         case "blog":        return "text.bubble"
         case "twitter":     return "bird"
+        case "digest_video": return "play.rectangle"
         case "search":      return "magnifyingglass"
         default:            return "newspaper"
         }
@@ -86,9 +90,13 @@ struct FeedArticle: Codable, Identifiable, Hashable {
         case "github":      return "Releases"
         case "blog":        return "Blogs"
         case "twitter":     return "X/Twitter"
+        case "digest_video": return "Video Digest"
         default:            return source.capitalized
         }
     }
+
+    /// Whether this article has an inline video to play.
+    var hasVideo: Bool { !videoUrl.isEmpty }
 
     var relativeTime: String {
         let fmt = ISO8601DateFormatter()
@@ -104,6 +112,8 @@ struct FeedArticle: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, title, url, summary, source, tags, ts
         case imageUrl = "image_url"
+        case videoUrl = "video_url"
+        case thumbnailUrl = "thumbnail_url"
     }
 }
 
