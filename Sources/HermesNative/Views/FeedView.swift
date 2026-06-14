@@ -477,9 +477,12 @@ struct VideoFeedCard: View {
     }
     private func sourceColor(_ s: String) -> Color {
         switch s {
-        case "arxiv": return .blue; case "github": return .purple
-        case "blog": return .orange; case "twitter": return .cyan
-        case "digest_video": return .red; default: return .gray
+        case "arxiv": return .blue
+        case "github": return .purple
+        case "blog": return .orange
+        case "twitter": return .cyan
+        case "digest_video": return .red
+        default: return .gray
         }
     }
 }
