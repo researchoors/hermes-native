@@ -556,9 +556,16 @@ struct VideoPlayerView: View {
     /// Builds the AVPlayer for a ready-to-play (local or direct) URL and starts it.
     private func attachPlayer(playing url: URL) {
         VideoLog.shared.debug("playing video: \(url.absoluteString, privacy: .public)")
+        // iOS defaults to the soloAmbient audio session category, which plays
+        // video silently and honors the hardware mute switch. Switch to
+        // .playback so digest videos have sound.
+        Self.configureAudioSessionForPlayback()
         let asset = AVURLAsset(url: url)
         let item = AVPlayerItem(asset: asset)
         let p = AVPlayer(playerItem: item)
+        // Guard against a muted / zero-volume player swallowing the audio track.
+        p.isMuted = false
+        p.volume = 1.0
         // Track the player + item so the LeakTracker/overlay surface any
         // AVPlayer that survives dismissal — a classic source of retained
         // decode buffers.
@@ -580,6 +587,22 @@ struct VideoPlayerView: View {
         }
         player = p
         p.play()
+    }
+
+    /// Routes audio to the speaker for video playback. On iOS the default
+    /// session category (soloAmbient) renders video silently and obeys the
+    /// mute switch; .playback fixes both. No-op on macOS, which has no
+    /// AVAudioSession.
+    private static func configureAudioSessionForPlayback() {
+        #if os(iOS)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback)
+            try session.setActive(true)
+        } catch {
+            VideoLog.shared.error("audio session setup failed: \(error.localizedDescription, privacy: .public)")
+        }
+        #endif
     }
 
     /// Dumps the full diagnostic picture for a failed item: the NSError chain
