@@ -496,10 +496,12 @@ struct VideoPlayerView: View {
     @Binding var isPlaying: Bool
     @State private var player: AVPlayer?
     @State private var videoLifetime: OSSignpostIntervalState?
+    @State private var statusObserver: NSKeyValueObservation?
+    @State private var downloadTask: Task<Void, Never>?
 
     var body: some View {
         #if os(macOS)
-        NativeVideoPlayer(player: player, videoURL: videoURL)
+        NativeVideoPlayer(player: player)
             .onAppear { startPlayback() }
             .onDisappear { stopPlayback() }
         #else
@@ -510,52 +512,157 @@ struct VideoPlayerView: View {
     }
 
     private func startPlayback() {
-        guard let url = URL(string: videoURL) else { return }
-        let p = AVPlayer(url: url)
-        // Track the player + its item so the LeakTracker/overlay surface any
-        // AVPlayer that survives dismissal — a classic source of retained
-        // decode buffers and the kind of leak that compounds with the digest
-        // video playback issues.
-        LeakTracker.track(p)
-        if let item = p.currentItem { LeakTracker.track(item) }
+        guard player == nil else { player?.play(); return }
+        // Resolve the backend video field. hermes-agent's video_gen_provider
+        // documents it as "an HTTP URL or an absolute filesystem path", so we
+        // handle a bare "/Users/.../foo.mp4" rather than feeding URL(string:) a
+        // schemeless string that silently fails.
+        let url: URL?
+        if videoURL.hasPrefix("/") {
+            url = URL(fileURLWithPath: videoURL)
+            VideoLog.shared.warning("video_url is a filesystem path, not an HTTP URL: \(videoURL, privacy: .public)")
+        } else {
+            url = URL(string: videoURL)
+        }
+        guard let url else {
+            VideoLog.shared.error("video_url did not parse to a URL: \(videoURL, privacy: .public)")
+            return
+        }
+
         videoLifetime = PerfSignposter.begin("video.playerLifetime")
+
+        // The gateway's /v1/media route has a broken HTTP Range implementation
+        // (returns one byte too few; bytes=0-0 → 416), so AVPlayer's streaming
+        // fails with CoreMedia -12939. Work around it by downloading the full
+        // file (a plain non-ranged GET succeeds) and playing the local copy.
+        // Local file:// URLs need no ranges, so play them directly.
+        if url.isFileURL {
+            attachPlayer(playing: url)
+        } else {
+            VideoLog.shared.debug("fetching video for local playback: \(url.absoluteString, privacy: .public)")
+            downloadTask = Task { @MainActor in
+                do {
+                    let localURL = try await VideoCache.shared.localFile(for: url)
+                    guard !Task.isCancelled else { return }
+                    attachPlayer(playing: localURL)
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    VideoLog.shared.error("video download failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+    }
+
+    /// Builds the AVPlayer for a ready-to-play (local or direct) URL and starts it.
+    private func attachPlayer(playing url: URL) {
+        VideoLog.shared.debug("playing video: \(url.absoluteString, privacy: .public)")
+        let asset = AVURLAsset(url: url)
+        let item = AVPlayerItem(asset: asset)
+        let p = AVPlayer(playerItem: item)
+        // Track the player + item so the LeakTracker/overlay surface any
+        // AVPlayer that survives dismissal — a classic source of retained
+        // decode buffers.
+        LeakTracker.track(p)
+        LeakTracker.track(item)
+        // Observe item status so a playback failure produces a clear log line
+        // instead of a silent blank frame. On failure dump the FULL error
+        // chain + AVFoundation's access/error logs — "Operation Stopped" alone
+        // is just localizedDescription and tells us nothing actionable.
+        statusObserver = item.observe(\.status, options: [.new]) { item, _ in
+            switch item.status {
+            case .failed:
+                Self.logItemFailure(item)
+            case .readyToPlay:
+                VideoLog.shared.debug("AVPlayerItem ready to play")
+            default:
+                break
+            }
+        }
         player = p
+        p.play()
+    }
+
+    /// Dumps the full diagnostic picture for a failed item: the NSError chain
+    /// (domain/code/underlying) and AVFoundation's own error-log events, which
+    /// carry the real HTTP status / CoreMedia reason behind "Operation Stopped".
+    private static func logItemFailure(_ item: AVPlayerItem) {
+        if let err = item.error as NSError? {
+            VideoLog.shared.error("AVPlayerItem failed: \(err.domain, privacy: .public) code=\(err.code) — \(err.localizedDescription, privacy: .public)")
+            if let underlying = err.userInfo[NSUnderlyingErrorKey] as? NSError {
+                VideoLog.shared.error("  underlying: \(underlying.domain, privacy: .public) code=\(underlying.code) — \(underlying.localizedDescription, privacy: .public)")
+            }
+        } else {
+            VideoLog.shared.error("AVPlayerItem failed with no error object")
+        }
+        if let errorLog = item.errorLog() {
+            for event in errorLog.events {
+                let comment = event.errorComment ?? "nil"
+                VideoLog.shared.error("  errorLog: status=\(event.errorStatusCode) domain=\(event.errorDomain, privacy: .public) comment=\(comment, privacy: .public)")
+            }
+        }
+        if let accessLog = item.accessLog() {
+            for event in accessLog.events {
+                let bytes = event.numberOfBytesTransferred
+                VideoLog.shared.debug("  accessLog: indicatedBitrate=\(event.indicatedBitrate) bytesTransferred=\(bytes) uri=\(event.uri ?? "nil", privacy: .public)")
+            }
+        }
     }
 
     private func stopPlayback() {
+        downloadTask?.cancel()
+        downloadTask = nil
         player?.pause()
+        statusObserver?.invalidate()
+        statusObserver = nil
         // Assert the player is actually released after teardown — if it isn't,
-        // something (an observer, a Combine sink, the web view) is retaining it.
+        // something (an observer, a Combine sink) is retaining it.
         if let p = player { LeakTracker.assertDeallocated(p, after: 2) }
         if let state = videoLifetime { PerfSignposter.end("video.playerLifetime", state); videoLifetime = nil }
         player = nil
     }
 }
 
+/// Logger for digest video playback. Filter the console with
+/// `category == "video"` to trace URL resolution and AVPlayerItem status.
+enum VideoLog {
+    static let shared = Logger(subsystem: "com.researchoors.HermesNative", category: "video")
+}
+
 #if os(macOS)
 import AppKit
-import WebKit
 
-/// WKWebView video player for macOS — HTML5 <video> is the most reliable playback method.
+/// AVKit player view for macOS.
+///
+/// We deliberately do NOT use WKWebView here. Pointing a WKWebView at a bare
+/// .mp4 makes WebKit synthesize a "media document" and route playback through
+/// its media plug-in in the sandboxed WebContent process — which fails on
+/// macOS with "Plug-in handled load" (WebKitErrorDomain 204) and a cascade of
+/// sandbox/launchservicesd denials, showing the slashed-out play button.
+/// AVPlayer does its own (un-sandboxed) networking and decodes the H.264 mp4
+/// directly. The player is created eagerly by the parent and passed in, so the
+/// view always has a real player by the time makeNSView/updateNSView run.
 struct NativeVideoPlayer: NSViewRepresentable {
     let player: AVPlayer?
-    let videoURL: String
 
-    func makeNSView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.setValue(false, forKey: "drawsBackground")
-        // Navigate directly to video URL — WKWebView plays video natively
-        if let url = URL(string: videoURL) {
-            webView.load(URLRequest(url: url))
-        }
-        return webView
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .inline
+        view.videoGravity = .resizeAspect
+        view.player = player
+        return view
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        // The player is nil on first construction and set once startPlayback
+        // runs; reflect changes here so playback actually attaches.
+        if nsView.player !== player {
+            nsView.player = player
+        }
+    }
 
-    static func dismantleNSView(_ nsView: WKWebView, coordinator: ()) {
-        nsView.stopLoading()
+    static func dismantleNSView(_ nsView: AVPlayerView, coordinator: ()) {
+        nsView.player?.pause()
+        nsView.player = nil
     }
 }
 #endif
