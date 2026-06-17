@@ -16,15 +16,21 @@ final class FeedViewModel: ObservableObject {
     private let pageSize = 200 // Server max: digest_store caps at 200
     private var totalCount = 0
 
+    init() {
+        LeakTracker.track(self)
+    }
+
     var hasMore: Bool { articles.count < totalCount }
 
     func loadFeed(client: GatewayClient) async {
         guard !isLoading else { return }
         isLoading = true; error = nil; defer { isLoading = false }
         do {
-            let srcResp = try await client.feedSources()
-            sourceCounts = srcResp.sources
-            let feed = try await client.feedGet(sources: selectedSource.flatMap { [$0] }, limit: pageSize)
+            let feed = try await PerfSignposter.interval("feed.loadFeed") { () async throws -> FeedResponse in
+                let srcResp = try await client.feedSources()
+                sourceCounts = srcResp.sources
+                return try await client.feedGet(sources: selectedSource.flatMap { [$0] }, limit: pageSize)
+            }
             self.articles = feed.articles; self.totalCount = feed.total
             log.info("Feed loaded: \(feed.articles.count) articles (total: \(feed.total))")
             // Auto-fetch remaining pages so user sees everything without manual scroll-triggered loads

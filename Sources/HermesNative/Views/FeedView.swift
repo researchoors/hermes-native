@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import os
 
 // MARK: - Feed View
 
@@ -494,17 +495,40 @@ struct VideoPlayerView: View {
     let videoURL: String; let thumbnailURL: String
     @Binding var isPlaying: Bool
     @State private var player: AVPlayer?
+    @State private var videoLifetime: OSSignpostIntervalState?
 
     var body: some View {
         #if os(macOS)
         NativeVideoPlayer(player: player, videoURL: videoURL)
-            .onAppear { if let url = URL(string: videoURL) { player = AVPlayer(url: url) } }
-            .onDisappear { player?.pause(); player = nil }
+            .onAppear { startPlayback() }
+            .onDisappear { stopPlayback() }
         #else
         VideoPlayer(player: player)
-            .onAppear { if let url = URL(string: videoURL) { player = AVPlayer(url: url) } }
-            .onDisappear { player?.pause(); player = nil }
+            .onAppear { startPlayback() }
+            .onDisappear { stopPlayback() }
         #endif
+    }
+
+    private func startPlayback() {
+        guard let url = URL(string: videoURL) else { return }
+        let p = AVPlayer(url: url)
+        // Track the player + its item so the LeakTracker/overlay surface any
+        // AVPlayer that survives dismissal — a classic source of retained
+        // decode buffers and the kind of leak that compounds with the digest
+        // video playback issues.
+        LeakTracker.track(p)
+        if let item = p.currentItem { LeakTracker.track(item) }
+        videoLifetime = PerfSignposter.begin("video.playerLifetime")
+        player = p
+    }
+
+    private func stopPlayback() {
+        player?.pause()
+        // Assert the player is actually released after teardown — if it isn't,
+        // something (an observer, a Combine sink, the web view) is retaining it.
+        if let p = player { LeakTracker.assertDeallocated(p, after: 2) }
+        if let state = videoLifetime { PerfSignposter.end("video.playerLifetime", state); videoLifetime = nil }
+        player = nil
     }
 }
 
