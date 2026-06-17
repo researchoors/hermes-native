@@ -519,8 +519,6 @@ struct NativeVideoPlayer: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.mediaPlaybackRequiresUserAction = false
-        config.allowsInlineMediaPlayback = true
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
         // Navigate directly to video URL — WKWebView plays video natively
