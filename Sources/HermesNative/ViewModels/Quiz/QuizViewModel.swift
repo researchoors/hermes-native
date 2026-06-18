@@ -32,7 +32,10 @@ final class QuizViewModel {
             let selectedText = ["A", "B", "C", "D"].firstIndex(of: item.selected)
                 .flatMap { $0 < item.question.options.count ? item.question.options[$0] : item.selected } ?? item.selected
             let correctText = item.question.correctAnswer
-            return "Q\(idx + 1): \(item.question.q)\n  My answer: \(item.selected)) \(selectedText)\n  Correct: \(item.question.correct)) \(correctText)\n  Explanation: \(item.question.explanation)"
+            return "Q\(idx + 1): \(item.question.q)\n"
+                + "  My answer: \(item.selected)) \(selectedText)\n"
+                + "  Correct: \(item.question.correct)) \(correctText)\n"
+                + "  Explanation: \(item.question.explanation)"
         }.joined(separator: "\n\n")
         return "I just completed a quiz on \"\(state.topic)\". I got \(state.score)/\(state.questions.count). Please review my wrong answers:\n\n\(wrongList)"
     }

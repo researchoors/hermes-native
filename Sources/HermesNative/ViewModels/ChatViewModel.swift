@@ -98,7 +98,7 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Quiz Mode
     /// When non-nil, quiz questions are available and the QuizSheet should be shown.
-    @Published var quizQuestions: [QuizQuestion]? = nil
+    @Published var quizQuestions: [QuizQuestion]?
     /// The topic the quiz was generated for (displayed in the sheet header).
     @Published var quizTopic: String = ""
     /// True while waiting for the agent to return quiz JSON.
@@ -106,7 +106,7 @@ final class ChatViewModel: ObservableObject {
     /// The quiz-related prompt that was sent (for tracking).
     private var lastQuizPrompt: String = ""
     /// Error message when quiz JSON parsing fails (displayed in the quiz sheet).
-    @Published var errorMessageForQuiz: String? = nil
+    @Published var errorMessageForQuiz: String?
 
     /// Monotonic token for user-driven session switches/creates. Async resume
     /// calls must check this before committing returned history; otherwise a
@@ -739,7 +739,7 @@ if restoreSessionState(displayID: key) {
     func autoGenerateQuiz(topic: String, questionCount: Int = 5) async {
         guard let client = gatewayClient, let sid = sessionID else { return }
         let prompt = """
-        Generate a \(questionCount)-question multiple choice quiz about "\(topic)". 
+        Generate a \(questionCount)-question multiple choice quiz about "\(topic)".
         Questions should test understanding, not trivia. Each with 4 plausible options.
         Return ONLY valid JSON with format:
         {"questions":[{"q":"question text","options":["A) ...","B) ...","C) ...","D) ..."],"correct":"A","explanation":"brief explanation"}]}
@@ -901,7 +901,10 @@ if restoreSessionState(displayID: key) {
             isStreaming = true
             awaitingQuizResponse = true
             quizTopic = topic
-            lastQuizPrompt = "Generate a \(questionCount)-question multiple choice quiz about \(topic). Return ONLY valid JSON in this format: {\"questions\":[{\"q\":\"question text\",\"options\":[\"A) option1\",\"B) option2\",\"C) option3\",\"D) option4\"],\"correct\":\"A\",\"explanation\":\"brief explanation\"}]}"
+            lastQuizPrompt = """
+                Generate a \(questionCount)-question multiple choice quiz about \(topic).
+                Return ONLY valid JSON: {"questions":[{"q":"...","options":["A) ...","B) ...","C) ...","D) ..."],"correct":"A","explanation":"..."}]}
+                """
 
             // Add user message
             let userMessage = ChatMessage(role: .user, content: "/quiz \(topic)")
