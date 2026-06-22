@@ -215,6 +215,9 @@ struct ChatView: View {
                     let reviewPrompt: String = prompt
                     showQuizSheet = false
                     let _ = Task<Void, Never> { await chatViewModel.reviewQuizWithAgent(prompt: reviewPrompt) }
+                },
+                onOpenLearning: {
+                    showDecksSheet = true
                 }
             )
         }
