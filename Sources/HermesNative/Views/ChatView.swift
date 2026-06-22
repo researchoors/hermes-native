@@ -260,6 +260,14 @@ struct ChatView: View {
                 showQuizSheet = true
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .hermesReviewQuiz)) { notification in
+            // "Review with Agent" from an inline Learning-view quiz — send the
+            // review prompt to the current chat session.
+            if let prompt = notification.userInfo?["reviewPrompt"] as? String {
+                showQuizSheet = false
+                let _ = Task<Void, Never> { await chatViewModel.reviewQuizWithAgent(prompt: prompt) }
+            }
+        }
         .onChange(of: chatViewModel.currentSessionID) { _, _ in
             // Close the thought graph when switching sessions
             withAnimation(.easeOut(duration: 0.2)) {
