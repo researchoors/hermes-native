@@ -277,7 +277,10 @@ final class TextHeightMeasurer {
         let fontSize: Int
     }
     private static let cacheLock = NSLock()
-    private static var cache: [Key: CGFloat] = [:]
+    // nonisolated(unsafe): access is hand-synchronized via cacheLock below, so
+    // the compiler's Swift 6 global-mutable-state check (which the SwiftPM CI
+    // build enforces strictly) is satisfied manually.
+    nonisolated(unsafe) private static var cache: [Key: CGFloat] = [:]
 
     init() {
         textContainer.lineFragmentPadding = 2
