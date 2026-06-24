@@ -1,7 +1,10 @@
 import Foundation
 import os
 
-#if canImport(MetricKit)
+// MetricKit's module imports on macOS, but its subscriber/payload API
+// (MXMetricManagerSubscriber, MXMetricPayload, …) is iOS-only — so gate on
+// os(iOS), not canImport, or the macOS build fails with "unavailable in macOS".
+#if os(iOS)
 import MetricKit
 #endif
 
@@ -291,7 +294,7 @@ enum PerfSignposter {
 
 // MARK: - MetricKit aggregates
 
-#if canImport(MetricKit) && !targetEnvironment(simulator)
+#if os(iOS) && !targetEnvironment(simulator)
 /// Subscribes to MetricKit and logs daily memory/CPU/hang payloads. MetricKit
 /// delivers at most once per day (and on next launch after a crash), so this
 /// is for trend/regression monitoring on real devices, not live debugging.
@@ -350,7 +353,7 @@ enum PerfInstrumentation {
             perfLog.debug("perf instrumentation started (--perf)")
         }
         #endif
-        #if canImport(MetricKit) && !targetEnvironment(simulator)
+        #if os(iOS) && !targetEnvironment(simulator)
         PerfMetricsSubscriber.shared.start()
         #endif
     }
