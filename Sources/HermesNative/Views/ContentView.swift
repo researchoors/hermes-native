@@ -369,12 +369,19 @@ struct ContentView: View {
                 .frame(minWidth: 500, minHeight: 450)
         }
         .sheet(isPresented: $showAddGateway) {
+            // AddGatewaySheet is macOS-only (the toolbar switcher that
+            // presents it is too); give iOS an inert branch so the shared
+            // modifier chain compiles on both platforms.
+            #if os(macOS)
             AddGatewaySheet { name, url, key in
                 settings.addGateway(name: name, url: url, apiKey: key)
                 showAddGateway = false
             } onCancel: {
                 showAddGateway = false
             }
+            #else
+            EmptyView()
+            #endif
         }
         .sheet(item: $observerSession, onDismiss: {
             isObserverDismissing = true
