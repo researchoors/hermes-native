@@ -492,6 +492,13 @@ class SessionTree: ObservableObject, Identifiable {
         let childCosts = root.allDescendants.compactMap { $0.costUSD }.reduce(0, +)
         return rootCost + childCosts
     }
+
+    /// Total tokens (input + output) across all nodes, for the graph HUD.
+    var totalTokens: Int {
+        let rootTokens = root.totalTokens ?? 0
+        let childTokens = root.allDescendants.compactMap { $0.totalTokens }.reduce(0, +)
+        return rootTokens + childTokens
+    }
 }
 
 // MARK: - Delegation Status

@@ -32,6 +32,14 @@ struct ThoughtGraphView: View {
     /// live indicator in the header.
     let isStreaming: Bool
 
+    /// Invoked with a tool-call ID when the user taps "Jump to tool in chat".
+    /// Provided by ChatView, which owns the scroll proxy; nil hides the button.
+    var onJumpToTool: ((String) -> Void)?
+
+    /// Live cost/token rollup for the current turn (session-scoped usage from
+    /// session.info events). nil hides the header chip.
+    var usageSummary: String?
+
     // MARK: - Derived Node Data (computed once per view update)
 
     /// `nodes` filtered by mode, cached so body evaluations don't re-filter.
@@ -44,10 +52,18 @@ struct ThoughtGraphView: View {
     private let runningToolCount: Int
     private let runningReasoningCount: Int
 
-    init(engine: ThoughtGraphLayoutEngine, nodes: [ThoughtGraphNode], isStreaming: Bool) {
+    init(
+        engine: ThoughtGraphLayoutEngine,
+        nodes: [ThoughtGraphNode],
+        isStreaming: Bool,
+        usageSummary: String? = nil,
+        onJumpToTool: ((String) -> Void)? = nil
+    ) {
         self.engine = engine
         self.nodes = nodes
         self.isStreaming = isStreaming
+        self.usageSummary = usageSummary
+        self.onJumpToTool = onJumpToTool
         let toolNodes = nodes.filter { $0.name != "reasoning" }
         let reasoningNodes = nodes.filter { $0.name == "reasoning" }
         self.toolNodes = toolNodes
@@ -450,6 +466,17 @@ struct ThoughtGraphView: View {
                         .background(Theme.surface, in: Capsule())
                 }
 
+                // Live cost/token rollup for the session.
+                if let usageSummary {
+                    Text(usageSummary)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(Theme.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Theme.surface, in: Capsule())
+                        .help("Session token usage")
+                }
+
                 Spacer()
 
                 // Mode selector
@@ -661,16 +688,18 @@ struct ThoughtGraphView: View {
             Spacer()
 
             // ── Jump to tool button ──
-            Button {
-                // Reserved: jump to tool in chat
-            } label: {
-                Label("Jump to tool in chat", systemImage: "arrow.turn.up.right")
-                    .font(.subheadline.weight(.medium))
+            if let onJumpToTool, node.name != "reasoning" {
+                Button {
+                    onJumpToTool(node.id)
+                } label: {
+                    Label("Jump to tool in chat", systemImage: "arrow.turn.up.right")
+                        .font(.subheadline.weight(.medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.accent)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.accent)
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.surface)

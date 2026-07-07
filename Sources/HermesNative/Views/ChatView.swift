@@ -84,6 +84,33 @@ struct ChatView: View {
         return nodes
     }
 
+    /// Compact "12.3k tok" style rollup of the latest turn's usage, shown in
+    /// the thought-graph header. Uses the most recent message carrying usage.
+    private var thoughtGraphUsageSummary: String? {
+        guard let usage = chatViewModel.messages.last(where: { $0.usage != nil })?.usage else {
+            return nil
+        }
+        let total = usage.totalTokens
+        if total >= 1000 {
+            return String(format: "%.1fk tok", Double(total) / 1000)
+        }
+        return "\(total) tok"
+    }
+
+    /// Message ID to scroll to once the thought-graph sheet finishes
+    /// dismissing (scrollTo during dismissal is dropped by SwiftUI).
+    @State private var pendingJumpMessageID: UUID?
+
+    /// Resolve a tool-call ID to the chat message containing it and stage the
+    /// jump; dismissing the sheet triggers the actual scroll.
+    private func jumpToTool(toolID: String) {
+        guard let message = chatViewModel.messages.first(where: { msg in
+            msg.toolCalls.contains(where: { $0.id == toolID })
+        }) else { return }
+        pendingJumpMessageID = message.id
+        showThoughtGraph = false
+    }
+
     private var chatBottomContentPadding: CGFloat {
         #if os(macOS)
         if !chatViewModel.isSessionReady { return 260 }
@@ -580,6 +607,20 @@ struct ChatView: View {
             .onChange(of: chatViewModel.messages.count) { _, _ in
                 scheduleScrollToBottom(proxy: proxy, reason: "message-count")
             }
+            .onChange(of: pendingJumpMessageID) { _, target in
+                // Jump staged by the thought graph's "Jump to tool in chat".
+                // Delay past the sheet dismissal animation — scrollTo during
+                // dismissal is silently dropped.
+                guard let target else { return }
+                pendingScrollTask?.cancel()
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(target, anchor: .center)
+                    }
+                    pendingJumpMessageID = nil
+                }
+            }
             .onChange(of: latestMessageRenderKey) { _, _ in
                 scheduleScrollToBottom(proxy: proxy, reason: "message-content")
             }
@@ -703,7 +744,9 @@ struct ChatView: View {
             ThoughtGraphView(
                 engine: thoughtGraphEngine,
                 nodes: thoughtGraphNodes,
-                isStreaming: chatViewModel.isStreaming
+                isStreaming: chatViewModel.isStreaming,
+                usageSummary: thoughtGraphUsageSummary,
+                onJumpToTool: { toolID in jumpToTool(toolID: toolID) }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
