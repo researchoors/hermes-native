@@ -59,7 +59,8 @@ final class SpawnTreeStore: ObservableObject {
 
     private func handleEvent(_ event: GatewayEvent, sessionID: String?) {
         switch event {
-        case .messageDelta, .thinkingDelta, .reasoningDelta:
+        case .messageDelta, .thinkingDelta, .reasoningDelta,
+             .subagentThinking, .subagentProgress:
             // Only buffer deltas for sessions that have a tree — avoids
             // allocating thousands of tuples for sessions the user hasn't
             // opened in Mission Control.
@@ -169,11 +170,18 @@ final class SpawnTreeStore: ObservableObject {
                 node.toolCalls.append(toolCall)
             }
 
-        case .subagentProgress:
-            break
-
-        case .subagentThinking:
-            break
+        case .subagentProgress(let text, let subagentID),
+             .subagentThinking(let text, let subagentID):
+            if let subagentID, !subagentID.isEmpty {
+                updateNode(id: subagentID, tree: tree) { node in
+                    node.thinkingText += text
+                    // Keep a bounded tail — long agent runs stream a lot of
+                    // thinking; unbounded accumulation balloons memory.
+                    if node.thinkingText.count > 16_000 {
+                        node.thinkingText = String(node.thinkingText.suffix(12_000))
+                    }
+                }
+            }
 
         case .toolStart(let payload):
             let toolCall = NodeToolCall(
