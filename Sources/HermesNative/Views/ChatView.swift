@@ -70,20 +70,6 @@ struct ChatView: View {
         chatViewModel.isStreaming || !chatViewModel.activeToolCalls.isEmpty
     }
 
-    /// Convert activeToolCalls to ThoughtGraphNode array using category-based
-    /// dependency inference (search→read→patch/write, terminal→patch) with
-    /// parallel-sibling detection.
-    private var thoughtGraphNodes: [ThoughtGraphNode] {
-        let tools = Array(chatViewModel.activeToolCalls.values)
-            .sorted { $0.id < $1.id }
-        var nodes = ThoughtGraphLayoutEngine.inferAndLayout(
-            tools: tools,
-            canvasSize: .zero
-        )
-        nodes.append(contentsOf: chatViewModel.reasoningGraph.reasoningNodes)
-        return nodes
-    }
-
     /// Compact "12.3k tok" style rollup of the latest turn's usage, shown in
     /// the thought-graph header. Uses the most recent message carrying usage.
     private var thoughtGraphUsageSummary: String? {
@@ -741,16 +727,52 @@ struct ChatView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
-            ThoughtGraphView(
+            ThoughtGraphSheetContent(
+                chatViewModel: chatViewModel,
+                subagentGraph: chatViewModel.subagentGraph,
+                reasoningGraph: chatViewModel.reasoningGraph,
                 engine: thoughtGraphEngine,
-                nodes: thoughtGraphNodes,
-                isStreaming: chatViewModel.isStreaming,
                 usageSummary: thoughtGraphUsageSummary,
                 onJumpToTool: { toolID in jumpToTool(toolID: toolID) }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Theme.background)
+    }
+
+    /// Thought-graph sheet body. Split out so the two graph integrators are
+    /// observed directly — ChatView only observes chatViewModel, and nested
+    /// ObservableObject publishes (subagent/reasoning nodes) don't re-render
+    /// the parent. This view rebuilds live as agent subtrees grow.
+    private struct ThoughtGraphSheetContent: View {
+        @ObservedObject var chatViewModel: ChatViewModel
+        @ObservedObject var subagentGraph: SubagentGraphIntegrator
+        @ObservedObject var reasoningGraph: ReasoningGraphIntegrator
+        let engine: ThoughtGraphLayoutEngine
+        let usageSummary: String?
+        let onJumpToTool: (String) -> Void
+
+        /// Main-loop tool calls + subagent subtrees + reasoning beats,
+        /// interleaved chronologically by the layout engine.
+        private var nodes: [ThoughtGraphNode] {
+            let tools = Array(chatViewModel.activeToolCalls.values)
+                .sorted { $0.id < $1.id }
+            return ThoughtGraphLayoutEngine.composeTimeline(
+                tools: tools,
+                agentNodes: subagentGraph.agentNodes,
+                reasoningNodes: reasoningGraph.reasoningNodes
+            )
+        }
+
+        var body: some View {
+            ThoughtGraphView(
+                engine: engine,
+                nodes: nodes,
+                isStreaming: chatViewModel.isStreaming,
+                usageSummary: usageSummary,
+                onJumpToTool: onJumpToTool
+            )
+        }
     }
 
     private func scheduleScrollToBottom(proxy: ScrollViewProxy, reason: String) {
