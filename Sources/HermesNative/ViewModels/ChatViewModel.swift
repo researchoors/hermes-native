@@ -136,7 +136,7 @@ final class ChatViewModel: ObservableObject {
     }
 
 
-    private var gatewayClient: GatewayClient?
+    private var gatewayClient: (any AgentBackend)?
     private var sessionID: String?
     private var stableSessionByGatewayID: [String: String] = [:]
     private var gatewayIDByStableSession: [String: String] = [:]
@@ -229,7 +229,7 @@ final class ChatViewModel: ObservableObject {
         LeakTracker.track(self)
     }
 
-    func setGatewayClient(_ client: GatewayClient) {
+    func setGatewayClient(_ client: any AgentBackend) {
         // ContentView can wire the same app-level client repeatedly during
         // connect/session-create flows. Avoid stacking duplicate Combine
         // subscriptions, because every gateway event would otherwise be applied
@@ -259,7 +259,7 @@ client.eventStream
             .store(in: &cancellables)
 
         // Observe connection state
-        client.$connectionState
+        client.connectionStatePublisher
             .receive(on: RunLoop.main)
             .sink { [weak self] state in
                 switch state {
@@ -289,7 +289,7 @@ client.eventStream
             .store(in: &cancellables)
 
         // Observe session info
-        client.$sessionInfo
+        client.sessionInfoPublisher
             .receive(on: RunLoop.main)
             .sink { [weak self] info in
                 if let info = info {
@@ -514,7 +514,7 @@ client.eventStream
         }
         isCreatingSession = true
         do {
-            let sid = try await client.createSession()
+            let sid = try await client.createSession(cols: 120)
             log.info("ChatViewModel createSession succeeded sid=\(sid)")
             snapshotCurrentSessionState()
             self.sessionID = sid
@@ -706,12 +706,12 @@ if restoreSessionState(displayID: key) {
         }
     }
 
-    private func applyEphemeralPrompt(for sessionID: String, using client: GatewayClient) async {
+    private func applyEphemeralPrompt(for sessionID: String, using client: any AgentBackend) async {
         let prompt = Self.appFormattingPrompt
         try? await client.setEphemeralPrompt(sessionID: sessionID, prompt: prompt)
     }
 
-    private func applySessionSkills(for sessionID: String, using client: GatewayClient) async {
+    private func applySessionSkills(for sessionID: String, using client: any AgentBackend) async {
         let names = activeSkills.map { $0.name }
         guard !names.isEmpty else { return }
         try? await client.setSessionSkills(sessionID: sessionID, skillNames: names)
@@ -1153,7 +1153,7 @@ if restoreSessionState(displayID: key) {
     ///   • fallback → upload and reference the server-side path so the agent
     ///                can read it with its own file tools
     private func ingestAttachment(_ attachment: MediaAttachment,
-                                  client: GatewayClient,
+                                  client: any AgentBackend,
                                   sessionID sid: String) async -> String? {
         let path = attachment.path
         let ext = attachment.fileExtension.lowercased()
@@ -1313,7 +1313,7 @@ if restoreSessionState(displayID: key) {
         guard let client = gatewayClient, let sid = sessionID else { return }
         pendingApproval = nil
         do {
-            try await client.respondApproval(sessionID: sid, choice: choice)
+            try await client.respondApproval(sessionID: sid, choice: choice, all: false)
         } catch {
             self.error = error.localizedDescription
         }
