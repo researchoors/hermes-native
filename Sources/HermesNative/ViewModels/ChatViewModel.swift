@@ -77,6 +77,9 @@ final class ChatViewModel: ObservableObject {
     @Published var isSessionReady: Bool = false
     @Published var currentModel: String = ""
     @Published var pendingApproval: ApprovalPayload?
+    /// Active backend's feature flags — views hide affordances the backend
+    /// can't serve (attachments/skills pickers on Centaur sessions).
+    @Published private(set) var backendCapabilities: BackendCapabilities = .hermes
     /// Blocking clarify question awaiting an answer (clarify.request).
     @Published var pendingClarify: ClarifyPayload?
     @Published var activeToolCalls: [String: ToolCallRecord] = [:] // tool_id → record
@@ -240,6 +243,7 @@ final class ChatViewModel: ObservableObject {
         pendingVisibleEventFlush?.cancel()
         pendingVisibleEventFlush = nil
         gatewayClient = client
+        backendCapabilities = client.capabilities
 
         // Subscribe to gateway events. Events are multiplexed over one app-level
         // WebSocket, so only apply events whose session_id matches this chat's
