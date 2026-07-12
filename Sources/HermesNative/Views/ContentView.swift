@@ -978,6 +978,14 @@ struct ContentView: View {
         if let backendID = SessionBackendRegistry.shared.backendID(for: newID),
            let entry = settings.savedGateways.first(where: { $0.id == backendID }),
            entry.kind == .centaur {
+            // Same create-race sentinel as the hermes branch: registering the
+            // freshly created session flips the list selection, and this
+            // handler must not re-resume (re-POST + re-subscribe SSE) on top
+            // of the in-flight creation.
+            if pendingCreatedSessionID == newID || pendingCreatedSessionID == "__creating__" {
+                return
+            }
+            pendingCreatedSessionID = nil
             if let backend = gatewayClientWrapper.centaurBackend(for: entry) {
                 chatViewModel.setGatewayClient(backend)
                 pushOwnedSessionOnIOS(newID)
@@ -1080,6 +1088,7 @@ struct ContentView: View {
         }
         if let sid = chatViewModel.currentSessionID {
             log.info("created centaur session \(sid) on \(entry.displayName)")
+            pendingCreatedSessionID = sid
             SessionBackendRegistry.shared.bind(sessionID: sid, backendID: entry.id)
             // Register in the sidebar so the session is selectable; the
             // hermes session.list poll won't know it, so mark it owned.
@@ -1100,6 +1109,7 @@ struct ContentView: View {
 
         if let entry = backendEntry, entry.kind == .centaur {
             if let backend = gatewayClientWrapper.centaurBackend(for: entry) {
+                pendingCreatedSessionID = "__creating__"
                 await createCentaurSession(backend, entry: entry)
             } else {
                 sessionCreationError = "Centaur backend '\(entry.displayName)' has an invalid URL"
