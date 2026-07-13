@@ -53,18 +53,28 @@ final class CentaurClient: ObservableObject {
     private var lastEventID: [String: Int64] = [:]
     private var adapter = CentaurEventAdapter()
 
-    private let session: URLSession
+    /// Short-timeout session for REST calls. The long SSE timeout must NOT
+    /// apply here: a create/execute POST against an unreachable host would
+    /// otherwise hang the "creating session" state for up to an hour.
+    private let restSession: URLSession
+    /// Long-lived session for the SSE stream (never idle-timeout mid-stream).
+    private let sseSession: URLSession
 
-    init(baseURL: URL, apiKey: String, harnessType: String = "claude_code") {
+    /// Valid harness types per centaur-session-core's HarnessType enum
+    /// (serde lowercase): "codex" | "amp" | "claudecode".
+    init(baseURL: URL, apiKey: String, harnessType: String = "claudecode") {
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.harnessType = harnessType
 
-        let config = URLSessionConfiguration.default
-        // SSE is a long poll; never let the request idle-timeout mid-stream.
-        config.timeoutIntervalForRequest = 3600
-        config.timeoutIntervalForResource = .infinity
-        self.session = URLSession(configuration: config)
+        let restConfig = URLSessionConfiguration.default
+        restConfig.timeoutIntervalForRequest = 15
+        self.restSession = URLSession(configuration: restConfig)
+
+        let sseConfig = URLSessionConfiguration.default
+        sseConfig.timeoutIntervalForRequest = 3600
+        sseConfig.timeoutIntervalForResource = .infinity
+        self.sseSession = URLSession(configuration: sseConfig)
     }
 
     deinit {
@@ -96,7 +106,7 @@ final class CentaurClient: ObservableObject {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await restSession.data(for: req)
         guard let http = response as? HTTPURLResponse else {
             throw GatewayError.invalidResponse("non-HTTP response from Centaur")
         }
@@ -215,7 +225,7 @@ final class CentaurClient: ObservableObject {
     }
 
     func downloadFile(from url: URL, token: String? = nil) async throws -> Data {
-        let (data, _) = try await session.data(from: url)
+        let (data, _) = try await restSession.data(from: url)
         return data
     }
 
@@ -252,7 +262,7 @@ final class CentaurClient: ObservableObject {
                 req.setValue(apiKey, forHTTPHeaderField: "x-centaur-api-key")
                 req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
-                let (bytes, response) = try await session.bytes(for: req)
+                let (bytes, response) = try await sseSession.bytes(for: req)
                 guard (response as? HTTPURLResponse)?.statusCode == 200 else {
                     throw GatewayError.invalidResponse("SSE connect failed")
                 }
