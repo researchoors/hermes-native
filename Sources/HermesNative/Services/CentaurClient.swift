@@ -97,8 +97,20 @@ final class CentaurClient: ObservableObject {
 
     // MARK: - Requests
 
+    /// Percent-encode one path segment (thread keys contain ":").
+    private func encodeSegment(_ segment: String) -> String {
+        segment.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-_."))) ?? segment
+    }
+
+    private func sessionPath(_ threadKey: String, _ suffix: String = "") -> String {
+        "api/session/\(encodeSegment(threadKey))\(suffix)"
+    }
+
     private func request(_ method: String, _ path: String, body: [String: Any]? = nil) async throws -> Data {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw GatewayError.invalidResponse("invalid Centaur URL path: \(path)")
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         req.setValue(apiKey, forHTTPHeaderField: "x-centaur-api-key")
@@ -130,9 +142,11 @@ final class CentaurClient: ObservableObject {
     /// session ID everywhere in the app.
     func createSession(cols: Int = 120) async throws -> String {
         connectionState = .connecting
-        let threadKey = "native-\(UUID().uuidString.prefix(12).lowercased())"
+        // validate_thread_key requires "<source>:<id>" namespacing — the
+        // same convention as slack thread keys ("slack:C…:ts").
+        let threadKey = "hermesnative:\(UUID().uuidString.prefix(12).lowercased())"
         do {
-            _ = try await request("POST", "api/session/\(threadKey)", body: [
+            _ = try await request("POST", sessionPath(threadKey), body: [
                 "harness_type": harnessType,
             ])
         } catch {
@@ -153,7 +167,7 @@ final class CentaurClient: ObservableObject {
     func resumeSession(key: String) async throws -> (sessionID: String, messages: [[String: AnyCodable]]) {
         connectionState = .connecting
         do {
-            _ = try await request("POST", "api/session/\(key)", body: [
+            _ = try await request("POST", sessionPath(key), body: [
                 "harness_type": harnessType,
             ])
         } catch {
@@ -175,7 +189,7 @@ final class CentaurClient: ObservableObject {
     }
 
     func interrupt(sessionID: String) async throws {
-        _ = try await request("POST", "api/session/\(sessionID)/interrupt", body: [
+        _ = try await request("POST", sessionPath(sessionID, "/interrupt"), body: [
             "reason": "user interrupt from HermesNative",
         ])
     }
@@ -183,10 +197,10 @@ final class CentaurClient: ObservableObject {
     // MARK: - Conversation
 
     func submitPrompt(sessionID: String, text: String) async throws {
-        _ = try await request("POST", "api/session/\(sessionID)/messages", body: [
+        _ = try await request("POST", sessionPath(sessionID, "/messages"), body: [
             "messages": [["role": "user", "content": text]],
         ])
-        let data = try await request("POST", "api/session/\(sessionID)/execute", body: [
+        let data = try await request("POST", sessionPath(sessionID, "/execute"), body: [
             "idempotency_key": UUID().uuidString,
             "input_lines": [text],
         ])
@@ -256,7 +270,8 @@ final class CentaurClient: ObservableObject {
         while !Task.isCancelled {
             do {
                 let after = lastEventID[threadKey] ?? 0
-                var req = URLRequest(url: baseURL.appendingPathComponent("api/session/\(threadKey)/events")
+                guard let base = URL(string: sessionPath(threadKey, "/events"), relativeTo: baseURL) else { return }
+                var req = URLRequest(url: base
                     .appending(queryItems: [URLQueryItem(name: "after_event_id", value: String(after))]))
                 req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                 req.setValue(apiKey, forHTTPHeaderField: "x-centaur-api-key")
