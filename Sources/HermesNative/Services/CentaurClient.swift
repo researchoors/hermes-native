@@ -410,18 +410,26 @@ struct SSEParser {
 /// renders Centaur sessions unchanged.
 ///
 ///   session.execution_started    → messageStart
-///   session.output.line          → messageDelta (line + \n)
+///   session.output.line          → parsed as a harness NDJSON frame
 ///   session.execution_completed  → messageComplete(status: complete)
 ///   session.execution_failed     → messageComplete(status: error) + error
 ///   session.execution_cancelled  → messageComplete(status: interrupted)
 ///   session.stream_error         → statusUpdate (non-fatal; SSE loop retries)
+///
+/// Output lines from CLI harnesses (Claude Code app-server, codex) are an
+/// NDJSON protocol stream — {"method": "item/agentMessage/delta", …} — not
+/// prose. Each JSON line routes through `adaptHarnessFrame`; non-JSON lines
+/// fall back to raw text passthrough for plain-text harnesses.
 ///
 /// Unknown event names (SessionEventName::Other passthrough) are checked for
 /// a `hermes_event` envelope — the future path for a hermes-agent harness in
 /// the sandbox to tunnel its full typed vocabulary through Centaur.
 struct CentaurEventAdapter {
 
+    /// Accumulated assistant text (deltas), replaced by the authoritative
+    /// final text from item/completed when the harness provides it.
     private var accumulated = ""
+    private var finalText: String?
     private var executionID: String?
 
     mutating func beginExecution(id: String?) {
@@ -432,12 +440,11 @@ struct CentaurEventAdapter {
         switch frame.event {
         case "session.execution_started":
             accumulated = ""
+            finalText = nil
             return [.messageStart]
 
         case "session.output.line":
-            let line = frame.data + "\n"
-            accumulated += line
-            return [.messageDelta(text: line, rendered: nil)]
+            return adaptOutputLine(frame.data)
 
         case "session.execution_completed":
             return [finish(status: "complete")]
@@ -466,9 +473,100 @@ struct CentaurEventAdapter {
         }
     }
 
+    // MARK: - Harness NDJSON
+
+    private mutating func adaptOutputLine(_ line: String) -> [GatewayEvent] {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let method = obj["method"] as? String else {
+            // Plain-text harness output: stream the line verbatim.
+            let text = line + "\n"
+            accumulated += text
+            return [.messageDelta(text: text, rendered: nil)]
+        }
+        let params = obj["params"] as? [String: Any] ?? [:]
+        return adaptHarnessFrame(method: method, params: params)
+    }
+
+    private mutating func adaptHarnessFrame(method: String, params: [String: Any]) -> [GatewayEvent] {
+        switch method {
+        case "item/agentMessage/delta":
+            guard let delta = params["delta"] as? String, !delta.isEmpty else { return [] }
+            accumulated += delta
+            return [.messageDelta(text: delta, rendered: nil)]
+
+        case "item/reasoning/delta", "item/thinking/delta":
+            guard let delta = params["delta"] as? String, !delta.isEmpty else { return [] }
+            return [.thinkingDelta(text: delta)]
+
+        case "item/started", "item/completed", "item/updated":
+            return adaptItemLifecycle(method: method, params: params)
+
+        case "turn/completed":
+            // The SSE-level execution_completed follows and produces the
+            // messageComplete; here we only capture the turn's final status.
+            return []
+
+        case "error":
+            let detail = (params["error"] as? [String: Any])?["message"] as? String
+                ?? "harness error"
+            return [.error(message: detail)]
+
+        case "thread/started", "turn/started":
+            return []
+
+        default:
+            return []
+        }
+    }
+
+    /// Item lifecycle: agent messages carry the final text; user echoes are
+    /// dropped; anything else (tool calls, command executions, file edits)
+    /// renders as a tool row so the existing tool UI works on Centaur.
+    private mutating func adaptItemLifecycle(method: String, params: [String: Any]) -> [GatewayEvent] {
+        guard let item = params["item"] as? [String: Any],
+              let type = item["type"] as? String else { return [] }
+        let itemID = item["id"] as? String ?? UUID().uuidString
+
+        switch type {
+        case "userMessage":
+            return []  // echo of our own input
+
+        case "agentMessage":
+            if method == "item/completed", let text = item["text"] as? String, !text.isEmpty {
+                finalText = text
+            }
+            return []
+
+        default:
+            // Tool-ish item (toolCall / commandExecution / fileEdit / …).
+            let name = item["name"] as? String ?? item["title"] as? String ?? type
+            let preview = item["command"] as? String
+                ?? item["text"] as? String
+                ?? item["path"] as? String
+                ?? ""
+            if method == "item/started" {
+                return [.toolStart(payload: ToolStartPayload(
+                    toolID: itemID, name: name, context: preview
+                ))]
+            }
+            if method == "item/completed" {
+                return [.toolComplete(payload: ToolCompletePayload(
+                    toolID: itemID, name: name,
+                    summary: preview, durationSeconds: nil, inlineDiff: nil,
+                    todos: nil
+                ))]
+            }
+            return []
+        }
+    }
+
     private mutating func finish(status: String) -> GatewayEvent {
-        let text = accumulated
+        // Prefer the harness's authoritative final text over accumulated
+        // deltas (deltas can be lossy across an SSE reconnect).
+        let text = finalText ?? accumulated
         accumulated = ""
+        finalText = nil
         return .messageComplete(payload: MessageCompletePayload(
             text: text,
             status: status,
