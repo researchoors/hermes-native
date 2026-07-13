@@ -197,8 +197,14 @@ final class CentaurClient: ObservableObject {
     // MARK: - Conversation
 
     func submitPrompt(sessionID: String, text: String) async throws {
+        // SessionMessageInput: role + parts (Vec<Value>). Parts follow the
+        // convention centaur's own bots use: [{type: "text", text: …}].
         _ = try await request("POST", sessionPath(sessionID, "/messages"), body: [
-            "messages": [["role": "user", "content": text]],
+            "messages": [[
+                "client_message_id": UUID().uuidString,
+                "role": "user",
+                "parts": [["type": "text", "text": text]],
+            ]],
         ])
         let data = try await request("POST", sessionPath(sessionID, "/execute"), body: [
             "idempotency_key": UUID().uuidString,
