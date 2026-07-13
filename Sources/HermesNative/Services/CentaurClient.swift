@@ -206,9 +206,25 @@ final class CentaurClient: ObservableObject {
                 "parts": [["type": "text", "text": text]],
             ]],
         ])
+        // input_lines feed the harness adapter's stdin in "blocks mode":
+        // each line is a JSON envelope (type/thread_key/message with content
+        // blocks) — raw text is rejected with "invalid blocks-mode input".
+        // Mirrors slackbotv2's toCodexInputLine.
+        let envelope: [String: Any] = [
+            "type": "user",
+            "thread_key": sessionID,
+            "message": [
+                "role": "user",
+                "content": [["type": "text", "text": text]],
+            ],
+        ]
+        let envelopeData = try JSONSerialization.data(withJSONObject: envelope)
+        guard let envelopeLine = String(bytes: envelopeData, encoding: .utf8) else {
+            throw GatewayError.invalidResponse("failed to encode input line")
+        }
         let data = try await request("POST", sessionPath(sessionID, "/execute"), body: [
             "idempotency_key": UUID().uuidString,
-            "input_lines": [text],
+            "input_lines": [envelopeLine],
         ])
         let result = try json(data)
         adapter.beginExecution(id: result["execution_id"] as? String)
