@@ -2,7 +2,10 @@ import Testing
 import Foundation
 @testable import HermesNative
 
-@Suite("Response Style")
+// .serialized: two of these tests mutate the same UserDefaults key; parallel
+// execution races them against each other (one test's write lands between the
+// other's set and read).
+@Suite("Response Style", .serialized)
 struct ResponseStyleTests {
 
     @Test("Every style has a distinct, non-empty preamble")
