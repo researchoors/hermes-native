@@ -161,7 +161,11 @@ struct MacInputTextField: NSViewRepresentable {
         Coordinator(self)
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    /// MainActor by construction — every caller is AppKit layout / text
+    /// delegate machinery on the main thread; the isolation makes the
+    /// deferred invalidation hop compile under strict concurrency.
+    @MainActor
+    final class Coordinator: NSObject, @preconcurrency NSTextViewDelegate {
         var parent: MacInputTextField
         weak var textView: FocusableTextView?
         var wasFocused: Bool = false
@@ -193,13 +197,14 @@ struct MacInputTextField: NSViewRepresentable {
         /// can't form; deferring to the next runloop turn coalesces the
         /// storm to one invalidation, and the tolerance stops the fixed
         /// point from oscillating between two sub-point heights.
+        ///
         func applyReportedHeight(_ height: CGFloat) {
             let current = reportedHeight
             guard current == nil || abs(current! - height) > Self.heightTolerance else { return }
             reportedHeight = height
             guard !pendingInvalidation else { return }
             pendingInvalidation = true
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.pendingInvalidation = false
                 self.textView?.enclosingScrollView?.invalidateIntrinsicContentSize()
