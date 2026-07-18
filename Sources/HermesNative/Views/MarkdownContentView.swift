@@ -586,6 +586,13 @@ struct CodeBlockView: View {
                     }
                 }
                 Spacer()
+                OpenInPanelButton {
+                    Artifact(
+                        kind: .code(language: language),
+                        title: language.isEmpty ? "Code" : language.capitalized,
+                        content: code
+                    )
+                }
                 Button {
                     #if os(macOS)
                     NSPasteboard.general.clearContents()

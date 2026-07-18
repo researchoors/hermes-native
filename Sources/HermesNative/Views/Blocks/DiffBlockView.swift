@@ -51,6 +51,9 @@ struct DiffBlockView: View {
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.red)
             Spacer()
+            OpenInPanelButton {
+                Artifact(kind: .diff, title: "Diff", content: code)
+            }
             Button {
                 #if os(macOS)
                 NSPasteboard.general.clearContents()
