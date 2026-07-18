@@ -136,3 +136,40 @@ struct InlineMathTests {
         #expect(InlineMath.render("$x$ costs $5") == "𝑥 costs $5")
     }
 }
+
+@Suite("Stat Tiles")
+struct StatTileSpecTests {
+
+    @Test("Parses tiles with all fields and defaults")
+    func fullTile() {
+        let spec = StatTileSpec.parse("""
+        {"tiles": [
+          {"label": "Requests", "value": 128400, "unit": "/day",
+           "delta": 12.5, "deltaLabel": "vs last week", "trend": [98, 121, 128]},
+          {"label": "Uptime", "value": "99.97%"}
+        ]}
+        """)
+        #expect(spec?.tiles.count == 2)
+        #expect(spec?.tiles[0].delta == 12.5)
+        #expect(spec?.tiles[0].upIsGood == true)  // default
+        #expect(spec?.tiles[1].value.display == "99.97%")
+        #expect(spec?.tiles[1].trend == nil)
+    }
+
+    @Test("Numeric values auto-compact")
+    func compactFormatting() {
+        #expect(StatTileSpec.TileValue.number(128_400).display == "128.4K")
+        #expect(StatTileSpec.TileValue.number(4_200_000).display == "4.2M")
+        #expect(StatTileSpec.TileValue.number(2_100_000_000).display == "2.1B")
+        #expect(StatTileSpec.TileValue.number(1_284).display == "1,284")   // under 10K stays exact
+        #expect(StatTileSpec.TileValue.number(42.5).display == "42.5")
+        #expect(StatTileSpec.TileValue.number(7).display == "7")
+    }
+
+    @Test("Empty or malformed specs return nil")
+    func malformed() {
+        #expect(StatTileSpec.parse("{\"tiles\": []}") == nil)
+        #expect(StatTileSpec.parse("not json") == nil)
+        #expect(StatTileSpec.parse("{\"tiles\": [{\"label\": \"x\"}]}") == nil)  // missing value
+    }
+}
