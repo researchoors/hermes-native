@@ -34,6 +34,8 @@ struct MarkdownContentView: View, Equatable {
                         DiffBlockView(code: code)
                     } else if MarkdownParser.isTreeLanguage(language) {
                         FileTreeView(code: code)
+                    } else if MarkdownParser.isStatsLanguage(language) {
+                        StatTilesView(json: code, isStreaming: isStreaming)
                     } else {
                         CodeBlockView(language: language, code: code)
                     }
@@ -363,6 +365,10 @@ struct MarkdownParser {
 
     static func isTreeLanguage(_ language: String) -> Bool {
         language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "tree"
+    }
+
+    static func isStatsLanguage(_ language: String) -> Bool {
+        language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "stats"
     }
 
     private static func isHorizontalRule(_ s: String) -> Bool {

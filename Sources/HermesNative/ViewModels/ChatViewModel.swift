@@ -71,6 +71,10 @@ final class ChatViewModel: ObservableObject {
     - **Diffs** in ```diff blocks (unified format, -/+ prefixes) whenever you show code changes — never a plain code block of before/after
     - **File trees** in ```tree blocks (box-drawing or indented, directories ending in /) for project structures
     - **Math** in $$…$$ blocks (LaTeX) — rendered as typeset equations, so prefer real TeX over unicode approximations
+    - **Stat tiles** in ```stats blocks for key-metric summaries (renders as a native KPI row — prefer this over a table or list when the answer is a handful of headline numbers):
+      ```stats
+      {"tiles": [{"label": "Requests", "value": 128400, "unit": "/day", "delta": 12.5, "deltaLabel": "vs last week", "upIsGood": true, "trend": [98, 102, 110, 108, 121, 128]}]}
+      ```
     """
     @Published var messages: [ChatMessage] = []
     @Published var inputText: String = ""
