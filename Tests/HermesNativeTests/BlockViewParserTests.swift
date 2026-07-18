@@ -173,3 +173,72 @@ struct StatTileSpecTests {
         #expect(StatTileSpec.parse("{\"tiles\": [{\"label\": \"x\"}]}") == nil)  // missing value
     }
 }
+
+@Suite("Network Graph Spec")
+struct NetworkGraphSpecTests {
+
+    @Test("Parses nodes/edges; label defaults to id; size clamps")
+    func parsesSpec() {
+        let spec = NetworkGraphSpec.parse("""
+        {"title": "Services", "nodes": [
+           {"id": "api", "label": "API", "group": "backend", "size": 9},
+           {"id": "db", "group": "data", "size": 0.1},
+           {"id": "cache"}
+         ],
+         "edges": [{"from": "api", "to": "db", "label": "reads"},
+                   {"from": "api", "to": "cache"}]}
+        """)
+        #expect(spec?.nodes.count == 3)
+        #expect(spec?.nodes[1].label == "db")            // defaults to id
+        #expect(spec?.nodes[0].size == 3)                // clamped from 9
+        #expect(spec?.nodes[1].size == 0.5)              // clamped from 0.1
+        #expect(spec?.directed == true)                  // default
+        #expect(spec?.groups == ["backend", "data"])     // nil group excluded
+        #expect(spec?.edges.count == 2)
+    }
+
+    @Test("Duplicate nodes dedupe; dangling edges drop instead of failing")
+    func sanitizes() {
+        let spec = NetworkGraphSpec.parse("""
+        {"nodes": [{"id": "a"}, {"id": "a"}, {"id": "b"}],
+         "edges": [{"from": "a", "to": "b"}, {"from": "a", "to": "ghost"}]}
+        """)
+        #expect(spec?.nodes.count == 2)
+        #expect(spec?.edges.count == 1)
+    }
+
+    @Test("Empty nodes or malformed JSON return nil")
+    func malformed() {
+        #expect(NetworkGraphSpec.parse("{\"nodes\": []}") == nil)
+        #expect(NetworkGraphSpec.parse("graph TD\nA-->B") == nil)
+    }
+
+    @Test("Layout is deterministic and places all nodes within bounds")
+    func layoutDeterministic() {
+        let spec = NetworkGraphSpec.parse("""
+        {"nodes": [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}],
+         "edges": [{"from": "a", "to": "b"}, {"from": "b", "to": "c"},
+                   {"from": "c", "to": "d"}, {"from": "d", "to": "a"}]}
+        """)!
+        let first = NetworkGraphLayout.layout(spec, width: 600)
+        let second = NetworkGraphLayout.layout(spec, width: 600)
+        #expect(first.placed.count == 4)
+        for (a, b) in zip(first.placed, second.placed) {
+            #expect(a.position == b.position)   // seeded start → same result
+        }
+        for placed in first.placed {
+            #expect(placed.position.x >= 0 && placed.position.x <= 600)
+            #expect(placed.position.y >= 0 && placed.position.y <= first.size.height)
+        }
+        // Connected square should not collapse to a point.
+        let xs = first.placed.map(\.position.x)
+        #expect((xs.max()! - xs.min()!) > 50)
+    }
+
+    @Test("Mermaid syntax in a graph fence is detected for rerouting")
+    func mermaidSniff() {
+        #expect(NetworkGraphView.looksLikeMermaid("graph TD\n  A --> B"))
+        #expect(NetworkGraphView.looksLikeMermaid("flowchart LR\n  A --> B"))
+        #expect(!NetworkGraphView.looksLikeMermaid("{\"nodes\": []}"))
+    }
+}

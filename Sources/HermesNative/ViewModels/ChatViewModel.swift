@@ -88,6 +88,12 @@ final class ChatViewModel: ObservableObject {
       ```stats
       {"tiles": [{"label": "Requests", "value": 128400, "unit": "/day", "delta": 12.5, "deltaLabel": "vs last week", "upIsGood": true, "trend": [98, 102, 110, 108, 121, 128]}]}
       ```
+    - **Network graphs** in ```graph blocks for node-link structures — dependency graphs, service topologies, entity networks (renders as an interactive force-directed diagram; prefer this over mermaid flowchart when the story is the CONNECTIVITY, not a sequence):
+      ```graph
+      {"title": "Services", "directed": true,
+       "nodes": [{"id": "api", "label": "API", "group": "backend", "size": 2}, {"id": "db", "label": "Postgres", "group": "data"}],
+       "edges": [{"from": "api", "to": "db", "label": "reads"}]}
+      ```
     """
     @Published var messages: [ChatMessage] = []
     @Published var inputText: String = ""

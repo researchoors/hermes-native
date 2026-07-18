@@ -273,6 +273,10 @@ private struct ExportBlockView: View {
                 // Tile grid + Path sparklines rasterize fine (no scroll
                 // views, no representables) — reuse the live view.
                 StatTilesView(json: code, isStreaming: false)
+            } else if MarkdownParser.isGraphLanguage(language) {
+                // Canvas + circles + text — no representables; the static
+                // layout is deterministic, so print matches screen.
+                NetworkGraphView(json: code, isStreaming: false)
             } else {
                 ExportCodeText(language: language, code: code)
             }
