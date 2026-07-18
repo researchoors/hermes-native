@@ -106,3 +106,33 @@ struct FenceLanguageRoutingTests {
         #expect(!MarkdownParser.isTreeLanguage("treemap"))  // mermaid type
     }
 }
+
+@Suite("Inline Math")
+struct InlineMathTests {
+
+    @Test("Simple variables and expressions convert to Unicode")
+    func simpleSpans() {
+        #expect(InlineMath.render("coefficient of $x$, square it") == "coefficient of 𝑥, square it")
+        #expect(InlineMath.render("$b^2 - 4ac$") == "𝑏² − 4𝑎𝑐")
+        #expect(InlineMath.render("$x_1$ and $x_2$") == "𝑥₁ and 𝑥₂")
+        #expect(InlineMath.render("$\\pi r^2$") == "π 𝑟²")   // source spacing preserved
+        #expect(InlineMath.render("$\\alpha + \\beta$") == "α + β")
+    }
+
+    @Test("Currency and unconvertible TeX pass through untouched")
+    func passthrough() {
+        #expect(InlineMath.render("costs $5 and $10 total") == "costs $5 and $10 total")
+        #expect(InlineMath.render("$\\frac{a}{b}$") == "$\\frac{a}{b}$")
+        #expect(InlineMath.render("no math here") == "no math here")
+        // Display math untouched — MathView owns it.
+        #expect(InlineMath.render("$$x^2$$") == "$$x^2$$")
+    }
+
+    @Test("Unclosed dollar and mixed content stay safe")
+    func edgeCases() {
+        // Unclosed $ passes through.
+        #expect(InlineMath.render("price is $99") == "price is $99")
+        // First span converts; what remains has one unpaired $ and stays raw.
+        #expect(InlineMath.render("$x$ costs $5") == "𝑥 costs $5")
+    }
+}

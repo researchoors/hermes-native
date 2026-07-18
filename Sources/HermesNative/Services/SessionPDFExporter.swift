@@ -1,6 +1,7 @@
 #if os(macOS)
 import SwiftUI
 import AppKit
+import SwiftMath
 import os
 
 private let log = Logger(subsystem: "com.researchoors.HermesNative", category: "SessionPDFExporter")
@@ -289,11 +290,47 @@ private struct ExportBlockView: View {
                 .foregroundStyle(Theme.primary)
                 .lineSpacing(3)
         case .mathBlock(let tex):
-            // MathView's chrome (copy button) is pointless on paper; the
-            // typeset label itself renders fine under ImageRenderer, with
-            // the same monospaced fallback for unparseable TeX.
-            MathView(tex: tex)
+            ExportMathView(tex: tex)
         }
+    }
+}
+
+/// Typeset math for PDF export. MathView wraps MTMathUILabel — an
+/// NSViewRepresentable, which ImageRenderer rasterizes as an EMPTY box
+/// (same limitation as scroll views). SwiftMath's MTMathImage renders the
+/// same typesetting offscreen to a bitmap, which ImageRenderer embeds fine;
+/// unparseable TeX falls back to the monospaced source.
+private struct ExportMathView: View {
+    let tex: String
+
+    var body: some View {
+        if let image = Self.typeset(tex) {
+            // Half-size frame: typeset at 2x for print resolution.
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: image.size.width / 2, height: image.size.height / 2)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 6))
+        } else {
+            ExportCodeText(language: "math", code: tex)
+        }
+    }
+
+    @MainActor
+    static func typeset(_ tex: String) -> PlatformImage? {
+        var renderer = MTMathImage(
+            latex: tex,
+            fontSize: 32,   // 2x the on-screen 16pt for print resolution
+            textColor: mtColor(Theme.primary),
+            labelMode: .display,
+            textAlignment: .left
+        )
+        renderer.contentInsets = MTEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+        let (error, image) = renderer.asImage()
+        guard error == nil, let image else { return nil }
+        return image
     }
 }
 

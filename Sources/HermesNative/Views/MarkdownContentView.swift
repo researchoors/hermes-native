@@ -462,7 +462,10 @@ struct MarkdownText: View {
         let textColor: Color = baseColor ?? Theme.primary
         let font: Font = baseFont ?? .system(size: 14)
 
-        let normalized = Self.normalizeInlineCode(input)
+        // Inline $…$ TeX → Unicode ("coefficient of $x$" shows italic 𝑥,
+        // not a raw dollar span). Conservative: unconvertible spans and
+        // currency pass through untouched.
+        let normalized = Self.normalizeInlineCode(InlineMath.render(input))
 
         if var parsed = try? AttributedString(markdown: normalized, options: inlineOptions) {
             stripSystemColors(&parsed, to: textColor)
