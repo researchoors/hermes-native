@@ -101,7 +101,7 @@ private struct MathLabel: NSViewRepresentable {
     private func configure(_ label: MTMathUILabel) {
         label.latex = tex
         label.fontSize = 16
-        label.textColor = MTColor(Theme.primary)
+        label.textColor = mtColor(Theme.primary)
         label.labelMode = .display
         label.textAlignment = .left
     }
@@ -134,7 +134,7 @@ private struct MathLabel: UIViewRepresentable {
     private func configure(_ label: MTMathUILabel) {
         label.latex = tex
         label.fontSize = 16
-        label.textColor = MTColor(Theme.primary)
+        label.textColor = mtColor(Theme.primary)
         label.labelMode = .display
         label.textAlignment = .left
     }
@@ -148,12 +148,15 @@ private struct MathLabel: UIViewRepresentable {
 }
 #endif
 
-private extension MTColor {
-    convenience init(_ color: Color) {
-        #if os(macOS)
-        self.init(cgColor: NSColor(color).cgColor)!
-        #else
-        self.init(cgColor: UIColor(color).cgColor)
-        #endif
-    }
+// MTColor is SwiftMath's typealias for NSColor/UIColor. Convert via the
+// platform color type directly — an `MTColor.init(_: Color)` convenience
+// extension is a trap: inside it, `NSColor(color)` resolves back to the
+// extension itself (MTColor IS NSColor) and recurses forever.
+@MainActor
+func mtColor(_ color: Color) -> MTColor {
+    #if os(macOS)
+    NSColor(color)
+    #else
+    UIColor(color)
+    #endif
 }
