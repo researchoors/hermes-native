@@ -39,6 +39,7 @@ struct ContentView: View {
     @State private var showWikiGraph = false
     @State private var showFeedSheet = false
     @State private var showLearning = false
+    @State private var showCentaurWorkflows = false
     @State private var selectedTab = 0
     @State private var isCreatingSession = false
     @State private var sessionCreationError: String?
@@ -448,11 +449,12 @@ struct ContentView: View {
     }
 
     private var isOverlayActive: Bool {
-        missionControlSessionID != nil || showCronDashboard || showLiveSessions || showActivitySheet || showFeedSheet || showSkills || showWikiGraph || showLearning
+        missionControlSessionID != nil || showCronDashboard || showLiveSessions || showActivitySheet || showFeedSheet || showSkills || showWikiGraph || showLearning || showCentaurWorkflows
     }
 
     private var overlayTitle: String {
         if showWikiGraph { return "Wiki Graph" }
+        if showCentaurWorkflows { return "Workflows" }
         if showFeedSheet { return "Feed" }
         if showSkills { return "Skills" }
         if showLiveSessions { return "Sessions" }
@@ -524,6 +526,7 @@ struct ContentView: View {
                 showActivitySheet = false
                 showSkills = false
                 showWikiGraph = false
+                showCentaurWorkflows = false
                 showFeedSheet = false
                 showLearning = false
                 chatViewModel.refocusInput += 1
@@ -614,6 +617,31 @@ struct ContentView: View {
     /// screen: resume the most recent session recorded on that entry, or
     /// create the first one — the switcher alone is enough to start
     /// interacting, no detour through the New Session menu.
+    /// Workflows panel for the backend serving the visible chat. The client
+    /// resolves through the same registry/wrapper path the chat uses, so the
+    /// panel always talks to the deployment on screen; a non-Centaur state
+    /// (stale flag after switching away) shows a quiet notice.
+    @ViewBuilder
+    private var centaurWorkflowsOverlay: some View {
+        if let sid = chatViewModel.currentSessionID,
+           let backendID = SessionBackendRegistry.shared.backendID(for: sid),
+           let entry = settings.savedGateways.first(where: { $0.id == backendID }),
+           let client = gatewayClientWrapper.sessionScopedBackend(for: entry) as? CentaurClient {
+            CentaurWorkflowsView(client: client) {
+                showCentaurWorkflows = false
+            }
+        } else {
+            VStack(spacing: 8) {
+                Text("No Centaur session is active")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Theme.secondary)
+                Button("Close") { showCentaurWorkflows = false }
+                    .buttonStyle(.bordered)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
     private func switchToGateway(_ gateway: SavedGateway) {
         settings.selectGateway(gateway)
         guard gateway.kind.isSessionScoped else { return }
@@ -828,6 +856,21 @@ struct ContentView: View {
                 .keyboardShortcut("w", modifiers: .command)
                 .accessibilityLabel("Wiki Graph")
             }
+
+            // Centaur workflow introspection — fills the chrome slot the
+            // Hermes cron button vacates when a Centaur session is front and
+            // center (same Cmd-K muscle memory).
+            if chatViewModel.backendCapabilities.supportsWorkflows {
+                Button {
+                    showCentaurWorkflows = true
+                } label: {
+                    Label("Workflows", systemImage: "point.3.connected.trianglepath.dotted")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .keyboardShortcut("k", modifiers: .command)
+                .accessibilityLabel("Centaur Workflows")
+            }
         }
         .foregroundStyle(Theme.primary)
     }
@@ -951,6 +994,13 @@ struct ContentView: View {
             if showWikiGraph {
                 WikiGraphView()
                     .environmentObject(gatewayClientWrapper)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.background)
+                    .transition(.opacity)
+            }
+
+            if showCentaurWorkflows {
+                centaurWorkflowsOverlay
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.background)
                     .transition(.opacity)
