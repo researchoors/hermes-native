@@ -607,6 +607,34 @@ struct ContentView: View {
     }
 
     #if os(macOS)
+    /// Switcher selection = "take me there", not just a checkmark move.
+    /// Hermes entries focus + reconnect via selectGateway as before. For a
+    /// session-scoped backend (Centaur), focus it AND put its chat on
+    /// screen: resume the most recent session recorded on that entry, or
+    /// create the first one — the switcher alone is enough to start
+    /// interacting, no detour through the New Session menu.
+    private func switchToGateway(_ gateway: SavedGateway) {
+        settings.selectGateway(gateway)
+        guard gateway.kind.isSessionScoped else { return }
+
+        let known = SessionBackendRegistry.shared.sessionIDs(on: gateway.id)
+        // Rank by the session list's recency where known; registry order
+        // is meaningless.
+        let mostRecent = sessionList.sessions
+            .filter { known.contains($0.id) }
+            .max { lhs, rhs in
+                let l = lhs.lastActive ?? lhs.startedAt ?? .distantPast
+                let r = rhs.lastActive ?? rhs.startedAt ?? .distantPast
+                return l < r
+            }?.id ?? known.first
+
+        if let sessionID = mostRecent {
+            sessionList.selectSession(id: sessionID)
+        } else {
+            Task { await createAndSwitchToNewSession(on: gateway) }
+        }
+    }
+
     @ViewBuilder
     private var gatewaySwitcher: some View {
         // Always visible (even with a single saved gateway) so adding a second
@@ -614,7 +642,7 @@ struct ContentView: View {
         Menu {
             ForEach(settings.savedGateways) { gateway in
                 Button {
-                    settings.selectGateway(gateway)
+                    switchToGateway(gateway)
                 } label: {
                     // Checkmark follows FOCUS (what the user selected), not
                     // the underlying connection — selecting Centaur checks
@@ -1218,41 +1246,26 @@ struct ContentView: View {
     /// are saved.
     @ViewBuilder
     private var newSessionControl: some View {
-        if settings.sessionScopedBackends.isEmpty {
-            Button("New Session") {
-                Task { await createAndSwitchToNewSession() }
+        // Plain button — no backend dropdown. The gateway switcher is the
+        // single place to choose a backend; New Session always targets the
+        // focused one. The old per-backend menu duplicated the switcher and
+        // made Centaur reachable only from here, which read as the switcher
+        // being broken.
+        Button("New Session") {
+            let focused = settings.focusedGateway
+            Task {
+                await createAndSwitchToNewSession(
+                    on: focused?.kind.isSessionScoped == true ? focused : nil
+                )
             }
-            .buttonStyle(.borderedProminent)
-        } else {
-            // Primary action targets the FOCUSED backend: with Centaur
-            // selected in the switcher, plain "New Session" creates a
-            // Centaur session — the menu remains for explicit targeting.
-            Menu {
-                Button {
-                    Task { await createAndSwitchToNewSession() }
-                } label: {
-                    Label("Hermes (home gateway)", systemImage: BackendKind.hermes.iconName)
-                }
-                ForEach(settings.sessionScopedBackends) { entry in
-                    Button {
-                        Task { await createAndSwitchToNewSession(on: entry) }
-                    } label: {
-                        Label(entry.displayName, systemImage: entry.kind.iconName)
-                    }
-                }
-            } label: {
-                Label("New Session", systemImage: "plus")
-            } primaryAction: {
-                let focused = settings.focusedGateway
-                Task {
-                    await createAndSwitchToNewSession(
-                        on: focused?.kind.isSessionScoped == true ? focused : nil
-                    )
-                }
-            }
-            .menuStyle(.button)
-            .buttonStyle(.borderedProminent)
         }
+        .buttonStyle(.borderedProminent)
+        .help(newSessionHelp)
+    }
+
+    private var newSessionHelp: String {
+        guard let focused = settings.focusedGateway else { return "Create a new session" }
+        return "Create a new session on \(focused.displayName)"
     }
 
     private func wireUpClient(_ client: GatewayClient? = nil) {
