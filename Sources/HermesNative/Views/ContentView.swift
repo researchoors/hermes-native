@@ -1332,6 +1332,7 @@ struct ContentView: View {
         sessionList.setGatewayClient(client)
         activityInbox.setGatewayClient(client)
         SkillStore.shared.setGatewayClient(client)
+        ArtifactStore.shared.setClient(client)
         observeChatRunState()
 spawnTreeStore.subscribe(to: client)
         cronPoller.setGatewayClient(client)

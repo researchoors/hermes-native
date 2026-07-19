@@ -1,0 +1,77 @@
+import Foundation
+
+/// A named, persistent artifact the agent maintains across turns and
+/// sessions — an arbitrary model, not a message. Any fenced block carrying
+/// an `"id"` upserts into the store: a Bangkok apartment map, a comparison
+/// table refined over days, an infra graph, a decision doc.
+///
+/// `kind` is the fence language (map/chart/graph/stats/table/markdown/…);
+/// rendering dispatches on it exactly like the chat renderer, and merge
+/// behavior is per-kind (ArtifactMerge) — maps merge markers by label,
+/// everything else replaces content wholesale (models re-emit full blocks).
+struct LivingArtifact: Codable, Equatable, Identifiable {
+    let id: String
+    var kind: String
+    var title: String
+    /// The raw fence body (JSON for map/chart/graph/stats, markdown for docs).
+    var content: String
+    var updatedAt: Date
+    /// Device that last wrote it (sync conflict visibility, not resolution).
+    var updatedBy: String
+
+    /// Human label for pickers: title if present, else the id.
+    var displayName: String { title.isEmpty ? id : title }
+}
+
+// MARK: - Per-kind merge
+
+/// Merge an incoming fence body into an existing artifact's content.
+/// Default is replace — correct for kinds the model re-emits in full.
+/// Structured kinds can do better: maps union markers keyed by label, so
+/// the agent may emit only the NEW listing and the pins accumulate.
+enum ArtifactMerge {
+
+    static func merge(kind: String, existing: String, incoming: String) -> String {
+        switch kind {
+        case "map":
+            return mergeMap(existing: existing, incoming: incoming)
+        default:
+            return incoming
+        }
+    }
+
+    /// Union markers by label (case-insensitive); incoming wins on conflict.
+    /// Top-level fields (title/region/…) come from the incoming block when
+    /// present, else carry over. Unparseable JSON on either side → incoming
+    /// (never brick the artifact on a malformed update).
+    static func mergeMap(existing: String, incoming: String) -> String {
+        guard let existingObj = parse(existing) else { return incoming }
+        guard let incomingObj = parse(incoming) else { return incoming }
+
+        var merged = existingObj.merging(incomingObj) { _, new in new }
+
+        let existingMarkers = (existingObj["markers"] as? [[String: Any]]) ?? []
+        let incomingMarkers = (incomingObj["markers"] as? [[String: Any]]) ?? []
+        var byLabel: [String: [String: Any]] = [:]
+        var order: [String] = []
+        for marker in existingMarkers + incomingMarkers {
+            let label = ((marker["label"] as? String) ?? "").lowercased()
+            guard !label.isEmpty else { continue }
+            if byLabel[label] == nil { order.append(label) }
+            byLabel[label] = marker   // later (incoming) wins
+        }
+        merged["markers"] = order.compactMap { byLabel[$0] }
+
+        guard JSONSerialization.isValidJSONObject(merged),
+              let data = try? JSONSerialization.data(withJSONObject: merged, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8) else {
+            return incoming
+        }
+        return json
+    }
+
+    private static func parse(_ s: String) -> [String: Any]? {
+        guard let data = s.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+}

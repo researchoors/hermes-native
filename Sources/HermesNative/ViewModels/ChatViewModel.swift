@@ -88,6 +88,15 @@ final class ChatViewModel: ObservableObject {
       ```stats
       {"tiles": [{"label": "Requests", "value": 128400, "unit": "/day", "delta": 12.5, "deltaLabel": "vs last week", "upIsGood": true, "trend": [98, 102, 110, 108, 121, 128]}]}
       ```
+    - **Maps** in ```map blocks for spatial data — locations, listings, geographic comparisons (native MapKit, pins colored by group, tap for the note):
+      ```map
+      {"title": "BKK Apartments", "markers": [{"lat": 13.7248, "lon": 100.5847, "label": "Ekkamai loft", "group": "shortlist", "note": "38k/mo, 2BR"}]}
+      ```
+    - **Living artifacts**: add an "id" field to any map/chart/graph/stats block to make it a PERSISTENT
+      model the user keeps across sessions. When the user adds or changes items, re-emit the block with
+      the SAME id — maps merge markers by label (emit only new/changed markers or the full set; both
+      work), other kinds replace wholesale so emit the complete block. Example: a ```map block with
+      "id": "bkk-apartments" updated as the user evaluates listings.
     - **Network graphs** in ```graph blocks for node-link structures — dependency graphs, service topologies,
       entity networks (interactive force-directed diagram; prefer over mermaid flowchart when the story is
       the CONNECTIVITY, not a sequence):

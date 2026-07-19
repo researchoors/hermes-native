@@ -242,3 +242,70 @@ struct NetworkGraphSpecTests {
         #expect(!NetworkGraphView.looksLikeMermaid("{\"nodes\": []}"))
     }
 }
+
+@Suite("Living Artifacts")
+struct LivingArtifactTests {
+
+    @Test("Map merge unions markers by label; incoming wins conflicts")
+    func mapMerge() {
+        let existing = """
+        {"id": "bkk", "title": "BKK Apartments", "markers": [
+          {"lat": 13.72, "lon": 100.58, "label": "Ekkamai loft", "group": "shortlist", "note": "38k"},
+          {"lat": 13.73, "lon": 100.56, "label": "Thonglor 2BR", "group": "viewed"}
+        ]}
+        """
+        let incoming = """
+        {"id": "bkk", "markers": [
+          {"lat": 13.72, "lon": 100.58, "label": "Ekkamai loft", "group": "rejected", "note": "too loud"},
+          {"lat": 13.74, "lon": 100.54, "label": "Ari studio", "group": "shortlist"}
+        ]}
+        """
+        let merged = ArtifactMerge.merge(kind: "map", existing: existing, incoming: incoming)
+        let obj = try! JSONSerialization.jsonObject(with: Data(merged.utf8)) as! [String: Any]
+        let markers = obj["markers"] as! [[String: Any]]
+        #expect(markers.count == 3)  // union: ekkamai (updated) + thonglor (kept) + ari (new)
+        let ekkamai = markers.first { ($0["label"] as? String) == "Ekkamai loft" }!
+        #expect(ekkamai["group"] as? String == "rejected")   // incoming wins
+        #expect(obj["title"] as? String == "BKK Apartments") // carried over
+    }
+
+    @Test("Non-map kinds replace wholesale; malformed JSON never bricks")
+    func replaceAndResilience() {
+        #expect(ArtifactMerge.merge(kind: "chart", existing: "{\"a\":1}", incoming: "{\"b\":2}") == "{\"b\":2}")
+        // Malformed incoming on a map: incoming passes through (no crash, no brick).
+        let out = ArtifactMerge.merge(kind: "map", existing: "{\"markers\":[]}", incoming: "not json")
+        #expect(out == "not json")
+    }
+
+    @Test("Store upsert merges by id and preserves titles")
+    @MainActor
+    func storeUpsert() {
+        let store = ArtifactStore.shared
+        let testID = "test-artifact-\(UUID().uuidString.prefix(8))"
+        defer { store.remove(id: testID) }
+
+        store.upsert(id: testID, kind: "map", title: "Test Map",
+                     content: "{\"markers\": [{\"lat\": 1, \"lon\": 2, \"label\": \"a\"}]}")
+        // Second upsert with no title must keep the original.
+        let updated = store.upsert(id: testID, kind: "map", title: nil,
+                     content: "{\"markers\": [{\"lat\": 3, \"lon\": 4, \"label\": \"b\"}]}")
+        #expect(updated.title == "Test Map")
+        let obj = try! JSONSerialization.jsonObject(with: Data(updated.content.utf8)) as! [String: Any]
+        #expect((obj["markers"] as! [[String: Any]]).count == 2)  // merged, not replaced
+    }
+
+    @Test("MapSpec parses markers and groups")
+    func mapSpec() {
+        let spec = MapSpec.parse("""
+        {"id": "bkk", "title": "BKK", "markers": [
+          {"lat": 13.72, "lon": 100.58, "label": "A", "group": "shortlist"},
+          {"lat": 13.73, "lon": 100.56, "label": "B", "group": "viewed", "note": "n"},
+          {"lat": 13.74, "lon": 100.55, "label": "C", "group": "shortlist"}
+        ]}
+        """)
+        #expect(spec?.markers.count == 3)
+        #expect(spec?.groups == ["shortlist", "viewed"])
+        #expect(spec?.id == "bkk")
+        #expect(MapSpec.parse("{\"markers\": []}") == nil)  // empty → nil
+    }
+}
