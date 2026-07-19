@@ -220,12 +220,13 @@ struct ContentView: View {
                     openMissionControl(sessionID: sessionID)
                 },
                 onCreateSession: {
-                    Task { await createAndSwitchToNewSession() }
+                    let focused = settings.focusedGateway
+                    Task {
+                        await createAndSwitchToNewSession(
+                            on: focused?.kind.isSessionScoped == true ? focused : nil
+                        )
+                    }
                 },
-                onCreateSessionOnBackend: { entry in
-                    Task { await createAndSwitchToNewSession(on: entry) }
-                },
-                sessionScopedBackends: settings.sessionScopedBackends,
                 onOpenPanel: {
                     showCronSheet = true
                 }
@@ -841,12 +842,13 @@ struct ContentView: View {
                             openMissionControl(sessionID: sessionID)
                         },
                         onCreateSession: {
-                            Task { await createAndSwitchToNewSession() }
+                            let focused = settings.focusedGateway
+                            Task {
+                                await createAndSwitchToNewSession(
+                                    on: focused?.kind.isSessionScoped == true ? focused : nil
+                                )
+                            }
                         },
-                        onCreateSessionOnBackend: { entry in
-                            Task { await createAndSwitchToNewSession(on: entry) }
-                        },
-                        sessionScopedBackends: settings.sessionScopedBackends,
                         onOpenPanel: {
                             showCronDashboard = true
                         }
