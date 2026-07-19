@@ -80,23 +80,35 @@ struct CentaurWorkflowSchedule: Decodable, Identifiable {
 
     var id: String { scheduleID }
 
-    /// Display form of the schedule kind: {"cron": {"expr": "0 9 * * *"}} or
-    /// {"interval": {"secs": 3600}} — flattened to a short label.
+    /// Interval in seconds when the schedule is interval-kind, nil for cron.
+    /// Live deployments emit {"type": "interval", "interval_seconds": N};
+    /// upstream source also has {"interval": {"secs": N}} — accept both.
+    var intervalSeconds: Int? {
+        guard let d = kind?.dictionaryValue else { return nil }
+        if let secs = d["interval_seconds"]?.intValue { return secs }
+        if let secs = d["interval"]?.dictionaryValue?["secs"]?.intValue { return secs }
+        return nil
+    }
+
+    /// Cron expression when cron-kind, nil for interval. Accepts the live
+    /// {"type": "cron", "cron": "expr"} and upstream {"cron": {"expr": …}}.
+    var cronExpression: String? {
+        guard let d = kind?.dictionaryValue else { return nil }
+        if let expr = d["cron"]?.stringValue { return expr }
+        if let expr = d["cron"]?.dictionaryValue?["expr"]?.stringValue { return expr }
+        return nil
+    }
+
+    /// Short human cadence: "every 5m", "cron 0 9 * * 1-5", or "manual".
     var kindLabel: String {
-        guard let d = kind?.dictionaryValue else {
-            return kind?.stringValue ?? "manual"
+        if let secs = intervalSeconds {
+            return "every " + Duration.seconds(secs).formatted(.units(width: .narrow, maximumUnitCount: 2))
         }
-        if let cron = d["cron"] {
-            return cron.dictionaryValue?["expr"]?.stringValue.map { "cron: \($0)" }
-                ?? "cron"
+        if let expr = cronExpression {
+            return "cron \(expr)"
         }
-        if let interval = d["interval"] {
-            if let secs = interval.dictionaryValue?["secs"]?.intValue {
-                return "every \(Duration.seconds(secs).formatted(.units(width: .narrow)))"
-            }
-            return "interval"
-        }
-        return d.keys.sorted().joined(separator: ", ")
+        guard let d = kind?.dictionaryValue else { return kind?.stringValue ?? "manual" }
+        return d["type"]?.stringValue ?? d.keys.sorted().joined(separator: ", ")
     }
 
     private enum CodingKeys: String, CodingKey {

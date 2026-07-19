@@ -276,12 +276,14 @@ struct CentaurWorkflowModelTests {
 
     @Test("Schedule kind flattens cron and interval forms")
     func scheduleKinds() throws {
+        // Upstream source shape: {"cron": {"expr": …}} / {"interval": {"secs": …}}.
         let cron = try JSONDecoder().decode(CentaurWorkflowSchedule.self, from: Data("""
         {"schedule_id": "s1", "workflow_name": "digest",
          "kind": {"cron": {"expr": "0 9 * * *"}}, "timezone": "America/New_York",
          "enabled": true}
         """.utf8))
-        #expect(cron.kindLabel == "cron: 0 9 * * *")
+        #expect(cron.kindLabel == "cron 0 9 * * *")
+        #expect(cron.cronExpression == "0 9 * * *")
         #expect(cron.enabled)
 
         let interval = try JSONDecoder().decode(CentaurWorkflowSchedule.self, from: Data("""
@@ -289,6 +291,25 @@ struct CentaurWorkflowModelTests {
          "kind": {"interval": {"secs": 3600}}, "enabled": false}
         """.utf8))
         #expect(interval.kindLabel.hasPrefix("every "))
+        #expect(interval.intervalSeconds == 3600)
         #expect(!interval.enabled)
+
+        // Live deployment shape (verified against slackbot.darkbloom.ai):
+        // {"type": "interval", "interval_seconds": N} / {"type": "cron", "cron": "expr"}.
+        let liveInterval = try JSONDecoder().decode(CentaurWorkflowSchedule.self, from: Data("""
+        {"schedule_id": "s3", "workflow_name": "postcall_watcher",
+         "kind": {"interval_seconds": 300, "type": "interval"},
+         "timezone": "America/Los_Angeles", "enabled": true}
+        """.utf8))
+        #expect(liveInterval.intervalSeconds == 300)
+        #expect(liveInterval.kindLabel == "every 5m")
+
+        let liveCron = try JSONDecoder().decode(CentaurWorkflowSchedule.self, from: Data("""
+        {"schedule_id": "s4", "workflow_name": "standup_digest",
+         "kind": {"cron": "0 9 * * 1-5", "type": "cron"},
+         "timezone": "America/Los_Angeles", "enabled": true}
+        """.utf8))
+        #expect(liveCron.cronExpression == "0 9 * * 1-5")
+        #expect(liveCron.kindLabel == "cron 0 9 * * 1-5")
     }
 }
