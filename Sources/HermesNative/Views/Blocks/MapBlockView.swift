@@ -12,9 +12,9 @@ import MapKit
 ///   ]
 /// }
 /// ```
-/// Groups color pins from the shared categorical palette; tap a pin for its
-/// note. `id` makes it a living artifact: re-emitted blocks with the same id
-/// merge markers by label (see ArtifactMerge.mergeMap).
+/// Groups color pins from the shared categorical palette; select a pin (on
+/// the map or in the entry list) for its note. `id` makes it a living
+/// artifact: re-emitted blocks with the same id merge markers by label.
 struct MapSpec: Decodable {
     struct Marker: Decodable, Identifiable {
         let lat: Double
@@ -51,8 +51,9 @@ struct MapSpec: Decodable {
 struct MapBlockView: View {
     let json: String
     let isStreaming: Bool
-
-    @State private var selectedMarkerID: String?
+    /// Fullscreen host mode: the map fills the container and the entry list
+    /// becomes a sidebar column instead of a stacked footer.
+    var isExpanded: Bool = false
 
     /// Shared categorical palette (chart/graph parity).
     private static let palette: [Color] = [
@@ -62,7 +63,7 @@ struct MapBlockView: View {
 
     var body: some View {
         if let spec = MapSpec.parse(json) {
-            MapCard(spec: spec, selectedMarkerID: $selectedMarkerID)
+            MapCard(spec: spec, isExpanded: isExpanded)
         } else if isStreaming {
             EmptyView()
         } else {
@@ -86,10 +87,14 @@ struct MapBlockView: View {
     }
 }
 
+// MARK: - Card
+
 private struct MapCard: View {
     let spec: MapSpec
-    @Binding var selectedMarkerID: String?
+    let isExpanded: Bool
+    @State private var selectedMarkerID: String?
     @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var showFullscreen = false
 
     private var groupColors: [String: Color] {
         Dictionary(uniqueKeysWithValues: spec.groups.enumerated().map { index, group in
@@ -97,36 +102,54 @@ private struct MapCard: View {
         })
     }
 
-    private var selectedMarker: MapSpec.Marker? {
-        spec.markers.first { $0.id == selectedMarkerID }
+    var body: some View {
+        if isExpanded {
+            expandedLayout
+        } else {
+            inlineLayout
+                #if os(macOS)
+                .sheet(isPresented: $showFullscreen) {
+                    fullscreenSheet
+                }
+                #else
+                .fullScreenCover(isPresented: $showFullscreen) {
+                    fullscreenSheet
+                }
+                #endif
+        }
     }
 
-    var body: some View {
+    // MARK: Inline (chat transcript)
+
+    private var inlineLayout: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let title = spec.title {
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(Theme.primary)
-            }
-
-            Map(position: $cameraPosition) {
-                ForEach(spec.markers) { marker in
-                    Annotation(marker.label, coordinate: marker.coordinate) {
-                        pin(for: marker)
-                    }
+            HStack {
+                if let title = spec.title {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(Theme.primary)
                 }
+                Spacer()
+                Button {
+                    showFullscreen = true
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Open fullscreen")
             }
-            .frame(height: 320)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .onAppear { cameraPosition = .automatic }
 
-            if let selected = selectedMarker {
-                markerDetail(selected)
-            }
+            mapView
+                .frame(height: 300)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
             if !spec.groups.isEmpty {
                 legend
             }
+
+            entryList(maxVisible: 4)
         }
         .padding(12)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10))
@@ -136,53 +159,196 @@ private struct MapCard: View {
         )
     }
 
-    private func pin(for marker: MapSpec.Marker) -> some View {
-        let color = marker.group.flatMap { groupColors[$0] } ?? Theme.accent
-        let isSelected = selectedMarkerID == marker.id
-        return Circle()
-            .fill(color)
-            .frame(width: isSelected ? 18 : 13, height: isSelected ? 18 : 13)
-            .overlay(Circle().stroke(.white, lineWidth: isSelected ? 2.5 : 1.5))
-            .shadow(radius: 2)
-            .onTapGesture {
-                selectedMarkerID = isSelected ? nil : marker.id
+    // MARK: Expanded (fullscreen / side panel host)
+
+    private var expandedLayout: some View {
+        HStack(spacing: 0) {
+            mapView
+            Divider().overlay(Theme.border)
+            VStack(alignment: .leading, spacing: 8) {
+                if !spec.groups.isEmpty {
+                    legend
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(spec.markers) { marker in
+                            entryRow(marker)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                }
             }
+            .frame(width: 300)
+            .background(Theme.surface)
+        }
     }
 
-    private func markerDetail(_ marker: MapSpec.Marker) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(marker.label)
-                    .font(.system(size: 12, weight: .semibold))
+    private var fullscreenSheet: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "map")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+                Text(spec.title ?? "Map")
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Theme.primary)
+                Spacer()
+                Button {
+                    showFullscreen = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.tertiary)
+                        .frame(width: 26, height: 26)
+                        .background(Theme.surfaceHover, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.escape, modifiers: [])
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Theme.background)
+            Divider().overlay(Theme.border)
+            MapCard(spec: spec, isExpanded: true)
+        }
+        #if os(macOS)
+        .frame(minWidth: 900, minHeight: 620)
+        #endif
+        .background(Theme.background)
+    }
+
+    // MARK: Map
+
+    private var mapView: some View {
+        Map(position: $cameraPosition, selection: $selectedMarkerID) {
+            ForEach(spec.markers) { marker in
+                Marker(
+                    marker.label,
+                    systemImage: iconForGroup(marker.group),
+                    coordinate: marker.coordinate
+                )
+                .tint(color(for: marker))
+                .tag(marker.id)
+            }
+        }
+        .onChange(of: selectedMarkerID) { _, newID in
+            // Selecting from the list recenters; selecting on the map doesn't
+            // fight the camera (only move when the pin is likely off-screen
+            // is hard to know — recentering on selection is predictable).
+            if let id = newID, let marker = spec.markers.first(where: { $0.id == id }) {
+                withAnimation {
+                    cameraPosition = .region(MKCoordinateRegion(
+                        center: marker.coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
+                    ))
+                }
+            }
+        }
+    }
+
+    private func color(for marker: MapSpec.Marker) -> Color {
+        marker.group.flatMap { groupColors[$0] } ?? Theme.accent
+    }
+
+    /// Stable per-group SF symbol so pins are tellable-apart beyond color.
+    private func iconForGroup(_ group: String?) -> String {
+        guard let group, let index = spec.groups.firstIndex(of: group) else { return "mappin" }
+        let symbols = ["star.fill", "eye.fill", "xmark", "questionmark", "flag.fill", "heart.fill", "bookmark.fill", "bolt.fill"]
+        return symbols[index % symbols.count]
+    }
+
+    // MARK: Entries
+
+    /// Marker entries as proper rows: swatch + label + group chip, note
+    /// below, selected row highlighted and scrolled-to on pin tap.
+    @ViewBuilder
+    private func entryList(maxVisible: Int) -> some View {
+        let visible = selectedFirst(spec.markers)
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(visible.prefix(maxVisible)) { marker in
+                entryRow(marker)
+            }
+            if spec.markers.count > maxVisible {
+                Button {
+                    showFullscreen = true
+                } label: {
+                    Text("+ \(spec.markers.count - maxVisible) more — open fullscreen")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 4)
+            }
+        }
+    }
+
+    /// Selected marker floats to the top of the inline list so tapping a pin
+    /// always reveals its entry even when the list is truncated.
+    private func selectedFirst(_ markers: [MapSpec.Marker]) -> [MapSpec.Marker] {
+        guard let id = selectedMarkerID,
+              let index = markers.firstIndex(where: { $0.id == id }), index > 0 else {
+            return markers
+        }
+        var reordered = markers
+        let selected = reordered.remove(at: index)
+        reordered.insert(selected, at: 0)
+        return reordered
+    }
+
+    private func entryRow(_ marker: MapSpec.Marker) -> some View {
+        let isSelected = selectedMarkerID == marker.id
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 7) {
+                Image(systemName: iconForGroup(marker.group))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(color(for: marker))
+                    .frame(width: 14)
+                Text(marker.label)
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                    .foregroundStyle(Theme.primary)
+                    .lineLimit(1)
                 if let group = marker.group {
                     Text(group)
                         .font(.caption2)
-                        .foregroundStyle(Theme.secondary)
+                        .foregroundStyle(color(for: marker))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 1.5)
-                        .background(Theme.surfaceHover, in: Capsule())
+                        .background(color(for: marker).opacity(0.12), in: Capsule())
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
             if let note = marker.note, !note.isEmpty {
                 Text(note)
                     .font(.caption)
                     .foregroundStyle(Theme.secondary)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 21)
             }
         }
-        .padding(10)
-        .background(Theme.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            isSelected ? Theme.accent.opacity(0.10) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedMarkerID = isSelected ? nil : marker.id
+        }
     }
 
     private var legend: some View {
         HStack(spacing: 6) {
             ForEach(spec.groups, id: \.self) { group in
                 HStack(spacing: 5) {
-                    Circle()
-                        .fill(groupColors[group] ?? Theme.accent)
-                        .frame(width: 8, height: 8)
+                    Image(systemName: iconForGroup(group))
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(groupColors[group] ?? Theme.accent)
                     Text(group)
                         .font(.caption2)
                         .foregroundStyle(Theme.secondary)
