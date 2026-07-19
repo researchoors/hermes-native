@@ -313,3 +313,15 @@ struct CentaurWorkflowModelTests {
         #expect(liveCron.kindLabel == "cron 0 9 * * 1-5")
     }
 }
+
+@Suite("Centaur Workflow Activity Chart")
+struct CentaurWorkflowActivityChartTests {
+
+    @Test("Duration axis labels scale s → m → h")
+    func durationLabels() {
+        #expect(CentaurWorkflowActivityChart.durationLabel(45) == "45s")
+        #expect(CentaurWorkflowActivityChart.durationLabel(90) == "1m")
+        #expect(CentaurWorkflowActivityChart.durationLabel(3600) == "1h")
+        #expect(CentaurWorkflowActivityChart.durationLabel(7500) == "2h")
+    }
+}
