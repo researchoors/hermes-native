@@ -616,10 +616,13 @@ struct ContentView: View {
                 Button {
                     settings.selectGateway(gateway)
                 } label: {
-                    if settings.isActive(gateway) {
+                    // Checkmark follows FOCUS (what the user selected), not
+                    // the underlying connection — selecting Centaur checks
+                    // Centaur even though the Hermes socket stays up.
+                    if settings.isFocused(gateway) {
                         Label(gateway.displayName, systemImage: "checkmark")
                     } else {
-                        Text(gateway.displayName)
+                        Label(gateway.displayName, systemImage: gateway.kind.iconName)
                     }
                 }
             }
@@ -685,7 +688,7 @@ struct ContentView: View {
     }
 
     private var activeGatewayLabel: String {
-        settings.savedGateways.first { settings.isActive($0) }?.displayName ?? "Gateway"
+        settings.focusedGateway?.displayName ?? "Gateway"
     }
 
     private var macOverlayIcons: some View {
@@ -992,6 +995,10 @@ struct ContentView: View {
         if let backendID = SessionBackendRegistry.shared.backendID(for: newID),
            let entry = settings.savedGateways.first(where: { $0.id == backendID }),
            entry.kind.isSessionScoped {
+            // Keep the switcher in sync with the session actually on screen:
+            // opening a Centaur session focuses its entry, so the badge names
+            // the backend serving the visible chat.
+            settings.selectGateway(entry)
             // Same create-race sentinel as the hermes branch: registering the
             // freshly created session flips the list selection, and this
             // handler must not re-resume (re-POST + re-subscribe SSE) on top
@@ -1011,6 +1018,11 @@ struct ContentView: View {
                 sessionCreationError = "Backend for this session is gone (removed in Settings?)"
             }
             return
+        }
+        // Hermes session: clear any session-scoped focus so the badge names
+        // the gateway serving the visible chat again.
+        if let active = settings.savedGateways.first(where: { settings.isActive($0) }) {
+            settings.selectGateway(active)
         }
         chatViewModel.setGatewayClient(gatewayClientWrapper.client)
 
@@ -1094,6 +1106,9 @@ struct ContentView: View {
     /// path; only the chat pipeline switches backends.
     @MainActor
     private func createSessionOnScopedBackend(_ backend: any AgentBackend, entry: SavedGateway) async {
+        // Creating on a scoped backend focuses it — badge and New Session
+        // default follow the backend the user is now working on.
+        settings.selectGateway(entry)
         chatViewModel.setGatewayClient(backend)
         await chatViewModel.createSession()
         if let error = chatViewModel.error {
@@ -1209,6 +1224,9 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
         } else {
+            // Primary action targets the FOCUSED backend: with Centaur
+            // selected in the switcher, plain "New Session" creates a
+            // Centaur session — the menu remains for explicit targeting.
             Menu {
                 Button {
                     Task { await createAndSwitchToNewSession() }
@@ -1225,7 +1243,12 @@ struct ContentView: View {
             } label: {
                 Label("New Session", systemImage: "plus")
             } primaryAction: {
-                Task { await createAndSwitchToNewSession() }
+                let focused = settings.focusedGateway
+                Task {
+                    await createAndSwitchToNewSession(
+                        on: focused?.kind.isSessionScoped == true ? focused : nil
+                    )
+                }
             }
             .menuStyle(.button)
             .buttonStyle(.borderedProminent)
