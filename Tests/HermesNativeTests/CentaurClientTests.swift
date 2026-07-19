@@ -325,3 +325,63 @@ struct CentaurWorkflowActivityChartTests {
         #expect(CentaurWorkflowActivityChart.durationLabel(7500) == "2h")
     }
 }
+
+@Suite("Centaur Reasoning Frames")
+struct CentaurReasoningFrameTests {
+
+    private func frame(data: String) -> SSEParser.Frame {
+        SSEParser.Frame(id: nil, event: "session.output.line", data: data)
+    }
+
+    @Test("reasoning textDelta and summaryTextDelta stream as thinkingDelta")
+    func reasoningDeltas() {
+        var adapter = CentaurEventAdapter()
+        let body = adapter.adapt(frame: frame(
+            data: #"{"method":"item/reasoning/textDelta","params":{"delta":"Considering the tradeoffs…","itemId":"r1","contentIndex":0}}"#
+        ))
+        guard case .thinkingDelta(let t1) = body[0] else {
+            Issue.record("expected thinkingDelta, got \(body.first?.debugName ?? "none")")
+            return
+        }
+        #expect(t1 == "Considering the tradeoffs…")
+
+        let summary = adapter.adapt(frame: frame(
+            data: #"{"method":"item/reasoning/summaryTextDelta","params":{"delta":"Weighing options","itemId":"r1","summaryIndex":0}}"#
+        ))
+        guard case .thinkingDelta = summary[0] else {
+            Issue.record("expected thinkingDelta for summary")
+            return
+        }
+    }
+
+    @Test("reasoning items do not render phantom tool rows")
+    func reasoningItemLifecycle() {
+        var adapter = CentaurEventAdapter()
+        let started = adapter.adapt(frame: frame(
+            data: #"{"method":"item/started","params":{"item":{"id":"r1","type":"reasoning","summary":[],"content":[]}}}"#
+        ))
+        #expect(started.isEmpty)   // was a toolStart("reasoning") before
+
+        // Completion with content but no prior deltas surfaces the text.
+        let completed = adapter.adapt(frame: frame(
+            data: #"{"method":"item/completed","params":{"item":{"id":"r1","type":"reasoning","summary":["s"],"content":["thought a","thought b"]}}}"#
+        ))
+        guard case .thinkingDelta(let text) = completed[0] else {
+            Issue.record("expected thinkingDelta from completed reasoning item")
+            return
+        }
+        #expect(text == "thought a\nthought b")
+    }
+
+    @Test("plan deltas read as thinking")
+    func planDeltas() {
+        var adapter = CentaurEventAdapter()
+        let events = adapter.adapt(frame: frame(
+            data: #"{"method":"item/plan/delta","params":{"delta":"1. Inspect the failing test","itemId":"p1"}}"#
+        ))
+        guard case .thinkingDelta = events[0] else {
+            Issue.record("expected thinkingDelta for plan delta")
+            return
+        }
+    }
+}

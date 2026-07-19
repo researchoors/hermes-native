@@ -541,7 +541,18 @@ struct CentaurEventAdapter {
             accumulated += delta
             return [.messageDelta(text: delta, rendered: nil)]
 
-        case "item/reasoning/delta", "item/thinking/delta":
+        // Harness protocol reasoning methods (packages/harness-events):
+        // item/reasoning/textDelta carries the reasoning body,
+        // summaryTextDelta the model's summary headers. The first two names
+        // were a wrong guess kept for tolerance of older harnesses.
+        case "item/reasoning/textDelta", "item/reasoning/summaryTextDelta",
+             "item/reasoning/delta", "item/thinking/delta":
+            guard let delta = params["delta"] as? String, !delta.isEmpty else { return [] }
+            return [.thinkingDelta(text: delta)]
+
+        case "item/plan/delta":
+            // Plan text reads as reasoning in the chat UI (it is the agent
+            // deliberating, not answering).
             guard let delta = params["delta"] as? String, !delta.isEmpty else { return [] }
             return [.thinkingDelta(text: delta)]
 
@@ -581,6 +592,18 @@ struct CentaurEventAdapter {
         case "agentMessage":
             if method == "item/completed", let text = item["text"] as? String, !text.isEmpty {
                 finalText = text
+            }
+            return []
+
+        case "reasoning":
+            // Reasoning item lifecycle — the text arrives via
+            // item/reasoning/textDelta; without this case the item falls
+            // into the tool-ish branch and draws a phantom "reasoning" tool
+            // row. On completion, harnesses that skipped deltas still get
+            // their reasoning surfaced from the item's content array.
+            if method == "item/completed",
+               let content = item["content"] as? [String], !content.isEmpty {
+                return [.thinkingDelta(text: content.joined(separator: "\n"))]
             }
             return []
 
