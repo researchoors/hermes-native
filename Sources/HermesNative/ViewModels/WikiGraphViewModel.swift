@@ -174,8 +174,12 @@ final class WikiGraphViewModel: ObservableObject {
         }
     }
 
-    /// Highest degree in the loaded graph, for connectivity-relative sizing.
-    private var maxDegree: Int { degrees.max() ?? 0 }
+    /// Per-node radii, PRECOMPUTED when degrees change. nodeRadius(at:) is
+    /// on the Canvas draw path (every node, every frame at 30fps); computing
+    /// sqrt-normalized sizing there — with an O(n) degrees.max() inside —
+    /// cost ~16M comparisons/sec on a 747-node graph and dragged the whole
+    /// canvas (the choppy-navigation regression).
+    private var cachedRadii: [CGFloat] = []
 
     /// Node radius scales with connectivity RELATIVE to the graph's hub —
     /// sqrt-normalized so a degree-248 hub visibly dwarfs a degree-6 median
@@ -183,13 +187,18 @@ final class WikiGraphViewModel: ObservableObject {
     /// while sqrt keeps mid-degree nodes distinguishable instead of letting
     /// one hub flatten everything else. Matches the docs-site frontend's
     /// presentation (size ∝ ingress+egress).
+    func recomputeRadii() {
+        let maxDegree = degrees.max() ?? 0
+        cachedRadii = simNodes.indices.map { index in
+            let base = nodeRadius(for: simNodes[index].type)
+            let degree = degrees.indices.contains(index) ? degrees[index] : 0
+            guard maxDegree > 0, degree > 0 else { return base }
+            return base + sqrt(CGFloat(degree) / CGFloat(maxDegree)) * 16
+        }
+    }
+
     func nodeRadius(at index: Int) -> CGFloat {
-        guard simNodes.indices.contains(index) else { return 5 }
-        let base = nodeRadius(for: simNodes[index].type)
-        let degree = degrees.indices.contains(index) ? degrees[index] : 0
-        guard maxDegree > 0, degree > 0 else { return base }
-        let normalized = sqrt(CGFloat(degree) / CGFloat(maxDegree))
-        return base + normalized * 16
+        cachedRadii.indices.contains(index) ? cachedRadii[index] : 5
     }
 
     @Published var selectedWikiPath: String?
@@ -468,6 +477,7 @@ final class WikiGraphViewModel: ObservableObject {
             if degrees.indices.contains(si) { degrees[si] += 1; adjacency[si].insert(ti) }
             if degrees.indices.contains(ti) { degrees[ti] += 1; adjacency[ti].insert(si) }
         }
+        recomputeRadii()
         alpha = 1.0
         updateFilteredNodes()
         // Rebuilding invalidates node indices; carry the shared page
