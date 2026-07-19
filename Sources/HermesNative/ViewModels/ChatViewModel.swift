@@ -763,6 +763,25 @@ if restoreSessionState(displayID: key) {
         try? await client.setEphemeralPrompt(sessionID: sessionID, prompt: prompt)
     }
 
+    /// Sessions that already received the formatting prompt inline (backends
+    /// with no system-prompt channel). In-memory: harness threads have
+    /// conversational memory, so once per session per launch is enough — a
+    /// re-send after app restart is redundant but harmless.
+    private var inlineFormattingPromptSent: Set<String> = []
+
+    /// The formatting contract for backends that can't take an ephemeral
+    /// system prompt (Centaur): folded into the FIRST user message of the
+    /// session instead. Without this the harness model never learns the
+    /// app's native fences (```chart/graph/stats/tree, typeset math, diff
+    /// rendering) and answers in plain markdown — "Centaur doesn't support
+    /// the pretty viz" was exactly this gap, not a renderer limitation.
+    private func inlineFormattingPreamble(for sessionID: String) -> String {
+        guard !backendCapabilities.supportsResponseStyles,
+              !inlineFormattingPromptSent.contains(sessionID) else { return "" }
+        inlineFormattingPromptSent.insert(sessionID)
+        return Self.appFormattingPrompt + "\n\n---\n\n"
+    }
+
     /// Route a newly created session to the user's last-picked model. No-op
     /// when the user never picked one (gateway default stays in charge) or
     /// the backend can't switch models. Best-effort like the ephemeral
@@ -1234,7 +1253,7 @@ if restoreSessionState(displayID: key) {
             }
 
             log.info("Submitting prompt with \(attachments.count) attachments, text length: \(promptText.count)")
-            let promptWithSkills = skillPreamble() + promptText
+            let promptWithSkills = inlineFormattingPreamble(for: sid) + skillPreamble() + promptText
             try await client.submitPrompt(sessionID: sid, text: promptWithSkills)
         } catch {
             log.error("Submit failed: \(error.localizedDescription)")
