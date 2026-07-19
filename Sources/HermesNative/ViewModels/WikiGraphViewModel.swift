@@ -153,11 +153,15 @@ final class WikiGraphViewModel: ObservableObject {
     func color(for type: String) -> Color {
         switch type {
         case "entity": return Color(hex: "7c7cff")!
-        case "concept": return Color(hex: "5cb85c")!
+        case "concept", "topic": return Color(hex: "5cb85c")!
         case "comparison": return Color(hex: "e8a838")!
         case "query": return Color(hex: "ff6b9d")!
         case "raw": return Color(hex: "888888")!
         case "meta", "index", "log": return Color(hex: "5ad4e6")!  // root pages (index.md, log.md)
+        // Centaur wiki-api kinds beyond the hermes set.
+        case "glossary": return Color(hex: "5ad4e6")!   // taxonomy definitions
+        case "project": return Color(hex: "e8a838")!
+        case "goal": return Color(hex: "ff6b9d")!
         default: return Color(hex: "aaaaaa")!
         }
     }
@@ -165,17 +169,27 @@ final class WikiGraphViewModel: ObservableObject {
     func nodeRadius(for type: String) -> CGFloat {
         switch type {
         case "entity": return 7
-        case "meta", "index", "log": return 8  // hub pages read slightly larger
+        case "meta", "index", "log", "glossary": return 8  // hub/definition pages read larger
         default: return 5
         }
     }
 
+    /// Highest degree in the loaded graph, for connectivity-relative sizing.
+    private var maxDegree: Int { degrees.max() ?? 0 }
+
+    /// Node radius scales with connectivity RELATIVE to the graph's hub —
+    /// sqrt-normalized so a degree-248 hub visibly dwarfs a degree-6 median
+    /// node (the old log-with-cap formula rendered them near-identical),
+    /// while sqrt keeps mid-degree nodes distinguishable instead of letting
+    /// one hub flatten everything else. Matches the docs-site frontend's
+    /// presentation (size ∝ ingress+egress).
     func nodeRadius(at index: Int) -> CGFloat {
         guard simNodes.indices.contains(index) else { return 5 }
         let base = nodeRadius(for: simNodes[index].type)
         let degree = degrees.indices.contains(index) ? degrees[index] : 0
-        let bonus = min(CGFloat(degree) * 0.9, 10)
-        return base + log2(CGFloat(degree) + 1) * 1.4 + bonus * 0.15
+        guard maxDegree > 0, degree > 0 else { return base }
+        let normalized = sqrt(CGFloat(degree) / CGFloat(maxDegree))
+        return base + normalized * 16
     }
 
     @Published var selectedWikiPath: String?

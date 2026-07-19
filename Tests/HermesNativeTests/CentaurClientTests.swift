@@ -414,4 +414,19 @@ struct CentaurWikiMappingTests {
         #expect(greg.updated == "2026-06-29T12:33:56Z")
         #expect(graph.links[0].source == "wiki:entity:person-greg")
     }
+
+    @Test("glossary-prefixed topics reclassify as taxonomy definitions")
+    func glossaryReclassification() {
+        let payload: [String: Any] = [
+            "nodes": [
+                ["id": "wiki:topic:glossary-mcp", "title": "MCP (glossary)", "type": "topic"],
+                ["id": "wiki:topic:429-shed", "title": "429 Shed", "type": "topic"],
+            ],
+            "edges": [],
+        ]
+        let graph = CentaurWikiClient.mapGraph(payload)
+        #expect(graph.pages[0].type == "glossary")
+        #expect(graph.pages[0].tagPath == ["glossary"])
+        #expect(graph.pages[1].type == "topic")   // plain topics untouched
+    }
 }

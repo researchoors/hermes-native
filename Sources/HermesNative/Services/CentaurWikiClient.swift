@@ -87,7 +87,14 @@ final class CentaurWikiClient: WikiSource {
             guard let id = n["id"] as? String else { return nil }
             // "wiki:entity:person-greg" → tagPath ["entity"]; keeps the
             // taxonomy sidebar meaningful without a taxonomy endpoint.
-            let kind = n["type"] as? String ?? id.split(separator: ":").dropFirst().first.map(String.init) ?? "topic"
+            var kind = n["type"] as? String ?? id.split(separator: ":").dropFirst().first.map(String.init) ?? "topic"
+            // Glossary pages are taxonomy DEFINITIONS — the docs frontend
+            // renders them as their own class, but the API types them as
+            // plain topics with a glossary- id prefix. Reclassify so they
+            // get their own color/size and taxonomy bucket.
+            if kind == "topic", id.hasPrefix("wiki:topic:glossary-") {
+                kind = "glossary"
+            }
             return WikiPage(
                 id: id,
                 title: n["title"] as? String ?? id,
