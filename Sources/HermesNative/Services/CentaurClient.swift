@@ -507,6 +507,12 @@ struct CentaurEventAdapter {
     private var accumulated = ""
     private var finalText: String?
     private var executionID: String?
+    /// Whether this adapter has seen execution_started on this connection.
+    /// False + output arriving = resuming mid-turn (the persisted SSE cursor
+    /// sits past the start event), so a messageStart must be synthesized —
+    /// ChatViewModel drops live-turn deltas for non-streaming sessions, which
+    /// otherwise blanks the live view until the turn completes.
+    private var inExecution = false
 
     mutating func beginExecution(id: String?) {
         executionID = id
@@ -517,10 +523,19 @@ struct CentaurEventAdapter {
         case "session.execution_started":
             accumulated = ""
             finalText = nil
+            inExecution = true
             return [.messageStart]
 
         case "session.output.line":
-            return adaptOutputLine(frame.data)
+            let events = adaptOutputLine(frame.data)
+            // Mid-turn resume: output with no start seen on this connection.
+            // Only synthesize for events that imply a running turn — protocol
+            // noise (empty adapt results) must not fabricate a turn.
+            if !inExecution, !events.isEmpty {
+                inExecution = true
+                return [.messageStart] + events
+            }
+            return events
 
         case "session.execution_completed":
             return [finish(status: "complete")]
@@ -666,6 +681,7 @@ struct CentaurEventAdapter {
         let text = finalText ?? accumulated
         accumulated = ""
         finalText = nil
+        inExecution = false
         return .messageComplete(payload: MessageCompletePayload(
             text: text,
             status: status,

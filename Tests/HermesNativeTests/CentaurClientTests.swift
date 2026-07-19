@@ -152,6 +152,7 @@ struct CentaurEventAdapterTests {
     @Test("harness NDJSON: tool-ish items render as tool start/complete")
     func harnessToolItems() {
         var adapter = CentaurEventAdapter()
+        _ = adapter.adapt(frame: frame(event: "session.execution_started"))
         let started = adapter.adapt(frame: frame(
             event: "session.output.line",
             data: #"{"method":"item/started","params":{"item":{"id":"tc1","type":"commandExecution","command":"swift build"}}}"#
@@ -178,6 +179,7 @@ struct CentaurEventAdapterTests {
     @Test("harness NDJSON: error frames surface as error events")
     func harnessErrorFrames() {
         var adapter = CentaurEventAdapter()
+        _ = adapter.adapt(frame: frame(event: "session.execution_started"))
         let events = adapter.adapt(frame: frame(
             event: "session.output.line",
             data: #"{"method":"error","params":{"error":{"message":"invalid blocks-mode input"}}}"#
@@ -336,6 +338,7 @@ struct CentaurReasoningFrameTests {
     @Test("reasoning textDelta and summaryTextDelta stream as thinkingDelta")
     func reasoningDeltas() {
         var adapter = CentaurEventAdapter()
+        _ = adapter.adapt(frame: SSEParser.Frame(id: nil, event: "session.execution_started", data: "{}"))
         let body = adapter.adapt(frame: frame(
             data: #"{"method":"item/reasoning/textDelta","params":{"delta":"Considering the tradeoffs…","itemId":"r1","contentIndex":0}}"#
         ))
@@ -357,6 +360,7 @@ struct CentaurReasoningFrameTests {
     @Test("reasoning items do not render phantom tool rows")
     func reasoningItemLifecycle() {
         var adapter = CentaurEventAdapter()
+        _ = adapter.adapt(frame: SSEParser.Frame(id: nil, event: "session.execution_started", data: "{}"))
         let started = adapter.adapt(frame: frame(
             data: #"{"method":"item/started","params":{"item":{"id":"r1","type":"reasoning","summary":[],"content":[]}}}"#
         ))
@@ -376,6 +380,7 @@ struct CentaurReasoningFrameTests {
     @Test("plan deltas read as thinking")
     func planDeltas() {
         var adapter = CentaurEventAdapter()
+        _ = adapter.adapt(frame: SSEParser.Frame(id: nil, event: "session.execution_started", data: "{}"))
         let events = adapter.adapt(frame: frame(
             data: #"{"method":"item/plan/delta","params":{"delta":"1. Inspect the failing test","itemId":"p1"}}"#
         ))
@@ -428,5 +433,60 @@ struct CentaurWikiMappingTests {
         #expect(graph.pages[0].type == "glossary")
         #expect(graph.pages[0].tagPath == ["glossary"])
         #expect(graph.pages[1].type == "topic")   // plain topics untouched
+    }
+}
+
+@Suite("Centaur Mid-Turn Resume")
+struct CentaurMidTurnResumeTests {
+
+    private func frame(event: String, data: String = "{}") -> SSEParser.Frame {
+        SSEParser.Frame(id: nil, event: event, data: data)
+    }
+
+    @Test("output arriving with no execution_started synthesizes messageStart")
+    func synthesizesStart() {
+        // Fresh adapter (app just restarted); the persisted SSE cursor sits
+        // PAST execution_started, so the first frames are mid-turn deltas.
+        var adapter = CentaurEventAdapter()
+        let events = adapter.adapt(frame: frame(
+            event: "session.output.line",
+            data: #"{"method":"item/agentMessage/delta","params":{"delta":"resuming…","itemId":"m1"}}"#
+        ))
+        #expect(events.count == 2)
+        guard case .messageStart = events[0], case .messageDelta(let text, _) = events[1] else {
+            Issue.record("expected [messageStart, messageDelta], got \(events.map(\.debugName))")
+            return
+        }
+        #expect(text == "resuming…")
+
+        // Subsequent deltas must NOT re-synthesize.
+        let more = adapter.adapt(frame: frame(
+            event: "session.output.line",
+            data: #"{"method":"item/agentMessage/delta","params":{"delta":" still going","itemId":"m1"}}"#
+        ))
+        #expect(more.count == 1)
+
+        // Completion closes the synthesized turn normally.
+        let done = adapter.adapt(frame: frame(event: "session.execution_completed"))
+        guard case .messageComplete(let payload) = done[0] else {
+            Issue.record("expected messageComplete")
+            return
+        }
+        #expect(payload.text == "resuming… still going")
+    }
+
+    @Test("protocol noise mid-resume does not fabricate a turn")
+    func noiseDoesNotFabricate() {
+        var adapter = CentaurEventAdapter()
+        // thread/started adapts to nothing — must not synthesize a start.
+        let noise = adapter.adapt(frame: frame(
+            event: "session.output.line",
+            data: #"{"method":"thread/started","params":{"thread":{"id":"t1"}}}"#
+        ))
+        #expect(noise.isEmpty)
+
+        // A normal execution afterward starts exactly one turn.
+        let started = adapter.adapt(frame: frame(event: "session.execution_started"))
+        #expect(started.count == 1)
     }
 }
