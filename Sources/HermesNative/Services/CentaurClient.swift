@@ -50,7 +50,36 @@ final class CentaurClient: ObservableObject {
 
     private var sseTask: Task<Void, Never>?
     /// Last SSE event id per thread_key, for ?after_event_id replay.
-    private var lastEventID: [String: Int64] = [:]
+    /// PERSISTED across launches (debounced to UserDefaults): Centaur has no
+    /// transcript-fetch endpoint — the SSE cursor is the only "where was I"
+    /// marker. In-memory only, an app restart replayed every event from 0 on
+    /// resume, duplicating the disk-restored transcript turn-for-turn.
+    private var lastEventID: [String: Int64]
+    private var cursorFlushTask: Task<Void, Never>?
+
+    private static let cursorsKey = "hermes.centaurSSECursors"
+
+    private static func loadCursors() -> [String: Int64] {
+        let raw = UserDefaults.standard.dictionary(forKey: cursorsKey) as? [String: String] ?? [:]
+        return raw.compactMapValues(Int64.init)
+    }
+
+    /// Record a cursor advance; flushes at most once per second — cursors
+    /// advance on every SSE event, and losing the tail of a second on a
+    /// crash only costs a few duplicate-replayed events.
+    private func advanceCursor(threadKey: String, to id: Int64) {
+        lastEventID[threadKey] = id
+        guard cursorFlushTask == nil else { return }
+        cursorFlushTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard let self else { return }
+            self.cursorFlushTask = nil
+            // Strings keep the plist unambiguous for large Int64 values.
+            UserDefaults.standard.set(
+                self.lastEventID.mapValues(String.init), forKey: Self.cursorsKey
+            )
+        }
+    }
     private var adapter = CentaurEventAdapter()
 
     /// Short-timeout session for REST calls. The long SSE timeout must NOT
@@ -66,6 +95,7 @@ final class CentaurClient: ObservableObject {
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.harnessType = harnessType
+        self.lastEventID = Self.loadCursors()
 
         let restConfig = URLSessionConfiguration.default
         restConfig.timeoutIntervalForRequest = 15
@@ -370,7 +400,7 @@ final class CentaurClient: ObservableObject {
                         guard let line = String(bytes: lineBytes, encoding: .utf8) else { continue }
                         guard let frame = parser.consume(line: line) else { continue }
                         if let id = frame.id, let numeric = Int64(id) {
-                            lastEventID[threadKey] = numeric
+                            advanceCursor(threadKey: threadKey, to: numeric)
                         }
                         for event in adapter.adapt(frame: frame) {
                             eventStream.send((event, threadKey))
