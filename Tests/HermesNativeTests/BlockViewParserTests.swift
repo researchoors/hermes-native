@@ -309,3 +309,43 @@ struct LivingArtifactTests {
         #expect(MapSpec.parse("{\"markers\": []}") == nil)  // empty → nil
     }
 }
+
+@Suite("Artifact Diff")
+struct ArtifactDiffTests {
+
+    @Test("Map diff summarizes added/removed/regrouped markers")
+    func mapDiff() {
+        let old = """
+        {"markers": [
+          {"lat": 1, "lon": 2, "label": "Ekkamai loft", "group": "shortlist", "note": "38k"},
+          {"lat": 3, "lon": 4, "label": "Old place", "group": "viewed"}
+        ]}
+        """
+        let new = """
+        {"markers": [
+          {"lat": 1, "lon": 2, "label": "Ekkamai loft", "group": "rejected", "note": "38k"},
+          {"lat": 5, "lon": 6, "label": "Ari studio", "group": "shortlist"}
+        ]}
+        """
+        let lines = ArtifactDiff.describe(kind: "map", old: old, new: new)!
+        #expect(lines.contains("Added Ari studio"))
+        #expect(lines.contains("Removed Old place"))
+        #expect(lines.contains("Ekkamai loft: shortlist → rejected"))
+    }
+
+    @Test("Identical content yields no diff; non-map kinds get a size note")
+    func fallbacks() {
+        #expect(ArtifactDiff.describe(kind: "map", old: "{}", new: "{}") == nil)
+        let lines = ArtifactDiff.describe(kind: "chart", old: "{\"a\":1}", new: "{\"a\":1,\"b\":2}")!
+        #expect(lines.count == 1)
+        #expect(lines[0].contains("+6 chars"))
+    }
+
+    @Test("Note-only changes are called out without group noise")
+    func noteChange() {
+        let old = "{\"markers\": [{\"lat\":1,\"lon\":2,\"label\":\"A\",\"group\":\"g\",\"note\":\"x\"}]}"
+        let new = "{\"markers\": [{\"lat\":1,\"lon\":2,\"label\":\"A\",\"group\":\"g\",\"note\":\"y\"}]}"
+        let lines = ArtifactDiff.describe(kind: "map", old: old, new: new)!
+        #expect(lines == ["A: note updated"])
+    }
+}

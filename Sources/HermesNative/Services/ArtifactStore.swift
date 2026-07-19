@@ -4,20 +4,20 @@ import os
 
 private let log = Logger(subsystem: "com.researchoors.HermesNative", category: "ArtifactStore")
 
-/// Store for living artifacts: named models the agent maintains across
-/// turns, sessions, and devices. Three layers:
+/// Store for living artifacts: named models ANY writer maintains — chat
+/// turns here, agent tool calls, cron jobs, workflows — synced through the
+/// gateway's artifact.* surface. Three layers:
 ///
 /// - In-memory published dictionary (views observe).
-/// - Disk (Application Support JSON) — local/offline source of truth.
-/// - Gateway sync through the generic config KV (same mechanism and
-///   merge discipline as SessionMetaSyncService): last-writer-wins PER
-///   ARTIFACT by updatedAt, so a Mac updating the BKK map and an iPhone
-///   updating a comparison table both survive.
+/// - Disk (Application Support JSON) — offline cache + pre-gateway fallback.
+/// - Gateway (source of truth when available): full pull on connect,
+///   revision-guarded (monotonic rev, stale never overwrites newer), and
+///   artifact.changed events apply remote writes live — an agent updating
+///   the BKK map appears in an open pane without polling.
 @MainActor
 final class ArtifactStore: ObservableObject {
 
     static let shared = ArtifactStore()
-    static let configKey = "hermesnative.artifacts"
 
     @Published private(set) var artifacts: [String: LivingArtifact] = [:]
 
@@ -67,14 +67,15 @@ final class ArtifactStore: ObservableObject {
         }
         artifacts[id] = artifact
         persistToDisk()
-        schedulePush()
+        schedulePush(id: id)
         return artifact
     }
 
     func remove(id: String) {
         guard artifacts.removeValue(forKey: id) != nil else { return }
         persistToDisk()
-        schedulePush()
+        guard syncAvailable != false else { return }
+        Task { [weak self] in try? await self?.client?.artifactDelete(id: id) }
     }
 
     // MARK: - Disk
@@ -100,61 +101,102 @@ final class ArtifactStore: ObservableObject {
         }
     }
 
-    // MARK: - Gateway sync
+    // MARK: - Gateway sync (artifact.* RPCs + artifact.changed events)
 
     func setClient(_ client: GatewayClient) {
         guard self.client !== client else { return }
         self.client = client
         syncAvailable = nil
+        eventCancellable = client.eventStream
+            .receive(on: RunLoop.main)
+            .sink { [weak self] event, _ in
+                guard case .artifactChanged(let id, let deleted) = event else { return }
+                self?.applyRemoteChange(id: id, deleted: deleted)
+            }
         Task { await pull() }
     }
 
-    /// Merge the remote document: last-writer-wins per artifact by updatedAt.
+    private var eventCancellable: AnyCancellable?
+
+    /// A gateway-side mutation happened (any writer: agent tool, cron,
+    /// another device). Refetch that artifact so open panes update live.
+    private func applyRemoteChange(id: String, deleted: Bool) {
+        if deleted {
+            if artifacts.removeValue(forKey: id) != nil { persistToDisk() }
+            return
+        }
+        guard let client else { return }
+        Task {
+            guard let fresh = try? await client.artifactGet(id: id) else { return }
+            // Ignore events for our own just-pushed writes only if stale:
+            // rev is monotonic, so an older rev never overwrites a newer one.
+            if let current = artifacts[id], current.rev >= fresh.rev, fresh.rev > 0 { return }
+            artifacts[id] = fresh
+            persistToDisk()
+        }
+    }
+
+    /// Full resync: gateway list is the source of truth; local-only
+    /// artifacts (created before the gateway had the surface, or offline)
+    /// are pushed up. nil list = old gateway, stay local-only.
     func pull() async {
         guard let client, syncAvailable != false else { return }
         do {
-            guard let result = try await client.getConfig(key: Self.configKey),
-                  let json = result["value"]?.stringValue,
-                  let data = json.data(using: .utf8),
-                  let remote = try? JSONDecoder().decode([String: LivingArtifact].self, from: data)
-            else {
-                syncAvailable = syncAvailable ?? true
+            guard let remoteList = try await client.artifactList() else {
+                syncAvailable = false
+                log.info("artifact sync unavailable (gateway predates artifact.*)")
                 return
             }
             syncAvailable = true
             var changed = false
-            for (id, remoteArtifact) in remote {
-                if let local = artifacts[id], local.updatedAt >= remoteArtifact.updatedAt { continue }
-                artifacts[id] = remoteArtifact
-                changed = true
+            let remoteIDs = Set(remoteList.map(\.id))
+            for summary in remoteList {
+                let local = artifacts[summary.id]
+                if local == nil || summary.rev > (local?.rev ?? 0) {
+                    if let full = try? await client.artifactGet(id: summary.id) {
+                        artifacts[summary.id] = full
+                        changed = true
+                    }
+                }
+            }
+            // Push local-only artifacts up (offline creations).
+            for (id, local) in artifacts where !remoteIDs.contains(id) && local.rev == 0 {
+                if let stored = try? await client.artifactSet(
+                    id: id, kind: local.kind, content: local.content, title: local.title
+                ) {
+                    artifacts[id] = stored
+                    changed = true
+                }
             }
             if changed { persistToDisk() }
         } catch {
-            // Old gateway without config KV: disable quietly, stay local.
-            syncAvailable = false
-            log.info("artifact sync unavailable: \(error.localizedDescription)")
+            log.info("artifact pull failed: \(error.localizedDescription)")
         }
     }
 
-    private func schedulePush() {
+    private func schedulePush(id: String) {
         guard syncAvailable != false else { return }
         pushTask?.cancel()
         pushTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(self?.pushDebounce ?? 2))
             guard !Task.isCancelled else { return }
-            await self?.push()
+            await self?.push(id: id)
         }
     }
 
-    private func push() async {
-        guard let client, syncAvailable != false else { return }
+    /// Push one artifact's content. replace: the local content is already
+    /// the merged state (upsert ran the client-side merge), so a server-side
+    /// re-merge would double-apply on maps.
+    private func push(id: String) async {
+        guard let client, syncAvailable != false, let local = artifacts[id] else { return }
         do {
-            // Pull-merge first so a stale device never clobbers newer remote
-            // artifacts wholesale (the KV write is whole-document).
-            await pull()
-            let data = try JSONEncoder().encode(artifacts)
-            guard let json = String(data: data, encoding: .utf8) else { return }
-            try await client.setConfig(key: Self.configKey, value: json, sessionID: nil)
+            if let stored = try await client.artifactSet(
+                id: id, kind: local.kind, content: local.content,
+                title: local.title.isEmpty ? nil : local.title, replace: true
+            ) {
+                artifacts[id] = stored
+                persistToDisk()
+            }
         } catch {
             log.info("artifact push failed: \(error.localizedDescription)")
         }

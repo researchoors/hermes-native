@@ -19,8 +19,54 @@ struct LivingArtifact: Codable, Equatable, Identifiable {
     /// Device that last wrote it (sync conflict visibility, not resolution).
     var updatedBy: String
 
+    /// Server revision number (0 for purely-local artifacts that have
+    /// never round-tripped through the gateway).
+    var rev: Int = 0
+
     /// Human label for pickers: title if present, else the id.
     var displayName: String { title.isEmpty ? id : title }
+
+    /// Decode from a gateway artifact.* result payload.
+    static func from(_ d: [String: AnyCodable]?) -> LivingArtifact? {
+        guard let d, let id = d["id"]?.stringValue, !id.isEmpty else { return nil }
+        return LivingArtifact(
+            id: id,
+            kind: d["kind"]?.stringValue ?? "markdown",
+            title: d["title"]?.stringValue ?? "",
+            content: d["content"]?.stringValue ?? "",
+            updatedAt: d["updated_at"]?.stringValue.flatMap(Self.parseISO) ?? Date(),
+            updatedBy: d["updated_by"]?.stringValue ?? "",
+            rev: d["rev"]?.intValue ?? 0
+        )
+    }
+
+    static func parseISO(_ s: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: s) ?? ISO8601DateFormatter().date(from: s)
+    }
+}
+
+/// One entry in an artifact's revision history (audit trail).
+struct ArtifactRevision: Identifiable, Equatable {
+    let rev: Int
+    let updatedAt: Date?
+    let updatedBy: String
+    /// Present only from artifact.revision (single fetch); the list RPC
+    /// omits content.
+    let content: String?
+
+    var id: Int { rev }
+
+    static func from(_ d: [String: AnyCodable]?) -> ArtifactRevision? {
+        guard let d, let rev = d["rev"]?.intValue else { return nil }
+        return ArtifactRevision(
+            rev: rev,
+            updatedAt: d["updated_at"]?.stringValue.flatMap(LivingArtifact.parseISO),
+            updatedBy: d["updated_by"]?.stringValue ?? "",
+            content: d["content"]?.stringValue
+        )
+    }
 }
 
 // MARK: - Per-kind merge

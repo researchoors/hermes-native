@@ -37,6 +37,7 @@ struct ContentView: View {
     @State private var showFeedSheet = false
     @State private var showLearning = false
     @State private var showCentaurWorkflows = false
+    @State private var showArtifactsPane = false
     @State private var selectedTab = 0
     @State private var isCreatingSession = false
     @State private var sessionCreationError: String?
@@ -434,11 +435,13 @@ struct ContentView: View {
     private var isOverlayActive: Bool {
         missionControlSessionID != nil || showCronDashboard || showLiveSessions || showActivitySheet
             || showFeedSheet || showSkills || showWikiGraph || showLearning || showCentaurWorkflows
+            || showArtifactsPane
     }
 
     private var overlayTitle: String {
         if showWikiGraph { return "Wiki Graph" }
         if showCentaurWorkflows { return "Workflows" }
+        if showArtifactsPane { return "Artifacts" }
         if showFeedSheet { return "Feed" }
         if showSkills { return "Skills" }
         if showLiveSessions { return "Sessions" }
@@ -511,6 +514,7 @@ struct ContentView: View {
                 showSkills = false
                 showWikiGraph = false
                 showCentaurWorkflows = false
+                showArtifactsPane = false
                 showFeedSheet = false
                 showLearning = false
                 chatViewModel.refocusInput += 1
@@ -858,6 +862,18 @@ struct ContentView: View {
                 .accessibilityLabel("Wiki Graph")
             }
 
+            // Living artifacts — named models any writer maintains (chat,
+            // cron, workflows), rendered live. Cross-backend surface.
+            Button {
+                showArtifactsPane = true
+            } label: {
+                Label("Artifacts", systemImage: "internaldrive")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut("d", modifiers: .command)
+            .accessibilityLabel("Artifacts")
+
             // Centaur workflow introspection — fills the chrome slot the
             // Hermes cron button vacates when a Centaur session is front and
             // center (same Cmd-K muscle memory).
@@ -1002,6 +1018,14 @@ struct ContentView: View {
 
             if showCentaurWorkflows {
                 centaurWorkflowsOverlay
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.background)
+                    .transition(.opacity)
+            }
+
+            if showArtifactsPane {
+                ArtifactsPane { showArtifactsPane = false }
+                    .environmentObject(gatewayClientWrapper)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.background)
                     .transition(.opacity)
