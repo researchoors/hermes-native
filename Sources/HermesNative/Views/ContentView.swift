@@ -594,6 +594,22 @@ struct ContentView: View {
         .frame(height: 40)
     }
 
+    /// Wiki source for the visible chat's backend: a Centaur session gets a
+    /// wiki-api client against its deployment's base URL; Hermes sessions
+    /// return nil (WikiGraphView then uses the home gateway's wiki.* RPCs).
+    /// Cached per (url, key) via a static so repeated opens reuse a session.
+    private var centaurWikiSource: (any WikiSource)? {
+        guard let sid = chatViewModel.currentSessionID,
+              let backendID = SessionBackendRegistry.shared.backendID(for: sid),
+              let entry = settings.savedGateways.first(where: { $0.id == backendID }),
+              entry.kind == .centaur,
+              let url = URL(string: entry.url.trimmingCharacters(in: .whitespaces)) else {
+            return nil
+        }
+        return CentaurWikiClient(baseURL: url, apiKey: entry.apiKey)
+    }
+
+
     /// Workflows panel for the backend serving the visible chat. The client
     /// resolves through the same registry/wrapper path the chat uses, so the
     /// panel always talks to the deployment on screen; a non-Centaur state
@@ -977,7 +993,7 @@ struct ContentView: View {
             }
 
             if showWikiGraph {
-                WikiGraphView()
+                WikiGraphView(overrideSource: centaurWikiSource)
                     .environmentObject(gatewayClientWrapper)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.background)

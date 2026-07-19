@@ -385,3 +385,33 @@ struct CentaurReasoningFrameTests {
         }
     }
 }
+
+@Suite("Centaur Wiki Client Mapping")
+struct CentaurWikiMappingTests {
+
+    @Test("Graph payload maps to WikiGraph — document ids as paths, kind as tagPath")
+    func graphMapping() {
+        // Shape verified against live wiki-api /wiki/graph.
+        let payload: [String: Any] = [
+            "node_count": 2, "edge_count": 1,
+            "nodes": [
+                ["id": "wiki:entity:person-greg", "title": "Greg", "type": "entity",
+                 "degree": 2, "updated_at": "2026-06-29T12:33:56Z", "backlinks": []],
+                ["id": "wiki:topic:glossary-mcp", "title": "MCP (glossary)", "type": "topic"],
+                ["title": "no id — dropped"],
+            ],
+            "edges": [
+                ["source": "wiki:entity:person-greg", "target": "wiki:topic:glossary-mcp"],
+                ["source": "dangling"],
+            ],
+        ]
+        let graph = CentaurWikiClient.mapGraph(payload)
+        #expect(graph.pages.count == 2)          // id-less node dropped
+        #expect(graph.links.count == 1)          // target-less edge dropped
+        let greg = graph.pages[0]
+        #expect(greg.path == "wiki:entity:person-greg")  // id doubles as fetch path
+        #expect(greg.tagPath == ["entity"])              // kind drives taxonomy
+        #expect(greg.updated == "2026-06-29T12:33:56Z")
+        #expect(graph.links[0].source == "wiki:entity:person-greg")
+    }
+}

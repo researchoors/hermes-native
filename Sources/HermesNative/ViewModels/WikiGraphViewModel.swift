@@ -190,15 +190,31 @@ final class WikiGraphViewModel: ObservableObject {
     private var loadGeneration = 0
     private var loadedWiki: String?
     private var hasLoadedOnce = false
+    /// The source the current graph was loaded from; the reader fetches page
+    /// bodies through it so override wikis (Centaur) don't hit the home gateway.
+    private weak var loadedSource: (any WikiSource)?
 
     func load(client: GatewayClient, wiki: String? = nil) async {
+        await load(source: client, wiki: wiki)
+    }
+
+    /// Source-generic load: Hermes (GatewayClient) and Centaur
+    /// (CentaurWikiClient) both conform to WikiSource. `wiki` selection is
+    /// Hermes-only (multi-wiki gateways); other sources ignore it.
+    func load(source: any WikiSource, wiki: String? = nil) async {
         prepareForLoad(wiki: wiki)
+        loadedSource = source
         loadGeneration += 1
         let generation = loadGeneration
         isLoading = true; error = nil
         defer { if generation == loadGeneration { isLoading = false } }
         do {
-            let newGraph = try await client.wikiScan(wiki: wiki)
+            let newGraph: WikiGraph
+            if let gateway = source as? GatewayClient {
+                newGraph = try await gateway.wikiScan(wiki: wiki)
+            } else {
+                newGraph = try await source.fetchGraph()
+            }
             // Drop stale responses if a newer load was started meanwhile.
             guard generation == loadGeneration else { return }
             self.graph = newGraph
@@ -297,7 +313,14 @@ final class WikiGraphViewModel: ObservableObject {
     /// source the graph loaded from (the selected wiki) and fills the cache.
     func ensureContentLoaded(client: GatewayClient, path: String) async {
         guard contentCache[path] == nil else { return }
-        let content = await loadPage(client: client, path: path, wiki: loadedWiki)
+        let content: WikiPageContent?
+        if let source = loadedSource, !(source is GatewayClient) {
+            // Override wiki (Centaur): page bodies come from the same source
+            // the graph did, never the home gateway.
+            content = await loadPage(source: source, path: path)
+        } else {
+            content = await loadPage(client: client, path: path, wiki: loadedWiki)
+        }
         storeContent(content, for: path)
     }
 
@@ -381,6 +404,11 @@ final class WikiGraphViewModel: ObservableObject {
 
     func backlinks(for page: WikiPage?) -> [WikiPage] {
         page.flatMap { backlinkIndex[$0.id] } ?? []
+    }
+
+    func loadPage(source: any WikiSource, path: String) async -> WikiPageContent? {
+        do { return try await source.fetchPage(path: path) }
+        catch { log.error("wiki page fetch failed: \(error.localizedDescription)"); return nil }
     }
 
     func setupSimulation() {
