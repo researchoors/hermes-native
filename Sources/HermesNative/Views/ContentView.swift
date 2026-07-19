@@ -449,7 +449,8 @@ struct ContentView: View {
     }
 
     private var isOverlayActive: Bool {
-        missionControlSessionID != nil || showCronDashboard || showLiveSessions || showActivitySheet || showFeedSheet || showSkills || showWikiGraph || showLearning || showCentaurWorkflows
+        missionControlSessionID != nil || showCronDashboard || showLiveSessions || showActivitySheet
+            || showFeedSheet || showSkills || showWikiGraph || showLearning || showCentaurWorkflows
     }
 
     private var overlayTitle: String {
