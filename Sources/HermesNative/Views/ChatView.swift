@@ -291,6 +291,8 @@ struct ChatView: View {
                 NetworkGraphView(json: content, isStreaming: false)
             case "stats":
                 StatTilesView(json: content, isStreaming: false)
+            case "dataset":
+                DatasetBlockView(json: content, isStreaming: false)
             default:
                 MarkdownContentView(text: content, isStreaming: false)
                     .equatable()

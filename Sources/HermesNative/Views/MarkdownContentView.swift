@@ -44,6 +44,9 @@ struct MarkdownContentView: View, Equatable {
                     } else if MarkdownParser.isMapLanguage(language) {
                         MapBlockView(json: code, isStreaming: isStreaming)
                             .captureLivingArtifact(kind: "map", json: code, isStreaming: isStreaming)
+                    } else if MarkdownParser.isDatasetLanguage(language) {
+                        DatasetBlockView(json: code, isStreaming: isStreaming)
+                            .captureLivingArtifact(kind: "dataset", json: code, isStreaming: isStreaming)
                     } else {
                         CodeBlockView(language: language, code: code)
                     }
@@ -381,6 +384,10 @@ struct MarkdownParser {
 
     static func isMapLanguage(_ language: String) -> Bool {
         language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "map"
+    }
+
+    static func isDatasetLanguage(_ language: String) -> Bool {
+        language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "dataset"
     }
 
     /// ```graph is the node-link fence. Bare "graph" without mermaid syntax

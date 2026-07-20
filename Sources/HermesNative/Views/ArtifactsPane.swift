@@ -242,6 +242,8 @@ struct ArtifactKindRenderer: View {
             NetworkGraphView(json: content, isStreaming: false)
         case "stats":
             StatTilesView(json: content, isStreaming: false)
+        case "dataset":
+            DatasetBlockView(json: content, isStreaming: false)
         default:
             MarkdownContentView(text: content, isStreaming: false)
                 .equatable()
@@ -465,6 +467,9 @@ enum ArtifactDiff {
         if kind == "map" {
             return describeMapDiff(old: old, new: new)
         }
+        if kind == "dataset" {
+            return describeDatasetDiff(old: old, new: new)
+        }
         return ["Content changed (\(byteDelta(old: old, new: new)))"]
     }
 
@@ -502,6 +507,41 @@ enum ArtifactDiff {
             }
         }
         return lines.isEmpty ? ["Map metadata changed"] : lines
+    }
+
+    /// Row-level diff keyed by the dataset's key field.
+    static func describeDatasetDiff(old: String, new: String) -> [String] {
+        func rows(_ s: String) -> (key: String, byKey: [String: [String: Any]]) {
+            guard let data = s.data(using: .utf8),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let list = obj["rows"] as? [[String: Any]] else { return ("id", [:]) }
+            let key = (obj["key"] as? String) ?? "id"
+            var byKey: [String: [String: Any]] = [:]
+            for row in list {
+                let value = String(describing: row[key] ?? "")
+                if !value.isEmpty && value != "nil" { byKey[value] = row }
+            }
+            return (key, byKey)
+        }
+        let (_, oldRows) = rows(old)
+        let (_, newRows) = rows(new)
+        var lines: [String] = []
+        for key in newRows.keys.sorted() where oldRows[key] == nil {
+            lines.append("Added \(key)")
+        }
+        for key in oldRows.keys.sorted() where newRows[key] == nil {
+            lines.append("Removed \(key)")
+        }
+        for key in newRows.keys.sorted() {
+            guard let before = oldRows[key], let after = newRows[key] else { continue }
+            let changed = after.keys.filter { field in
+                String(describing: before[field] ?? "") != String(describing: after[field] ?? "")
+            }.sorted()
+            if !changed.isEmpty {
+                lines.append("\(key): \(changed.joined(separator: ", ")) changed")
+            }
+        }
+        return lines.isEmpty ? ["Dataset metadata changed"] : lines
     }
 
     private static func byteDelta(old: String, new: String) -> String {

@@ -45,6 +45,7 @@
 		1AF11B4AFBFFA1FC026201D3 /* StatTilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6581DF6FE30E3629D12F54B5 /* StatTilesView.swift */; };
 		1B9CFABF8EA2A0E659C80D9A /* ChatSkin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742C42FB4508D2508FF94A82 /* ChatSkin.swift */; };
 		1BF54C22DCEC8F5EE5304F57 /* ChartSpec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B3C1AE5F7C59A935A9652E0 /* ChartSpec.swift */; };
+		1C0A7A5E9BF22A385D308989 /* DatasetBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAE5913B4CED89DEF44A7508 /* DatasetBlockView.swift */; };
 		1C372FF7882368E6FF4A8BFD /* ReasoningGraphIntegrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C081C7E7A87FF91A5D3F2C2 /* ReasoningGraphIntegrator.swift */; };
 		1E1CE5D5631FCADD2AC07C2D /* DiffBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08D050F975F8D875A7FC930 /* DiffBlockView.swift */; };
 		1E53A9AD621BB08CCA78B3DA /* SRSStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F13E499A3D62F15C5F4F02 /* SRSStore.swift */; };
@@ -196,6 +197,7 @@
 		854DA8E57545F5379A0F4C54 /* SkillsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0929E0C0571B4C1249D20DAC /* SkillsViewModel.swift */; };
 		86301818503A4FFE9FBC7E93 /* InlineMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28476A2EB8762400A85ABAEB /* InlineMath.swift */; };
 		86840130D03445C9B796DE72 /* DocumentTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F048DC6F9BF97D41CB5DC4A /* DocumentTextExtractor.swift */; };
+		86ECFD0F0230394423B08962 /* DatasetBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAE5913B4CED89DEF44A7508 /* DatasetBlockView.swift */; };
 		8791E134B94C61EC9D11EFB5 /* FeedArticle.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6F06C5C01DCABB3A27961F1 /* FeedArticle.swift */; };
 		87955D6459C1CF9D37CBD5C2 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57621A872836514CD5BC0F5B /* ChatView.swift */; };
 		879AC9C0FB803E3EB32AE3B1 /* ThoughtGraphNodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88A82A8B0386F71280851A8F /* ThoughtGraphNodeView.swift */; };
@@ -508,6 +510,7 @@
 		C6F06C5C01DCABB3A27961F1 /* FeedArticle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedArticle.swift; sourceTree = "<group>"; };
 		C8510CDBA7652A23723C1FA1 /* Persona.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persona.swift; sourceTree = "<group>"; };
 		C9E90EB5F3D33856790DE1EB /* FileTreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTreeView.swift; sourceTree = "<group>"; };
+		CAE5913B4CED89DEF44A7508 /* DatasetBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatasetBlockView.swift; sourceTree = "<group>"; };
 		CB69181ACA2327F9FDECF746 /* MermaidDiagramView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidDiagramView.swift; sourceTree = "<group>"; };
 		CC871CF4533AE44104E0C11A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		CD3BC9EBF49E5287A7AE997C /* GatewayClientWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayClientWrapper.swift; sourceTree = "<group>"; };
@@ -861,6 +864,7 @@
 			isa = PBXGroup;
 			children = (
 				0D220716249F948C0B818E3C /* ArtifactPanel.swift */,
+				CAE5913B4CED89DEF44A7508 /* DatasetBlockView.swift */,
 				B08D050F975F8D875A7FC930 /* DiffBlockView.swift */,
 				C9E90EB5F3D33856790DE1EB /* FileTreeView.swift */,
 				817CE76AF8753D467DA32202 /* LivingArtifactCapture.swift */,
@@ -1196,6 +1200,7 @@
 				FA7BB62A10C9CA7C95CAA86B /* CronPoller.swift in Sources */,
 				F7BDD355C6FFA1D4ADDA7F2D /* CronRunHistory.swift in Sources */,
 				084F93081436CDBE85BDB6D3 /* DarkMangaSkin.swift in Sources */,
+				1C0A7A5E9BF22A385D308989 /* DatasetBlockView.swift in Sources */,
 				E244AA9D933CB49AFBE5DF1C /* DiagramExplorerView.swift in Sources */,
 				1E1CE5D5631FCADD2AC07C2D /* DiffBlockView.swift in Sources */,
 				86840130D03445C9B796DE72 /* DocumentTextExtractor.swift in Sources */,
@@ -1378,6 +1383,7 @@
 				F49E9B9BBC80BBD77656D4DD /* CronPoller.swift in Sources */,
 				568AF4824A43A644F6CEF7A5 /* CronRunHistory.swift in Sources */,
 				216EE5D31DBCF0FE68E54F21 /* DarkMangaSkin.swift in Sources */,
+				86ECFD0F0230394423B08962 /* DatasetBlockView.swift in Sources */,
 				8E73DDBEAC18F9750DAFD198 /* DiagramExplorerView.swift in Sources */,
 				CD58DF846C28EA00DD8182C5 /* DiffBlockView.swift in Sources */,
 				F26D4B11BF3CE66850CAF3F0 /* DocumentTextExtractor.swift in Sources */,

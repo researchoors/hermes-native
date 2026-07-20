@@ -92,11 +92,18 @@ final class ChatViewModel: ObservableObject {
       ```map
       {"title": "BKK Apartments", "markers": [{"lat": 13.7248, "lon": 100.5847, "label": "Ekkamai loft", "group": "shortlist", "note": "38k/mo, 2BR"}]}
       ```
-    - **Living artifacts**: add an "id" field to any map/chart/graph/stats block to make it a PERSISTENT
-      model the user keeps across sessions. When the user adds or changes items, re-emit the block with
-      the SAME id — maps merge markers by label (emit only new/changed markers or the full set; both
-      work), other kinds replace wholesale so emit the complete block. Example: a ```map block with
-      "id": "bkk-apartments" updated as the user evaluates listings.
+    - **Datasets** in ```dataset blocks for row-keyed records — contributor tables, client lists, spend
+      entries (renders as a sortable table; rows merge by the declared key so partial updates are safe):
+      ```dataset
+      {"id": "clients", "key": "name", "columns": ["name", "tier", "arr"],
+       "rows": [{"name": "Acme", "tier": "enterprise", "arr": 120000}]}
+      ```
+    - **Living artifacts**: add an "id" field to any map/chart/graph/stats/dataset block to make it a
+      PERSISTENT model the user keeps across sessions. When the user adds or changes items, re-emit the
+      block with the SAME id — maps merge markers by label and datasets merge rows by key (emit only
+      new/changed entries or the full set; both work), other kinds replace wholesale so emit the
+      complete block. Example: a ```map block with "id": "bkk-apartments" updated as the user
+      evaluates listings.
     - **Network graphs** in ```graph blocks for node-link structures — dependency graphs, service topologies,
       entity networks (interactive force-directed diagram; prefer over mermaid flowchart when the story is
       the CONNECTIVITY, not a sequence):

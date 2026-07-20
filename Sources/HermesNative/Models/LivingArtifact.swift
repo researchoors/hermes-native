@@ -81,9 +81,39 @@ enum ArtifactMerge {
         switch kind {
         case "map":
             return mergeMap(existing: existing, incoming: incoming)
+        case "dataset":
+            return mergeDataset(existing: existing, incoming: incoming)
         default:
             return incoming
         }
+    }
+
+    /// Union rows by the dataset's declared key field (mirror of the
+    /// gateway's _merge_dataset so offline captures converge identically).
+    static func mergeDataset(existing: String, incoming: String) -> String {
+        guard let old = parse(existing), let new = parse(incoming) else { return incoming }
+        var merged = old.merging(new) { _, n in n }
+        let keyField = (new["key"] as? String) ?? (old["key"] as? String) ?? "id"
+        merged["key"] = keyField
+
+        var byKey: [String: [String: Any]] = [:]
+        var order: [String] = []
+        let oldRows = (old["rows"] as? [[String: Any]]) ?? []
+        let newRows = (new["rows"] as? [[String: Any]]) ?? []
+        for row in oldRows + newRows {
+            let keyValue = String(describing: row[keyField] ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+            guard !keyValue.isEmpty, keyValue != "nil" else { continue }
+            if byKey[keyValue] == nil { order.append(keyValue) }
+            byKey[keyValue] = row
+        }
+        merged["rows"] = order.compactMap { byKey[$0] }
+
+        guard JSONSerialization.isValidJSONObject(merged),
+              let data = try? JSONSerialization.data(withJSONObject: merged, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8) else {
+            return incoming
+        }
+        return json
     }
 
     /// Union markers by label (case-insensitive); incoming wins on conflict.

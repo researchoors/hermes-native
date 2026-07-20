@@ -349,3 +349,45 @@ struct ArtifactDiffTests {
         #expect(lines == ["A: note updated"])
     }
 }
+
+@Suite("Dataset Kind")
+struct DatasetKindTests {
+
+    @Test("Spec parses rows, derives columns with key first, stringifies values")
+    func specParsing() {
+        let spec = DatasetSpec.parse("""
+        {"key": "login", "rows": [
+          {"login": "greg", "commits": 44, "active": true},
+          {"login": "amy", "name": "Amy"}
+        ]}
+        """)!
+        #expect(spec.key == "login")
+        #expect(spec.columns.first == "login")           // key leads derived columns
+        #expect(spec.columns.contains("commits"))
+        #expect(spec.rows[0]["commits"] == "44")          // numbers stringified
+        #expect(DatasetSpec.parse("{\"rows\": []}") == nil)
+    }
+
+    @Test("App-side dataset merge mirrors the gateway: union by key, incoming wins")
+    func merge() {
+        let old = "{\"key\": \"login\", \"rows\": [{\"login\": \"greg\", \"commits\": 41}, {\"login\": \"amy\", \"commits\": 7}]}"
+        let new = "{\"rows\": [{\"login\": \"greg\", \"commits\": 44}, {\"login\": \"new\", \"commits\": 1}]}"
+        let merged = ArtifactMerge.merge(kind: "dataset", existing: old, incoming: new)
+        let obj = try! JSONSerialization.jsonObject(with: Data(merged.utf8)) as! [String: Any]
+        let rows = (obj["rows"] as! [[String: Any]])
+        #expect(rows.count == 3)
+        let greg = rows.first { ($0["login"] as? String) == "greg" }!
+        #expect((greg["commits"] as? Int) == 44)
+        #expect(obj["key"] as? String == "login")
+    }
+
+    @Test("Dataset diff reports added/removed/changed rows by key")
+    func diff() {
+        let old = "{\"key\": \"login\", \"rows\": [{\"login\": \"greg\", \"commits\": 41}, {\"login\": \"gone\", \"commits\": 2}]}"
+        let new = "{\"key\": \"login\", \"rows\": [{\"login\": \"greg\", \"commits\": 44}, {\"login\": \"fresh\", \"commits\": 1}]}"
+        let lines = ArtifactDiff.describe(kind: "dataset", old: old, new: new)!
+        #expect(lines.contains("Added fresh"))
+        #expect(lines.contains("Removed gone"))
+        #expect(lines.contains("greg: commits changed"))
+    }
+}
