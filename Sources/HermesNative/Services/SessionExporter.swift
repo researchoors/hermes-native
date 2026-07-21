@@ -1,11 +1,4 @@
 import Foundation
-import CoreText
-import CoreGraphics
-#if os(macOS)
-import AppKit
-#else
-import UIKit
-#endif
 
 /// Exports a chat session's full context as a self-contained Markdown document
 /// (the primary deliverable — paste-able into another agent as context) and as
