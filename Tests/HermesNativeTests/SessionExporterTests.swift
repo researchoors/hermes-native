@@ -202,3 +202,46 @@ struct SessionExporterFilenameTests {
         #expect(slug.count == 60)
     }
 }
+
+@Suite("Session Exporter — PDF")
+struct SessionExporterPDFTests {
+
+    @Test("PDF data is non-empty and starts with %PDF magic bytes")
+    @MainActor
+    func pdfMagicBytes() {
+        let messages = [
+            ChatMessage(role: .user, content: "Explain quicksort"),
+            ChatMessage(
+                role: .assistant,
+                content: "Quicksort partitions:\n\n```swift\nfunc qs(_ a: [Int]) -> [Int] { a }\n```\n\nDone.",
+                toolCalls: [ToolCallRecord(id: "t1", name: "Bash", context: "swift run", summary: "ok", isComplete: true)],
+                reasoning: "Consider pivot selection."
+            ),
+        ]
+        let md = SessionExporter.markdown(
+            messages: messages,
+            metadata: SessionExporter.Metadata(title: "Quicksort Session", assistantName: "Hermes")
+        )
+        let data = SessionExporter.pdf(markdown: md, title: "Quicksort Session")
+        let unwrapped = try! #require(data)
+        #expect(unwrapped.count > 500)
+        #expect(unwrapped.prefix(4) == Data("%PDF".utf8))
+    }
+
+    @Test("Long transcripts paginate without hanging")
+    @MainActor
+    func pdfPagination() {
+        let longBody = Array(repeating: "A paragraph of body text that fills the page. ", count: 40).joined()
+        let messages = (0..<30).map { index in
+            ChatMessage(role: index.isMultiple(of: 2) ? .user : .assistant, content: longBody)
+        }
+        let md = SessionExporter.markdown(
+            messages: messages,
+            metadata: SessionExporter.Metadata(title: "Long Session", assistantName: "Hermes")
+        )
+        let data = SessionExporter.pdf(markdown: md, title: "Long Session")
+        let unwrapped = try! #require(data)
+        #expect(unwrapped.prefix(4) == Data("%PDF".utf8))
+        #expect(unwrapped.count > 5_000)
+    }
+}
