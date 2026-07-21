@@ -121,12 +121,19 @@ struct ThinkingTrace: Identifiable, Codable, Equatable {
 
     mutating func append(_ text: String, kind: ThinkingBlock.Kind) {
         updatedAt = Date()
-        if let lastIndex = blocks.indices.last, blocks[lastIndex].kind == kind {
+        if let lastIndex = blocks.indices.last, blocks[lastIndex].kind == kind, blocks[lastIndex].label == nil {
             blocks[lastIndex].text += text
             blocks[lastIndex].updatedAt = updatedAt
         } else {
             blocks.append(ThinkingBlock(kind: kind, text: text, startedAt: updatedAt, updatedAt: updatedAt))
         }
+    }
+
+    /// Append a discrete labelled block (e.g. a MoA reference answer) that
+    /// lands whole — never merged with neighbouring delta blocks.
+    mutating func appendDiscreteBlock(_ text: String, kind: ThinkingBlock.Kind, label: String) {
+        updatedAt = Date()
+        blocks.append(ThinkingBlock(kind: kind, text: text, label: label, startedAt: updatedAt, updatedAt: updatedAt))
     }
 
     mutating func finish() {
@@ -140,18 +147,24 @@ struct ThinkingBlock: Identifiable, Codable, Equatable {
         case thinking
         case reasoning
         case toolStatus
+        /// A Mixture-of-Agents reference answer from one slot/model.
+        case moaReference
     }
 
     let id: UUID
     var kind: Kind
     var text: String
+    /// Slot/model label for discrete blocks (MoA references). Optional so
+    /// old persisted traces decode fine.
+    var label: String?
     var startedAt: Date
     var updatedAt: Date
 
-    init(id: UUID = UUID(), kind: Kind, text: String, startedAt: Date = Date(), updatedAt: Date = Date()) {
+    init(id: UUID = UUID(), kind: Kind, text: String, label: String? = nil, startedAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id
         self.kind = kind
         self.text = text
+        self.label = label
         self.startedAt = startedAt
         self.updatedAt = updatedAt
     }
