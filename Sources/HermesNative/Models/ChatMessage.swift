@@ -170,6 +170,11 @@ struct ToolCallRecord: Identifiable, Codable {
     /// entries (which have no timing data) and old persisted turns decode fine.
     var startedAt: Date?
     var completedAt: Date?
+    /// Output-security scanner verdict (tool.output_risk). Optional so old
+    /// persisted turns and unscanned tools decode fine.
+    var riskLevel: ToolRiskLevel?
+    var riskFindings: [String]?
+    var riskRedacted: Bool?
 
     init(
         id: String,
@@ -180,7 +185,10 @@ struct ToolCallRecord: Identifiable, Codable {
         inlineDiff: String? = nil,
         isComplete: Bool = false,
         startedAt: Date? = nil,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        riskLevel: ToolRiskLevel? = nil,
+        riskFindings: [String]? = nil,
+        riskRedacted: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -191,6 +199,16 @@ struct ToolCallRecord: Identifiable, Codable {
         self.isComplete = isComplete
         self.startedAt = startedAt
         self.completedAt = completedAt
+        self.riskLevel = riskLevel
+        self.riskFindings = riskFindings
+        self.riskRedacted = riskRedacted
+    }
+
+    /// Apply an output-risk verdict to this record.
+    mutating func applyRisk(_ payload: ToolOutputRiskPayload) {
+        riskLevel = payload.risk
+        riskFindings = payload.findings.isEmpty ? nil : payload.findings
+        riskRedacted = payload.redacted ? true : nil
     }
 }
 
