@@ -322,12 +322,17 @@ final class SettingsViewModel: ObservableObject {
     /// Build the WebSocket URL from the configured gateway URL.
     func buildWebSocketURL() -> URL? {
         var urlString = gatewayURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !urlString.isEmpty else { return nil }
 
         // If the user entered an HTTP(S) URL, convert to WS(S)
         if urlString.hasPrefix("https://") {
             urlString = "wss://" + urlString.dropFirst("https://".count)
         } else if urlString.hasPrefix("http://") {
             urlString = "ws://" + urlString.dropFirst("http://".count)
+        } else if !urlString.contains("://") {
+            // Bare host ("10.0.2.144" or "gw.example.com/v1/ws") — assume ws://.
+            // Without a scheme URLSession fails with -1002 "unsupported URL".
+            urlString = "ws://" + urlString
         }
 
         // Append /v1/ws path if not already present

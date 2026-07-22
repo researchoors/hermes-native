@@ -99,3 +99,34 @@ struct HealthProbeURLTests {
         #expect(url?.absoluteString == "https://gw.example.com:4443/health")
     }
 }
+
+@Suite("WebSocket URL building")
+@MainActor
+struct WebSocketURLBuildingTests {
+
+    private func built(from raw: String) -> String? {
+        let settings = SettingsViewModel()
+        settings.gatewayURL = raw
+        return settings.buildWebSocketURL()?.absoluteString
+    }
+
+    @Test("Bare host gets ws:// — schemeless input dialed -1002 unsupported URL")
+    func bareHost() {
+        #expect(built(from: "10.0.2.144/v1/ws") == "ws://10.0.2.144/v1/ws")
+        #expect(built(from: "10.0.2.144:8642") == "ws://10.0.2.144:8642/v1/ws")
+        #expect(built(from: "gw.example.com") == "ws://gw.example.com/v1/ws")
+    }
+
+    @Test("http(s) converts to ws(s); explicit ws(s) untouched")
+    func schemes() {
+        #expect(built(from: "https://gw.example.com") == "wss://gw.example.com/v1/ws")
+        #expect(built(from: "http://10.0.2.144:8642") == "ws://10.0.2.144:8642/v1/ws")
+        #expect(built(from: "wss://gw.example.com/v1/ws") == "wss://gw.example.com/v1/ws")
+    }
+
+    @Test("Empty input returns nil instead of ws:///v1/ws")
+    func empty() {
+        #expect(built(from: "") == nil)
+        #expect(built(from: "   ") == nil)
+    }
+}
