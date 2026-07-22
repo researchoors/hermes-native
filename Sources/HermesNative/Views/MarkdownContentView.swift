@@ -52,6 +52,9 @@ struct MarkdownContentView: View, Equatable {
                     } else if MarkdownParser.isDatasetLanguage(language) {
                         DatasetBlockView(json: code, isStreaming: isStreaming)
                             .captureLivingArtifact(kind: "dataset", json: code, isStreaming: isStreaming)
+                    } else if MarkdownParser.isSankeyLanguage(language) {
+                        SankeyBlockView(json: code, isStreaming: isStreaming)
+                            .captureLivingArtifact(kind: "sankey", json: code, isStreaming: isStreaming)
                     } else {
                         CodeBlockView(language: language, code: code)
                     }
@@ -404,6 +407,12 @@ struct MarkdownParser {
         let normalized = language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard normalized == "timeline" || normalized == "gantt" else { return false }
         return code.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{")
+    }
+
+    /// ```sankey is OUR fence; mermaid's sankey arrives as ```mermaid or
+    /// the "sankey-beta" diagram language, so no collision.
+    static func isSankeyLanguage(_ language: String) -> Bool {
+        language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "sankey"
     }
 
     /// ```graph is the node-link fence. Bare "graph" without mermaid syntax
