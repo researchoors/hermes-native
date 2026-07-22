@@ -37,15 +37,15 @@ struct ArchitectureTests {
 
     // MARK: - Services must not import SwiftUI
 
-    /// Whitelisted Services that import SwiftUI. ONE SOURCE OF TRUTH with the
+    /// Allowlisted Services that import SwiftUI. ONE SOURCE OF TRUTH with the
     /// `no_swiftui_in_services` excluded list in `.swiftlint.yml` — keep the
     /// two in sync when adding or removing an exception.
-    private static let swiftUIServiceWhitelist: Set<String> = [
+    private static let swiftUIServiceAllowlist: Set<String> = [
         // Legit presentation service: renders SwiftUI views to PDF pages via
         // ImageRenderer — SwiftUI is the point of the file.
         "SessionPDFExporter.swift",
         // TODO: imports SwiftUI only for ObservableObject/@Published —
-        // switch to `import Combine` and remove from this whitelist.
+        // switch to `import Combine` and remove from this allowlist.
         "GatewayClientWrapper.swift",
         // TODO: same — ObservableObject only; swap to Combine.
         "SkillCache.swift",
@@ -55,12 +55,12 @@ struct ArchitectureTests {
         "TTSService.swift",
     ]
 
-    @Test("Services do not import SwiftUI (except the whitelist)")
+    @Test("Services do not import SwiftUI (except the allowlist)")
     func servicesDoNotImportSwiftUI() throws {
         let servicesDir = Self.sourcesRoot.appendingPathComponent("Services")
         var offenders: [String] = []
         for file in Self.swiftFiles(under: servicesDir) {
-            guard !Self.swiftUIServiceWhitelist.contains(file.lastPathComponent) else { continue }
+            guard !Self.swiftUIServiceAllowlist.contains(file.lastPathComponent) else { continue }
             let contents = try String(contentsOf: file, encoding: .utf8)
             let importsSwiftUI = contents
                 .components(separatedBy: .newlines)
@@ -76,7 +76,7 @@ struct ArchitectureTests {
             presentation concerns below the ViewModel boundary and breaks reuse \
             in non-UI contexts. Offenders: \(offenders.joined(separator: ", ")). \
             If a service legitimately needs SwiftUI, add it to \
-            swiftUIServiceWhitelist here AND the no_swiftui_in_services excluded \
+            swiftUIServiceAllowlist here AND the no_swiftui_in_services excluded \
             list in .swiftlint.yml, with a justification comment.
             """
         )

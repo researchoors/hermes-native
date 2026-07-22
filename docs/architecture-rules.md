@@ -40,7 +40,7 @@ Exceptions are explicit, justified, and grandfathered — never silent:
    comment** saying why it's exempt (or `// swiftlint:disable <rule>` at file
    scope for the length rules, with the justification on the next line).
 2. If the rule is mirrored in `ArchitectureTests.swift` (currently only
-   `no_swiftui_in_services`), add the same entry to the whitelist array there
+   `no_swiftui_in_services`), add the same entry to the allowlist array there
    with a per-entry justification comment — the two lists are kept in sync by
    hand and reviewed together.
 3. Say in the PR description what makes this file special. "It was easier" is
