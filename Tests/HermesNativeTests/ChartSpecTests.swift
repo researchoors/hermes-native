@@ -300,6 +300,15 @@ struct SankeyTests {
         #expect(abs(ribbonsFromA[0].sourceY1 - ribbonsFromA[1].sourceY0) < 0.001)
     }
 
+    @Test("Fence routing: JSON sankey is ours, mermaid CSV falls through")
+    func fenceRouting() {
+        #expect(MarkdownParser.isSankeyBlock(language: "sankey", code: "{\"links\": []}"))
+        #expect(MarkdownParser.isSankeyBlock(language: " Sankey ", code: "  {\"links\": []}"))
+        // Mermaid sankey syntax is CSV lines — must fall through to mermaid.
+        #expect(!MarkdownParser.isSankeyBlock(language: "sankey", code: "Revenue,Engineering,400"))
+        #expect(!MarkdownParser.isSankeyBlock(language: "chart", code: "{\"links\": []}"))
+    }
+
     @Test("Cycles terminate instead of hanging")
     func cycles() {
         let spec = SankeySpec.parse("""
