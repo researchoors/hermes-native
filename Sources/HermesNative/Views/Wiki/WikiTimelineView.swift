@@ -232,7 +232,21 @@ struct WikiTimelineView: View {
 
         if isExpanded {
             VStack(alignment: .leading, spacing: 6) {
-                WikiChangesetInlineDiff(changeset: changeset, wiki: wiki)
+                WikiChangesetInlineDiff(
+                    changeset: changeset,
+                    state: viewModel.diffStates[changeset.id] ?? .init(),
+                    onRetry: {
+                        Task {
+                            await viewModel.loadDiff(
+                                client: gatewayClientWrapper.client,
+                                changesetID: changeset.id, force: true)
+                        }
+                    }
+                )
+                .task(id: changeset.id) {
+                    await viewModel.loadDiff(
+                        client: gatewayClientWrapper.client, changesetID: changeset.id)
+                }
 
                 if onOpenPage != nil {
                     Button {

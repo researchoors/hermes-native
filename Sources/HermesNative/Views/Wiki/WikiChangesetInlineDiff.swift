@@ -3,17 +3,13 @@ import SwiftUI
 /// Git-style unified diff for a single wiki changeset, rendered INLINE
 /// beneath its timeline row (GitHub commit-list style) — the diff expands
 /// in place under the entry rather than opening a nested sheet.
-/// Fetched via `wiki.changeset_diff`; +green / −red / @@hunk coloring like a
-/// terminal `git show`.
+/// Purely presentational: WikiTimelineViewModel owns the fetch
+/// (wiki.changeset_diff) and hands the state in. +green / −red / @@hunk
+/// coloring like a terminal `git show`.
 struct WikiChangesetInlineDiff: View {
     let changeset: WikiChangeset
-    let wiki: String?
-
-    @EnvironmentObject var gatewayClientWrapper: GatewayClientWrapper
-
-    @State private var diff: String?
-    @State private var loadError: String?
-    @State private var isLoading = true
+    let state: WikiTimelineViewModel.DiffState
+    var onRetry: (() -> Void)?
 
     /// Inline expansion stays bounded; long diffs scroll within the row.
     private let maxDiffHeight: CGFloat = 320
@@ -26,21 +22,20 @@ struct WikiChangesetInlineDiff: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Theme.border, lineWidth: 1)
             )
-            .task(id: changeset.id) { await loadDiff() }
     }
 
     // MARK: - Content
 
     @ViewBuilder
     private var content: some View {
-        if isLoading {
+        if state.isLoading {
             HStack {
                 Spacer()
                 HermesProgressView(label: "Loading diff…")
                 Spacer()
             }
             .padding(.vertical, 20)
-        } else if let loadError {
+        } else if let message = state.errorMessage {
             VStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: "doc.questionmark")
@@ -50,7 +45,7 @@ struct WikiChangesetInlineDiff: View {
                         .font(.callout)
                         .foregroundStyle(Theme.primary)
                 }
-                Text(loadError)
+                Text(message)
                     .font(.caption)
                     .foregroundStyle(Theme.tertiary)
                     .multilineTextAlignment(.center)
@@ -60,10 +55,16 @@ struct WikiChangesetInlineDiff: View {
                         .font(.caption)
                         .foregroundStyle(Theme.secondary)
                 }
+                if let onRetry {
+                    Button("Retry", action: onRetry)
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .foregroundStyle(Theme.accent)
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-        } else if let diff, !diff.isEmpty {
+        } else if let diff = state.diff, !diff.isEmpty {
             diffBody(diff)
         } else {
             Text("No textual changes recorded")
@@ -114,23 +115,5 @@ struct WikiChangesetInlineDiff: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(background)
             .textSelection(.enabled)
-    }
-
-    // MARK: - Load
-
-    private func loadDiff() async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            diff = try await gatewayClientWrapper.client.wikiChangesetDiff(
-                id: changeset.id, wiki: wiki
-            )
-        } catch let GatewayError.rpcError(rpcError) {
-            // 5057 = wiki not git-initialized at capture time; anything else
-            // (older gateway without the RPC, transient) reads the same way.
-            loadError = rpcError.message
-        } catch {
-            loadError = error.localizedDescription
-        }
     }
 }
