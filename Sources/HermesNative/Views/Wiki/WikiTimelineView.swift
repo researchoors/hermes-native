@@ -51,7 +51,9 @@ struct WikiTimelineView: View {
             content
         }
         .background(Theme.background)
-        .task(id: effectivePageFilter) {
+        // Reconfigure on wiki switch OR scope change; the drawer persists
+        // across both on macOS.
+        .task(id: "\(wiki ?? "")|\(effectivePageFilter ?? "")") {
             expandedChangesetID = nil
             viewModel.configure(wiki: wiki, page: effectivePageFilter)
             await viewModel.start(client: gatewayClientWrapper.client)
