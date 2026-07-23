@@ -120,7 +120,7 @@ struct WikiRevisionsTimeline {
     /// The bucket with the most edits in the window (nil when empty) — the
     /// "busiest \(unit)" stat tile. Ties break to the most recent bucket.
     var busiestBucket: Bucket? {
-        buckets.filter { $0.bucket != nil && $0.count > 0 }
+        buckets.filter { $0.bucket != nil && $0.count >= 1 }
             .max { ($0.count, $0.bucket ?? .distantPast) < ($1.count, $1.bucket ?? .distantPast) }
     }
 }
