@@ -964,8 +964,13 @@ struct TableView: View {
         if isExpanded {
             content
         } else {
+            // alignment: .top is load-bearing — frame(maxHeight:) CENTERS
+            // oversized content by default, so a tall table showed its
+            // middle band: header + top rows clipped away above the window
+            // (the recurring "top of my table is cut off" bug), with the
+            // bottom fade hiding the evidence below.
             content
-                .frame(maxHeight: 240)
+                .frame(maxHeight: 240, alignment: .top)
                 .clipped()
                 .mask(
                     VStack(spacing: 0) {
@@ -977,6 +982,7 @@ struct TableView: View {
                         )
                         .frame(height: 20)
                     }
+                    .frame(maxHeight: 240, alignment: .top)
                 )
         }
     }
