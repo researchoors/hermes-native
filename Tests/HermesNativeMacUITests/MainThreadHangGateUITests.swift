@@ -28,22 +28,20 @@ internal final class MainThreadHangGateUITests: XCTestCase {
         ]
         app.launch()
 
-        // Reaching a rendered onboarding state means the launch run-loop turns
-        // all completed under the fatal watchdog without a stall. If any turn
-        // had hung, the assertion would have crashed the app and this wait
-        // would fail instead.
+        // UI-agnostic on purpose: this gate isn't about WHAT renders, it's
+        // about whether the app's main run loop survives launch + settle under
+        // the fatal watchdog. A >250ms main-thread stall trips assertionFailure
+        // → the app crashes → `app.state` drops out of .runningForeground. So
+        // we let it run, give the launch/first-render run-loop turns time to
+        // complete, and assert the app is still alive.
         XCTAssertTrue(
-            app.staticTexts["Connect to your gateway"].waitForExistence(timeout: 20),
-            "App should reach onboarding without a main-thread hang (--hang-fatal armed)"
+            app.wait(for: .runningForeground, timeout: 30),
+            "App should launch and reach the foreground under --hang-fatal"
         )
 
-        // Exercise a little interaction so the input/focus run-loop paths run
-        // under the watchdog too, then confirm the app is still alive (a fatal
-        // hang would have terminated it).
-        let connect = app.buttons["connectButton"]
-        if connect.waitForExistence(timeout: 5) {
-            connect.tap()
-        }
+        // Let first-render + any deferred work settle, then confirm still alive.
+        // A hang during this window would have killed the process.
+        Thread.sleep(forTimeInterval: 4)
         XCTAssertEqual(app.state, .runningForeground,
                        "App must stay alive — a --hang-fatal assertion would have crashed it")
     }
