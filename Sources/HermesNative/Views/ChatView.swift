@@ -1254,11 +1254,7 @@ struct ChatView: View {
         private let liveTurnID = UUID()
 
         var body: some View {
-            SessionThoughtGraphView(
-                turns: turns,
-                isThinking: reasoningGraph.isThinking,
-                onJumpToTool: onJumpToTool
-            )
+            SessionThoughtGraphView(turns: turns, onJumpToTool: onJumpToTool)
         }
     }
 

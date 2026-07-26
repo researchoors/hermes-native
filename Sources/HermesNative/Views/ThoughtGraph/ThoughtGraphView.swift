@@ -37,10 +37,6 @@ struct ThoughtGraphView: View {
     /// Whether the conversation turn is still streaming.
     let isStreaming: Bool
 
-    /// Whether the local reasoning model is actively summarizing right now —
-    /// drives the "thinking…" heartbeat in the header.
-    internal let isThinking: Bool
-
     /// Invoked with a tool-call ID when the user taps "Jump to tool in chat".
     var onJumpToTool: ((String) -> Void)?
 
@@ -64,7 +60,6 @@ struct ThoughtGraphView: View {
         engine: ThoughtGraphLayoutEngine,
         nodes: [ThoughtGraphNode],
         isStreaming: Bool,
-        isThinking: Bool = false,
         usageSummary: String? = nil,
         selection: Binding<String?>? = nil,
         onJumpToTool: ((String) -> Void)? = nil
@@ -72,7 +67,6 @@ struct ThoughtGraphView: View {
         self.engine = engine
         self.nodes = nodes
         self.isStreaming = isStreaming
-        self.isThinking = isThinking
         self.usageSummary = usageSummary
         self.externalSelection = selection
         self.onJumpToTool = onJumpToTool
@@ -692,16 +686,6 @@ struct ThoughtGraphView: View {
                     Text("complete")
                         .font(.caption)
                         .foregroundStyle(Theme.success)
-                }
-
-                if isThinking {
-                    Image(systemName: "brain")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.agentAccent)
-                        .symbolEffect(.pulse, options: .repeating)
-                    Text("thinking…")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.agentAccent)
                 }
 
                 if runningCount > 0 {

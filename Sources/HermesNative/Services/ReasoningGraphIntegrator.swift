@@ -15,11 +15,6 @@ final class ReasoningGraphIntegrator: ObservableObject {
     /// Reasoning-derived decision nodes, keyed by decision ID.
     @Published var reasoningNodes: [ThoughtGraphNode] = []
 
-    /// True while the summarizer is actively running (model loading or
-    /// inferring) — drives the "thinking…" heartbeat in the graph so you can
-    /// see the local model working before a deduction lands.
-    @Published internal var isThinking: Bool = false
-
     private let summarizer: any ReasoningSummarizing
     private var deltaBuffer: String = ""
     private var summarizationTask: Task<Void, Never>?
@@ -56,7 +51,6 @@ final class ReasoningGraphIntegrator: ObservableObject {
         deltaBuffer = ""
         reasoningNodes = []
         idCounter = 0
-        isThinking = false
     }
 
     // MARK: - Private
@@ -77,9 +71,6 @@ final class ReasoningGraphIntegrator: ObservableObject {
         let chunk = deltaBuffer
         deltaBuffer = ""
         guard !chunk.isEmpty else { return }
-
-        isThinking = true
-        defer { isThinking = false }
 
         await summarizer.feed(delta: chunk)
         guard let summary = await summarizer.summarize() else { return }
