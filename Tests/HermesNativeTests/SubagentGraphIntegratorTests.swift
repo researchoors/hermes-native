@@ -106,7 +106,7 @@ struct SubagentGraphIntegratorTests {
     }
 
     @Test("layout assigns lanes: main loop first, one lane per agent")
-    func layoutAssignsLanes() {
+    internal func layoutAssignsLanes() throws {
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)
         let nodes = [
             ThoughtGraphNode(id: "t1", name: "search_files", isComplete: true, startedAt: t0),
@@ -128,17 +128,17 @@ struct SubagentGraphIntegratorTests {
 
         // Time-plot: lanes stack on the y-axis, so an actor's nodes share a y;
         // time runs on x, so nodes with different starts get different x.
-        let x = { (id: String) in engine.layout(for: id)!.x }
-        let y = { (id: String) in engine.layout(for: id)!.y }
-        #expect(y("t1") == y("t2"))                 // both main lane
-        #expect(y("t2") == y("t3"))
-        #expect(y("agent-s1") == y("agent-s1-t1"))  // both the subagent lane
-        #expect(y("t1") != y("agent-s1"))           // different lanes
-        #expect(x("t1") != x("t2"))                 // started 1s apart
+        func x(_ id: String) throws -> Double { try #require(engine.layout(for: id)).x }
+        func y(_ id: String) throws -> Double { try #require(engine.layout(for: id)).y }
+        #expect(try y("t1") == y("t2"))                 // both main lane
+        #expect(try y("t2") == y("t3"))
+        #expect(try y("agent-s1") == y("agent-s1-t1"))  // both the subagent lane
+        #expect(try y("t1") != y("agent-s1"))           // different lanes
+        #expect(try x("t1") != x("t2"))                 // started 1s apart
     }
 
     @Test("layout positions nodes by start time and links spawns")
-    func layoutOrdersChronologically() {
+    internal func layoutOrdersChronologically() throws {
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)
         let nodes = [
             ThoughtGraphNode(id: "t2", name: "delegate_task", startedAt: t0.addingTimeInterval(1)),
@@ -152,8 +152,8 @@ struct SubagentGraphIntegratorTests {
         engine.layout(nodes: nodes)
 
         // Time flows on x now: an earlier start is further left.
-        let x = { (id: String) in engine.layout(for: id)!.x }
-        #expect(x("t1") < x("t2"))
+        func x(_ id: String) throws -> Double { try #require(engine.layout(for: id)).x }
+        #expect(try x("t1") < x("t2"))
 
         // Only spawn edges are drawn (t2 delegated agent-s1); within-lane
         // sequence is conveyed by left→right adjacency, not a .main edge.
