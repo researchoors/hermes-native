@@ -34,6 +34,20 @@ internal struct PanelKind: RawRepresentable, Codable, Hashable, Identifiable {
     /// content comes from the chat view, not a `PanelContext`, so the registry
     /// never builds it.
     internal static let conversation = PanelKind(rawValue: "conversation")
+    /// The session's living artifacts (maps, datasets, docs, HTML pages the
+    /// agent maintains). Session-global — it reads `ArtifactStore.shared`, so it
+    /// persists regardless of transcript scroll or which turn is selected: an
+    /// artifact stays put on the canvas while you page turns or scroll the chat.
+    /// Singleton (one artifacts pane) and host-rendered (it needs the store, not
+    /// a per-turn `PanelContext`).
+    internal static let artifacts = PanelKind(rawValue: "artifacts")
+    /// The macro all-turns Session Graph — every turn's flamechart replayed in
+    /// one plot. Session-global (it spans the whole conversation, not one turn)
+    /// and host-rendered: it needs both graph integrators and a jump-to-tool
+    /// callback the per-turn `PanelContext` doesn't carry, so the host builds it.
+    /// Opened as an in-canvas tile rather than a fullscreen sheet, so it docks
+    /// beside the conversation like any other lens.
+    internal static let sessionGraph = PanelKind(rawValue: "sessionGraph")
 }
 
 /// One panel on the dashboard canvas: a kind (what it shows) placed at a frame

@@ -31,6 +31,12 @@ internal struct DashboardLayout: Codable, Equatable {
         panels.removeAll { $0.id == id }
     }
 
+    /// Remove all panels of a given kind (e.g. when docking a lens inside the
+    /// conversation panel — the canvas tile is removed and replaced by the dock).
+    internal mutating func remove(_ kind: PanelKind) {
+        panels.removeAll { $0.kind == kind }
+    }
+
     /// Replace a panel's frame in place (after a drag or resize), preserving order.
     internal mutating func setFrame(_ frame: CGRect, for id: UUID) {
         guard let idx = panels.firstIndex(where: { $0.id == id }) else { return }
@@ -138,26 +144,20 @@ internal struct DashboardLayout: Codable, Equatable {
     /// column. Mirrors how the chat reads today (transcript primary, activity
     /// alongside) so flipping into Canvas mode looks familiar, then the user
     /// rearranges — including dragging the conversation itself.
+    /// The default canvas: ONE full-bleed conversation panel. This is the
+    /// classic chat expressed as a canvas — the conversation alone, filling the
+    /// space. The live lenses (flamechart, tools, thinking, skills, files) and
+    /// artifacts are added by the user or peeled out; while the conversation is
+    /// the only panel it runs in solo mode and shows the inline live strip, so a
+    /// bare canvas reads exactly like today's transcript.
     internal static func seededChatCanvas(for bounds: CGSize) -> DashboardLayout {
-        let w = max(bounds.width, DashboardPanel.minSize.width * 2 + 24)
-        let h = max(bounds.height, DashboardPanel.minSize.height * 2 + 24)
+        let w = max(bounds.width, DashboardPanel.minSize.width)
+        let h = max(bounds.height, DashboardPanel.minSize.height)
         let gap: CGFloat = 8
-        let rightColumnWidth = max(DashboardPanel.minSize.width, w * 0.32)
-        let convoWidth = w - rightColumnWidth - gap * 3
-        let rightX = convoWidth + gap * 2
-        let halfH = (h - gap * 3) / 2
         return DashboardLayout(panels: [
             DashboardPanel(
                 kind: .conversation,
-                frame: CGRect(x: gap, y: gap, width: convoWidth, height: h - gap * 2)
-            ),
-            DashboardPanel(
-                kind: .flamechart,
-                frame: CGRect(x: rightX, y: gap, width: rightColumnWidth, height: halfH)
-            ),
-            DashboardPanel(
-                kind: .runningTools,
-                frame: CGRect(x: rightX, y: gap * 2 + halfH, width: rightColumnWidth, height: halfH)
+                frame: CGRect(x: gap, y: gap, width: w - gap * 2, height: h - gap * 2)
             )
         ]).clamped(to: bounds)
     }

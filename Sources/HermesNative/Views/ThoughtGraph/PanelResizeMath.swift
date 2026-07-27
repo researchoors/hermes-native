@@ -240,6 +240,131 @@ internal enum PanelResizeMath {
         return best ?? CGRect(origin: .zero, size: desired.size)
     }
 
+    // MARK: Auto-fill resize
+
+    /// The outcome of an auto-fill resize: the resized panel's own frame (capped
+    /// so it never pushes a flush neighbour below its minimum, nor grows through
+    /// a non-adjacent neighbour) plus replacement frames for the flush neighbours
+    /// that tracked the moved edge, keyed by their index in the `others` array.
+    internal struct AutoFillResize: Equatable {
+        internal let frame: CGRect
+        internal let neighbours: [Int: CGRect]
+    }
+
+    /// Resize with neighbours that fill in: a panel edge dragged toward a flush
+    /// neighbour pushes it (shrinking it, down to its minimum); dragged away, the
+    /// flush neighbour's near edge follows into the vacated space (growing it). So
+    /// shrinking a panel lets the others expand around it and growing it reclaims
+    /// their space — the intuitive "tile" behaviour, instead of a resize that
+    /// simply stops dead at a neighbour.
+    ///
+    /// A neighbour is *flush* on a moved edge when its opposite edge sits on that
+    /// edge (within `flushTolerance`) AND it overlaps the panel on the other axis.
+    /// A non-adjacent neighbour on the growth side is a hard wall (the panel stops
+    /// at it), preserving the strict no-overlap rule for panels that aren't
+    /// touching. Pure geometry — the gesture applies `frame` to the dragged panel
+    /// and each `neighbours` entry to the corresponding other panel.
+    internal static func autoFillResize(
+        candidate: CGRect,
+        startFrame: CGRect,
+        handle: PanelHandle,
+        others: [CGRect],
+        bounds: CGSize,
+        flushTolerance: CGFloat = 1.5
+    ) -> AutoFillResize {
+        // swiftlint:disable function_body_length cyclomatic_complexity
+        var frame = candidate
+        var updates: [Int: CGRect] = [:]
+
+        // Cross-axis overlap tests against the panel's ORIGINAL extent, so a
+        // neighbour only counts if it actually shares the dragged edge's span.
+        func sharesRows(_ r: CGRect) -> Bool { r.minY < startFrame.maxY - 0.5 && r.maxY > startFrame.minY + 0.5 }
+        func sharesCols(_ r: CGRect) -> Bool { r.minX < startFrame.maxX - 0.5 && r.maxX > startFrame.minX + 0.5 }
+
+        if handle.movesTrailingEdge {
+            var cap = bounds.width
+            var flush: [Int] = []
+            for (i, r) in others.enumerated() where sharesRows(r) {
+                if abs(r.minX - startFrame.maxX) <= flushTolerance {
+                    flush.append(i)
+                    cap = min(cap, r.maxX - minSize.width)     // shrink neighbour, not past min
+                } else if r.minX >= startFrame.maxX - flushTolerance {
+                    cap = min(cap, r.minX)                       // non-adjacent → hard wall
+                }
+            }
+            let newMaxX = min(frame.maxX, max(cap, frame.minX + minSize.width))
+            frame = CGRect(x: frame.minX, y: frame.minY, width: newMaxX - frame.minX, height: frame.height)
+            for i in flush {
+                let r = others[i]
+                let newMinX = min(newMaxX, r.maxX - minSize.width)
+                updates[i] = CGRect(x: newMinX, y: r.minY, width: r.maxX - newMinX, height: r.height)
+            }
+        }
+
+        if handle.movesLeadingEdge {
+            var cap: CGFloat = 0
+            var flush: [Int] = []
+            for (i, r) in others.enumerated() where sharesRows(r) {
+                if abs(r.maxX - startFrame.minX) <= flushTolerance {
+                    flush.append(i)
+                    cap = max(cap, r.minX + minSize.width)
+                } else if r.maxX <= startFrame.minX + flushTolerance {
+                    cap = max(cap, r.maxX)
+                }
+            }
+            let newMinX = max(frame.minX, min(cap, frame.maxX - minSize.width))
+            frame = CGRect(x: newMinX, y: frame.minY, width: frame.maxX - newMinX, height: frame.height)
+            for i in flush {
+                let r = others[i]
+                let newMaxX = max(newMinX, r.minX + minSize.width)
+                updates[i] = CGRect(x: r.minX, y: r.minY, width: newMaxX - r.minX, height: r.height)
+            }
+        }
+
+        if handle.movesBottomEdge {
+            var cap = bounds.height
+            var flush: [Int] = []
+            for (i, r) in others.enumerated() where sharesCols(r) {
+                if abs(r.minY - startFrame.maxY) <= flushTolerance {
+                    flush.append(i)
+                    cap = min(cap, r.maxY - minSize.height)
+                } else if r.minY >= startFrame.maxY - flushTolerance {
+                    cap = min(cap, r.minY)
+                }
+            }
+            let newMaxY = min(frame.maxY, max(cap, frame.minY + minSize.height))
+            frame = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: newMaxY - frame.minY)
+            for i in flush {
+                let r = others[i]
+                let newMinY = min(newMaxY, r.maxY - minSize.height)
+                updates[i] = CGRect(x: r.minX, y: newMinY, width: r.width, height: r.maxY - newMinY)
+            }
+        }
+
+        if handle.movesTopEdge {
+            var cap: CGFloat = 0
+            var flush: [Int] = []
+            for (i, r) in others.enumerated() where sharesCols(r) {
+                if abs(r.maxY - startFrame.minY) <= flushTolerance {
+                    flush.append(i)
+                    cap = max(cap, r.minY + minSize.height)
+                } else if r.maxY <= startFrame.minY + flushTolerance {
+                    cap = max(cap, r.maxY)
+                }
+            }
+            let newMinY = max(frame.minY, min(cap, frame.maxY - minSize.height))
+            frame = CGRect(x: frame.minX, y: newMinY, width: frame.width, height: frame.maxY - newMinY)
+            for i in flush {
+                let r = others[i]
+                let newMaxY = max(newMinY, r.minY + minSize.height)
+                updates[i] = CGRect(x: r.minX, y: r.minY, width: r.width, height: newMaxY - r.minY)
+            }
+        }
+
+        return AutoFillResize(frame: frame, neighbours: updates)
+        // swiftlint:enable function_body_length cyclomatic_complexity
+    }
+
     // MARK: Move
 
     private static func move(_ frame: CGRect, by t: CGSize, bounds: CGSize) -> CGRect {
