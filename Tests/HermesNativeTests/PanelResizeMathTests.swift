@@ -309,4 +309,98 @@ internal struct PanelResizeMathTests {
         #expect(snapped.maxX == bounds.width)
         #expect(snapped.minX == 100)
     }
+
+    // MARK: - Auto-fill resize
+
+    /// Two panels side by side, flush at x=500. Left = `start` (100..500),
+    /// right neighbour 500..900.
+    private var rightNeighbour: CGRect { CGRect(x: 500, y: 100, width: 400, height: 300) }
+
+    @Test("Shrinking the trailing edge grows the flush neighbour into the gap")
+    internal func shrinkGrowsFlushNeighbour() {
+        // Drag the left panel's right edge from 500 to 400 (shrink by 100).
+        let candidate = CGRect(x: 100, y: 100, width: 300, height: 300)  // maxX = 400
+        let result = PanelResizeMath.autoFillResize(
+            candidate: candidate, startFrame: start, handle: .trailing,
+            others: [rightNeighbour], bounds: bounds
+        )
+        #expect(result.frame.maxX == 400)                 // panel shrank as dragged
+        let grown = try? #require(result.neighbours[0])
+        #expect(grown?.minX == 400)                       // neighbour's near edge followed
+        #expect(grown?.maxX == 900)                       // far edge pinned — it grew
+    }
+
+    @Test("Growing the trailing edge shrinks the flush neighbour, not past its min")
+    internal func growShrinksFlushNeighbourToMin() {
+        // Drag the right edge far past the neighbour's far edge.
+        let candidate = CGRect(x: 100, y: 100, width: 850, height: 300)  // maxX = 950
+        let result = PanelResizeMath.autoFillResize(
+            candidate: candidate, startFrame: start, handle: .trailing,
+            others: [rightNeighbour], bounds: bounds
+        )
+        // Neighbour can't shrink below min width; its near edge stops there and
+        // the panel is capped at that same line — never overlapping.
+        let squeezed = try? #require(result.neighbours[0])
+        #expect(squeezed?.width == PanelResizeMath.minSize.width)
+        #expect(squeezed?.maxX == 900)                    // far edge still pinned
+        #expect(result.frame.maxX == 900 - PanelResizeMath.minSize.width)
+    }
+
+    @Test("A non-adjacent neighbour on the growth side is a hard wall")
+    internal func nonAdjacentNeighbourBlocksGrowth() {
+        // Neighbour separated by a gap (starts at 600, panel ends at 500).
+        let detached = CGRect(x: 600, y: 100, width: 300, height: 300)
+        let candidate = CGRect(x: 100, y: 100, width: 700, height: 300)  // wants maxX = 800
+        let result = PanelResizeMath.autoFillResize(
+            candidate: candidate, startFrame: start, handle: .trailing,
+            others: [detached], bounds: bounds
+        )
+        #expect(result.frame.maxX == 600)                 // stopped at the detached edge
+        #expect(result.neighbours.isEmpty)                // nothing tracked it
+    }
+
+    @Test("A neighbour that doesn't share the dragged edge's rows is ignored")
+    internal func neighbourOutsideRowSpanIgnored() {
+        // Flush in X but far below in Y — doesn't share the right edge's span.
+        let below = CGRect(x: 500, y: 600, width: 400, height: 150)
+        let candidate = CGRect(x: 100, y: 100, width: 300, height: 300)
+        let result = PanelResizeMath.autoFillResize(
+            candidate: candidate, startFrame: start, handle: .trailing,
+            others: [below], bounds: bounds
+        )
+        #expect(result.frame.maxX == 400)                 // free to shrink
+        #expect(result.neighbours.isEmpty)                // the below panel untouched
+    }
+
+    @Test("Shrinking the leading edge grows a flush left neighbour rightward")
+    internal func shrinkLeadingGrowsLeftNeighbour() {
+        // Left neighbour 0..100 flush against start's left edge at 100.
+        let left = CGRect(x: 0, y: 100, width: 100, height: 300)
+        // Drag start's left edge from 100 to 200 (shrink from the left).
+        let candidate = CGRect(x: 200, y: 100, width: 300, height: 300)
+        let result = PanelResizeMath.autoFillResize(
+            candidate: candidate, startFrame: start, handle: .leading,
+            others: [left], bounds: bounds
+        )
+        #expect(result.frame.minX == 200)
+        let grown = try? #require(result.neighbours[0])
+        #expect(grown?.minX == 0)                         // far edge pinned
+        #expect(grown?.maxX == 200)                       // near edge followed the gap
+    }
+
+    @Test("A corner resize auto-fills flush neighbours on both moved edges")
+    internal func cornerResizeFillsBothAxes() {
+        let rightN = CGRect(x: 500, y: 100, width: 400, height: 300)
+        let belowN = CGRect(x: 100, y: 400, width: 400, height: 300)  // flush at y=400
+        // Bottom-trailing corner shrunk: maxX 500→400, maxY 400→320.
+        let candidate = CGRect(x: 100, y: 100, width: 300, height: 220)
+        let result = PanelResizeMath.autoFillResize(
+            candidate: candidate, startFrame: start, handle: .bottomTrailing,
+            others: [rightN, belowN], bounds: bounds
+        )
+        #expect(result.frame.maxX == 400)
+        #expect(result.frame.maxY == 320)
+        #expect(result.neighbours[0]?.minX == 400)        // right neighbour grew left
+        #expect(result.neighbours[1]?.minY == 320)        // below neighbour grew up
+    }
 }

@@ -40,6 +40,15 @@ internal struct DashboardCanvasView: View {
         internal let id: UUID
         internal let handle: PanelHandle
         internal let startFrame: CGRect
+        /// The other panels' frames captured at drag-begin, so an auto-fill
+        /// resize recomputes neighbour positions from the pristine layout each
+        /// change — never from frames a previous change already moved.
+        internal var others: [PanelSnapshot] = []
+    }
+
+    private struct PanelSnapshot: Equatable {
+        internal let id: UUID
+        internal let frame: CGRect
     }
 
     /// Which grip the pointer is currently over, so it can highlight (and only
@@ -310,11 +319,15 @@ internal struct DashboardCanvasView: View {
                 // raise the panel. Subsequent changes recompute from this frame,
                 // so translation never accumulates rounding error.
                 if activeDrag?.id != panel.id || activeDrag?.handle != handle {
-                    activeDrag = ActiveDrag(id: panel.id, handle: handle, startFrame: panel.frame)
+                    let snapshot = layout.panels
+                        .filter { $0.id != panel.id }
+                        .map { PanelSnapshot(id: $0.id, frame: $0.frame) }
+                    activeDrag = ActiveDrag(id: panel.id, handle: handle, startFrame: panel.frame, others: snapshot)
                     layout.bringToFront(panel.id)
                 }
-                guard let start = activeDrag?.startFrame else { return }
-                let others = layout.panels.filter { $0.id != panel.id }.map(\.frame)
+                guard let drag = activeDrag else { return }
+                let start = drag.startFrame
+                let others = drag.others.map(\.frame)
                 let candidate = PanelResizeMath.apply(
                     handle: handle,
                     startFrame: start,
@@ -335,15 +348,23 @@ internal struct DashboardCanvasView: View {
                     // space instead of being blocked at every step.
                     layout.setFrame(snapped, for: panel.id)
                 } else {
-                    // A resize stays strict: it can't grow through a neighbour, so it
-                    // stops at the neighbour's edge as it's dragged.
-                    let resolved = PanelResizeMath.resolveOverlap(
+                    // A resize auto-fills: a flush neighbour tracks the dragged edge
+                    // (shrinking down to its min as the panel grows, growing into the
+                    // gap as the panel shrinks) so the canvas stays tiled. A
+                    // non-adjacent neighbour is still a hard wall the panel stops at.
+                    // Recomputed from the pristine drag-begin snapshot each change, so
+                    // neighbours don't drift as the drag continues.
+                    let filled = PanelResizeMath.autoFillResize(
                         candidate: snapped,
                         startFrame: start,
                         handle: handle,
-                        others: others
+                        others: others,
+                        bounds: bounds
                     )
-                    layout.setFrame(resolved, for: panel.id)
+                    layout.setFrame(filled.frame, for: panel.id)
+                    for (index, frame) in filled.neighbours {
+                        layout.setFrame(frame, for: drag.others[index].id)
+                    }
                 }
             }
             .onEnded { _ in
