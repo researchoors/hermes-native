@@ -11,7 +11,7 @@ SCHEME_MAC := HermesNative-macOS
 CONFIG := Debug
 DERIVED := $(HOME)/Library/Developer/Xcode/DerivedData
 
-.PHONY: generate build run kill lint lint-fix lint-baseline lint-baseline-guard test test-session-smoke check clean diagnose-hang
+.PHONY: generate build run kill lint lint-fix lint-baseline lint-baseline-guard test test-session-smoke-ios test-session-smoke-macos check clean diagnose-hang
 
 # Regenerate the Xcode project from project.yml (needed after adding files).
 generate:
@@ -85,12 +85,21 @@ test:
 #
 # Covers: nav pane smoke (all sidebar/tab items), long-session second turn,
 # session switch while streaming, concurrent sessions, wiki navigation.
-test-session-smoke:
+test-session-smoke-ios:
 	xcodebuild test \
 		-project $(PROJECT) \
-		-scheme HermesNativeUITests \
+		-scheme HermesNative-iOS \
+		-destination 'platform=iOS Simulator,name=iPhone 16' \
+		-only-testing:HermesNativeUITests/HermesNativeIOSSmokeTests \
+		HERMES_NATIVE_GATEWAY_URL="$(HERMES_NATIVE_GATEWAY_URL)" \
+		HERMES_NATIVE_API_KEY="$(HERMES_NATIVE_API_KEY)"
+
+test-session-smoke-macos:
+	xcodebuild test \
+		-project $(PROJECT) \
+		-scheme HermesNative-macOS \
 		-destination 'platform=macOS' \
-		-only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests \
+		-only-testing:HermesNativeUITests/HermesNativeMacOSSmokeTests \
 		HERMES_NATIVE_GATEWAY_URL="$(HERMES_NATIVE_GATEWAY_URL)" \
 		HERMES_NATIVE_API_KEY="$(HERMES_NATIVE_API_KEY)"
 

@@ -173,17 +173,17 @@ jobs:
           API_SERVER_KEY: ${{ env.HERMES_CI_API_KEY }}
         run: |
           set -o pipefail
-          RESULT_BUNDLE="${RUNNER_TEMP}/HermesNativeSessionSmokeTests.xcresult"
+          RESULT_BUNDLE="${RUNNER_TEMP}/HermesNativeMacOSSmokeTests.xcresult"
 
           xcodebuild test \
             -project HermesNative.xcodeproj \
             -scheme HermesNative-macOS \
             -destination 'platform=macOS' \
-            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testNavPaneSmoke_macOSSidebar \
-            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testInputBarUsableAfterFirstResponse \
-            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testInputRouting_SwitchSessionWhileStreaming \
-            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testConcurrentSessions_BothInputBarsReEnable \
-            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testWikiNavigation_GraphAndFileTree \
+            -only-testing:HermesNativeUITests/HermesNativeMacOSSmokeTests/testSidebarNavSmoke \
+            -only-testing:HermesNativeUITests/HermesNativeMacOSSmokeTests/testInputBarUsableAfterFirstResponse \
+            -only-testing:HermesNativeUITests/HermesNativeMacOSSmokeTests/testInputRouting_SwitchSessionWhileStreaming \
+            -only-testing:HermesNativeUITests/HermesNativeMacOSSmokeTests/testConcurrentSessions_BothInputBarsReEnable \
+            -only-testing:HermesNativeUITests/HermesNativeMacOSSmokeTests/testWikiCanvasInteraction \
             CODE_SIGNING_ALLOWED=NO \
             HERMES_NATIVE_GATEWAY_URL="${HERMES_NATIVE_GATEWAY_URL}" \
             HERMES_NATIVE_API_KEY="${HERMES_NATIVE_API_KEY}" \
@@ -196,7 +196,7 @@ jobs:
         with:
           name: macos-session-smoke-artifacts
           path: |
-            ${{ runner.temp }}/HermesNativeSessionSmokeTests.xcresult
+            ${{ runner.temp }}/HermesNativeMacOSSmokeTests.xcresult
             ${{ runner.temp }}/macos-session-smoke.log
             ${{ runner.temp }}/hermes-ci-home/logs/api-server.log
           if-no-files-found: ignore
