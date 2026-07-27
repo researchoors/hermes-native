@@ -27,6 +27,13 @@ internal struct PanelKind: RawRepresentable, Codable, Hashable, Identifiable {
     internal static let skills = PanelKind(rawValue: "skills")
     /// Files this turn touched ("where").
     internal static let files = PanelKind(rawValue: "files")
+    /// The live chat conversation itself — the transcript where the user and
+    /// agent exchange turns. A first-class, resizable panel on the session
+    /// canvas so the chat docks alongside the lenses instead of owning the whole
+    /// screen. Singleton (there is one conversation) and host-rendered: its
+    /// content comes from the chat view, not a `PanelContext`, so the registry
+    /// never builds it.
+    internal static let conversation = PanelKind(rawValue: "conversation")
 }
 
 /// One panel on the dashboard canvas: a kind (what it shows) placed at a frame

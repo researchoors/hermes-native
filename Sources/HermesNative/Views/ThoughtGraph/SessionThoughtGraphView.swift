@@ -194,6 +194,11 @@ internal struct SessionThoughtGraphView: View {
             Text(selectedTurn.map { "Turn \($0.index)" } ?? "Dashboard")
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.secondary)
+            Text("drag the title bar to move · drag an edge or corner to resize")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.tertiary)
+                .lineLimit(1)
+                .layoutPriority(-1)
             Spacer()
             Button {
                 showAddPalette.toggle()

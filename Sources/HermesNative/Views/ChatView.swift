@@ -42,6 +42,14 @@ struct ChatView: View {
     // ── Thought Graph ──
     @State private var showThoughtGraph = false
 
+    #if os(macOS)
+    /// Canvas mode: rearrange this session into resizable panels — the
+    /// conversation itself plus the live lenses — instead of the full-width
+    /// transcript. Per-session UI state (not persisted); the panel arrangement
+    /// it uses IS persisted, under DashboardLayout.chatCanvasKey.
+    @State private var canvasMode = false
+    #endif
+
     // ── Quiz Mode ──
     @State private var showQuizSheet = false
     @State private var showDecksSheet = false
@@ -312,6 +320,20 @@ struct ChatView: View {
                 .foregroundStyle(ttsService.isEnabled ? Theme.accent : Theme.secondary)
                 .help(ttsService.isEnabled ? "Text-to-speech enabled" : "Text-to-speech disabled")
                 .padding(.horizontal, 8)
+
+                // Canvas mode: rearrange this session into resizable panels
+                // (conversation + live lenses). Toggle back with the same button.
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { canvasMode.toggle() }
+                } label: {
+                    Label(canvasMode ? "Exit Canvas" : "Canvas",
+                          systemImage: canvasMode ? "rectangle.compress.vertical" : "rectangle.split.3x1")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(canvasMode ? Theme.accent : Theme.secondary)
+                .help("Canvas mode — drag & resize the conversation and its lenses as panels")
+                .padding(.horizontal, 8)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
@@ -323,8 +345,27 @@ struct ChatView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
+            #if os(macOS)
+            if canvasMode {
+                // Canvas mode owns its own composer (docked at its bottom), so
+                // it replaces the message list AND the normal input bar.
+                SessionChatCanvas(
+                    chatViewModel: chatViewModel,
+                    subagentGraph: chatViewModel.subagentGraph,
+                    reasoningGraph: chatViewModel.reasoningGraph,
+                    persona: displayPersona,
+                    skinProvider: skinProvider,
+                    isInputFocused: $isInputFocused,
+                    inputFieldRef: $inputFieldRef,
+                    onExit: { withAnimation(.easeInOut(duration: 0.2)) { canvasMode = false } }
+                )
+            } else {
+                messageListArea
+            }
+            #else
 // Message list
             messageListArea
+            #endif
 
             #if os(iOS)
             Divider()

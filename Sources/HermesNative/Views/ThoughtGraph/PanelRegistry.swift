@@ -11,6 +11,10 @@ internal struct PanelContext {
     internal let compactions: [CompactionMarker]
     internal let skills: [SkillInfo]
     internal let isThinking: Bool
+    /// The turn is streaming right now — drives the flamechart's growing right
+    /// edge and live rescale. `false` for settled past turns (the dashboard);
+    /// the live chat canvas passes the model's streaming flag.
+    internal var isStreaming: Bool = false
     /// Shared timeline↔filetree↔tools highlight. Nil when the host isn't
     /// coordinating a selection.
     internal let selection: Binding<String?>?
@@ -31,17 +35,25 @@ internal struct PanelDescriptor: Identifiable {
     /// singleton because it owns the only 30 Hz redraw timer — one instance
     /// keeps the canvas at today's one-timer cost (the anti-beachball rule).
     internal let singleton: Bool
-    /// Builds the panel's content (everything below the title bar).
-    internal let build: (PanelContext) -> AnyView
+    /// Builds the panel's content (everything below the title bar) from a
+    /// `PanelContext`. `nil` for **host-rendered** panels (e.g. the live
+    /// conversation) whose content needs material the context doesn't carry —
+    /// the host supplies those views directly and the registry only tracks their
+    /// title/icon/singleton metadata.
+    internal let build: ((PanelContext) -> AnyView)?
 
     internal var id: String { kind.rawValue }
+
+    /// `true` when the host renders this panel's content itself rather than the
+    /// registry building it from a `PanelContext`.
+    internal var isHostRendered: Bool { build == nil }
 
     internal init(
         kind: PanelKind,
         title: String,
         icon: String,
         singleton: Bool = false,
-        build: @escaping (PanelContext) -> AnyView
+        build: ((PanelContext) -> AnyView)? = nil
     ) {
         self.kind = kind
         self.title = title
@@ -90,15 +102,18 @@ internal final class PanelRegistry {
     }
 
     /// Build a panel's content, or a graceful placeholder when its kind isn't
-    /// registered (an old saved layout referencing a since-removed custom kind).
+    /// registered (an old saved layout referencing a since-removed custom kind)
+    /// or is host-rendered (the host owns its view and should have supplied it
+    /// directly — reaching here means it didn't).
     internal func content(for kind: PanelKind, context: PanelContext) -> AnyView {
-        guard let descriptor = byKind[kind] else {
+        guard let build = byKind[kind]?.build else {
+            let known = byKind[kind] != nil
             return AnyView(PanelEmptyState(
                 icon: "questionmark.square.dashed",
-                message: "Unknown panel “\(kind.rawValue)”"
+                message: known ? "“\(kind.rawValue)” is rendered by the host" : "Unknown panel “\(kind.rawValue)”"
             ))
         }
-        return descriptor.build(context)
+        return build(context)
     }
 
     /// Kinds a user may still add, given what's already on the canvas: everything
@@ -123,7 +138,7 @@ internal final class PanelRegistry {
                     engine: ctx.engine,
                     nodes: ctx.nodes,
                     compactions: ctx.compactions,
-                    isStreaming: false,
+                    isStreaming: ctx.isStreaming,
                     isThinking: ctx.isThinking,
                     usageSummary: nil,
                     selection: ctx.selection,
@@ -159,6 +174,30 @@ internal final class PanelRegistry {
         ) { ctx in
             AnyView(FilesPanelAdapter(nodes: ctx.nodes, selection: ctx.selection))
         })
+        return registry
+    }()
+
+    /// The catalog for the **live chat canvas** (Canvas mode in ChatView): the
+    /// conversation panel plus the live lenses. The conversation is a
+    /// host-rendered singleton — its content is the real chat transcript, which
+    /// the host supplies directly (it needs the view model, skin, and scroll
+    /// wiring the `PanelContext` deliberately doesn't carry). Listed first so it
+    /// leads the add-panel palette.
+    internal static let chatCanvas: PanelRegistry = {
+        let registry = PanelRegistry()
+        registry.register(PanelDescriptor(
+            kind: .conversation,
+            title: "Conversation",
+            icon: "bubble.left.and.bubble.right",
+            singleton: true,
+            build: nil  // host-rendered — see SessionChatCanvas
+        ))
+        // Reuse the standard lens builders verbatim.
+        for kind in [PanelKind.flamechart, .thinking, .runningTools, .skills, .files] {
+            if let descriptor = standard.descriptor(for: kind) {
+                registry.register(descriptor)
+            }
+        }
         return registry
     }()
 }

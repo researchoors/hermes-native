@@ -29,10 +29,24 @@ internal struct DashboardCanvasView: View {
         internal let startFrame: CGRect
     }
 
+    /// Which grip the pointer is currently over, so it can highlight (and only
+    /// that one). Cleared on exit.
+    @State private var hoveredHandle: HandleRef?
+
+    private struct HandleRef: Equatable {
+        internal let id: UUID
+        internal let handle: PanelHandle
+    }
+
     private static let coordSpace = "thoughtDashboardCanvas"
-    private static let titleBarHeight: CGFloat = 26
-    private static let edgeGrip: CGFloat = 7
-    private static let cornerGrip: CGFloat = 14
+    private static let titleBarHeight: CGFloat = 28
+    /// Hit-target thickness for an edge / corner grab zone (invisible, generous).
+    private static let edgeGrip: CGFloat = 9
+    private static let cornerGrip: CGFloat = 20
+    /// Visible handle chrome drawn on the focused panel so resizing is obvious.
+    private static let edgeHandleThickness: CGFloat = 4
+    private static let edgeHandleLength: CGFloat = 26
+    private static let cornerHandleSize: CGFloat = 11
 
     internal var body: some View {
         GeometryReader { geo in
@@ -78,7 +92,7 @@ internal struct DashboardCanvasView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .shadow(color: .black.opacity(isFocused ? 0.35 : 0.2), radius: isFocused ? 12 : 6, y: 3)
-        .overlay(resizeGrips(panel, bounds: bounds))
+        .overlay(resizeGrips(panel, bounds: bounds, isFocused: isFocused))
         .offset(x: panel.frame.minX, y: panel.frame.minY)
         // Any touch on the panel body focuses it (without stealing drags).
         .simultaneousGesture(TapGesture().onEnded { layout.bringToFront(panel.id) })
@@ -86,6 +100,10 @@ internal struct DashboardCanvasView: View {
 
     private func titleBar(_ panel: DashboardPanel, bounds: CGSize, isFocused: Bool) -> some View {
         HStack(spacing: 6) {
+            // Grip glyph → this bar is the drag handle for moving the panel.
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(isFocused ? Theme.secondary : Theme.tertiary)
             Image(systemName: icon(panel.kind))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(isFocused ? Theme.accent : Theme.secondary)
@@ -117,61 +135,84 @@ internal struct DashboardCanvasView: View {
     }
 
     // MARK: - Resize grips (8 edges + corners)
+    //
+    // Each grip is a generous, invisible hit zone pinned to an edge/corner,
+    // with VISIBLE handle chrome drawn on top when the panel is focused — so
+    // the user can see where to grab, not just discover it by hunting. The
+    // hovered handle brightens to accent. Chrome only shows on the focused
+    // panel to avoid a canvas full of handles.
 
-    private func resizeGrips(_ panel: DashboardPanel, bounds: CGSize) -> some View {
+    private func resizeGrips(_ panel: DashboardPanel, bounds: CGSize, isFocused: Bool) -> some View {
         ZStack {
-            // Edges
-            grip(panel, .top, bounds: bounds)
+            grip(panel, .top, bounds: bounds, isFocused: isFocused)
                 .frame(height: Self.edgeGrip).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            grip(panel, .bottom, bounds: bounds)
+            grip(panel, .bottom, bounds: bounds, isFocused: isFocused)
                 .frame(height: Self.edgeGrip).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            grip(panel, .leading, bounds: bounds)
+            grip(panel, .leading, bounds: bounds, isFocused: isFocused)
                 .frame(width: Self.edgeGrip).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            grip(panel, .trailing, bounds: bounds)
+            grip(panel, .trailing, bounds: bounds, isFocused: isFocused)
                 .frame(width: Self.edgeGrip).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-            // Corners (drawn last → win the hit test over the edges they overlap)
-            corner(panel, .topLeading, bounds: bounds, alignment: .topLeading)
-            corner(panel, .topTrailing, bounds: bounds, alignment: .topTrailing)
-            corner(panel, .bottomLeading, bounds: bounds, alignment: .bottomLeading)
-            corner(panel, .bottomTrailing, bounds: bounds, alignment: .bottomTrailing)
+            // Corners drawn last → win the hit test over the edges they overlap.
+            corner(panel, .topLeading, bounds: bounds, alignment: .topLeading, isFocused: isFocused)
+            corner(panel, .topTrailing, bounds: bounds, alignment: .topTrailing, isFocused: isFocused)
+            corner(panel, .bottomLeading, bounds: bounds, alignment: .bottomLeading, isFocused: isFocused)
+            corner(panel, .bottomTrailing, bounds: bounds, alignment: .bottomTrailing, isFocused: isFocused)
         }
     }
 
-    private func grip(_ panel: DashboardPanel, _ handle: PanelHandle, bounds: CGSize) -> some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .gesture(dragGesture(handle, panel: panel, bounds: bounds))
-            .pointerStyleResize(handle)
+    private func grip(_ panel: DashboardPanel, _ handle: PanelHandle, bounds: CGSize, isFocused: Bool) -> some View {
+        let isHot = hoveredHandle == HandleRef(id: panel.id, handle: handle)
+        let horizontal = handle == .top || handle == .bottom
+        return ZStack {
+            Color.clear
+            if isFocused {
+                // A short capsule centered on the edge — the visible grab bar.
+                Capsule()
+                    .fill(isHot ? Theme.accent : Theme.secondary.opacity(0.7))
+                    .frame(
+                        width: horizontal ? Self.edgeHandleLength : Self.edgeHandleThickness,
+                        height: horizontal ? Self.edgeHandleThickness : Self.edgeHandleLength
+                    )
+            }
+        }
+        .contentShape(Rectangle())
+        .gesture(dragGesture(handle, panel: panel, bounds: bounds))
+        .onHover { inside in setHover(inside, panel: panel, handle: handle) }
+        .pointerStyleResize(handle)
     }
 
     private func corner(
         _ panel: DashboardPanel,
         _ handle: PanelHandle,
         bounds: CGSize,
-        alignment: Alignment
+        alignment: Alignment,
+        isFocused: Bool
     ) -> some View {
-        ZStack(alignment: cornerGlyphAlignment(handle)) {
+        let isHot = hoveredHandle == HandleRef(id: panel.id, handle: handle)
+        return ZStack {
             Color.clear
-            // A faint corner tick on the bottom-trailing grip makes resize
-            // discoverable without cluttering all four corners.
-            if handle == .bottomTrailing {
-                Image(systemName: "arrow.down.right")
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundStyle(Theme.tertiary)
-                    .padding(2)
+            if isFocused {
+                // A filled dot marks each corner as a resize handle.
+                Circle()
+                    .fill(isHot ? Theme.accent : Theme.surface)
+                    .overlay(Circle().stroke(isHot ? Theme.accent : Theme.secondary, lineWidth: 1.5))
+                    .frame(width: Self.cornerHandleSize, height: Self.cornerHandleSize)
             }
         }
         .frame(width: Self.cornerGrip, height: Self.cornerGrip)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
         .contentShape(Rectangle())
         .gesture(dragGesture(handle, panel: panel, bounds: bounds))
+        .onHover { inside in setHover(inside, panel: panel, handle: handle) }
         .pointerStyleResize(handle)
     }
 
-    private func cornerGlyphAlignment(_ handle: PanelHandle) -> Alignment {
-        switch handle {
-        case .bottomTrailing: return .bottomTrailing
-        default: return .center
+    private func setHover(_ inside: Bool, panel: DashboardPanel, handle: PanelHandle) {
+        let ref = HandleRef(id: panel.id, handle: handle)
+        if inside {
+            hoveredHandle = ref
+        } else if hoveredHandle == ref {
+            hoveredHandle = nil
         }
     }
 
