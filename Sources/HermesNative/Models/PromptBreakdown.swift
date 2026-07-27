@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - PromptSection
 
-struct PromptSection: Identifiable, Codable {
+struct PromptSection: Identifiable, Codable, Hashable, Sendable {
     let id: String
     let name: String
     let source: String
@@ -23,7 +23,7 @@ struct PromptSection: Identifiable, Codable {
 
 // MARK: - PromptBreakdown
 
-struct PromptBreakdown: Codable {
+struct PromptBreakdown: Codable, Sendable {
     let sessionID: String
     let model: String
     let contextLimit: Int

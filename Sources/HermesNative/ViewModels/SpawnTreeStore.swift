@@ -459,7 +459,7 @@ final class SpawnTreeStore: ObservableObject {
 // MARK: - Session Tree
 
 /// A tree of spawn nodes for a single agent session.
-class SessionTree: ObservableObject, Identifiable {
+class SessionTree: ObservableObject, Identifiable, @unchecked Sendable {
     let id = UUID()
     let sessionID: String
     @Published var root: SpawnNode

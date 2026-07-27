@@ -13,7 +13,7 @@ func colorForStatus(_ status: NodeStatus) -> Color {
 
 /// A node in the agent's spawn tree — represents a root prompt or a subagent.
 /// Recursive structure: root prompt → children (delegated subagents) → their children, etc.
-class SpawnNode: Identifiable, ObservableObject, Hashable, TokenAccountable {
+class SpawnNode: Identifiable, ObservableObject, Hashable, TokenAccountable, @unchecked Sendable {
     let id: String
     let goal: String
     let depth: Int
