@@ -149,7 +149,7 @@ enum SkillStoreDisk {
 // MARK: - SkillStore
 
 @Observable
-internal final class SkillStore {
+internal final class SkillStore: @unchecked Sendable {
     static let shared = SkillStore()
 
     var skills: [SkillInfo] = []
