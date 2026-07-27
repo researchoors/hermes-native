@@ -222,6 +222,47 @@ internal struct PanelResizeMathTests {
         #expect(slot.origin == .zero)
     }
 
+    // MARK: - Settle-on-release (nearestVacant)
+
+    @Test("A drop in clear space stays exactly where it landed")
+    internal func nearestVacantClearDropUnchanged() {
+        let desired = CGRect(x: 300, y: 250, width: 300, height: 200)
+        let other = CGRect(x: 0, y: 0, width: 200, height: 200)
+        let settled = PanelResizeMath.nearestVacant(to: desired, others: [other], bounds: bounds)
+        #expect(settled == desired)  // no overlap → untouched, no far-corner snap
+    }
+
+    @Test("A drop over a neighbour settles onto a nearby non-overlapping spot")
+    internal func nearestVacantOverlappingDropSettlesClear() {
+        // Drop lands squarely on top of a neighbour; must relocate to a clear spot.
+        let neighbour = CGRect(x: 300, y: 200, width: 300, height: 200)
+        let desired = CGRect(x: 320, y: 210, width: 300, height: 200)  // overlaps neighbour
+        let settled = PanelResizeMath.nearestVacant(to: desired, others: [neighbour], bounds: bounds)
+        #expect(!settled.intersects(neighbour))       // no longer overlapping
+        #expect(settled.size == desired.size)         // size preserved
+    }
+
+    @Test("Settle picks the vacant spot nearest the drop, not a far corner")
+    internal func nearestVacantChoosesClosest() {
+        // A neighbour occupies the left; a panel dropped just onto its right portion
+        // should settle immediately to its right, not jump to the top-left origin.
+        let neighbour = CGRect(x: 0, y: 0, width: 400, height: 800)  // full-height left wall
+        let desired = CGRect(x: 380, y: 500, width: 300, height: 200)  // straddles the wall's right edge
+        let settled = PanelResizeMath.nearestVacant(to: desired, others: [neighbour], bounds: bounds)
+        #expect(!settled.intersects(neighbour))
+        #expect(settled.minX >= 400)          // settled to the RIGHT of the wall
+        #expect(settled.minY > 300)           // stayed near the drop's vertical band, not the top
+    }
+
+    @Test("Settle falls back to the origin-size frame when the canvas is full")
+    internal func nearestVacantFullCanvasFallback() {
+        let wall = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height)
+        let desired = CGRect(x: 100, y: 100, width: 300, height: 200)
+        let settled = PanelResizeMath.nearestVacant(to: desired, others: [wall], bounds: bounds)
+        #expect(settled.origin == .zero)
+        #expect(settled.size == desired.size)
+    }
+
     // MARK: - Snapping
 
     @Test("A move within threshold of the left wall snaps flush to it")

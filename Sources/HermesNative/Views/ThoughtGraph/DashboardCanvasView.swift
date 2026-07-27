@@ -22,6 +22,11 @@ internal struct DashboardCanvasView: View {
     /// mode split is what makes dragging reliable: there's no scroll-vs-move
     /// ambiguity because the two never coexist.
     internal var isEditing: Bool = true
+    /// Show each panel's title bar (icon + name). Toggled off for a clean,
+    /// chrome-free canvas where the panels are just their content. Independent of
+    /// edit mode — you can rearrange with headers hidden (the move layer covers
+    /// the whole panel and the resize grips/delete button are their own layers).
+    internal var showsTitleBars: Bool = true
     internal let title: (PanelKind) -> String
     internal let icon: (PanelKind) -> String
     internal let onLayoutCommitted: () -> Void
@@ -130,7 +135,9 @@ internal struct DashboardCanvasView: View {
     /// it, so hit-testing here doesn't matter.
     private func card(_ panel: DashboardPanel, isFocused: Bool) -> some View {
         VStack(spacing: 0) {
-            titleBar(panel, isFocused: isFocused)
+            if showsTitleBars {
+                titleBar(panel, isFocused: isFocused)
+            }
             content(panel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
@@ -314,24 +321,41 @@ internal struct DashboardCanvasView: View {
                     translation: value.translation,
                     bounds: bounds
                 )
-                // Snap edges flush to walls/neighbours so panels can sit edge-to-
-                // edge, then resolve overlap (slide a move along a neighbour, stop
-                // a resize at its edge) so the snap never creates an overlap.
+                // Snap edges flush to walls/neighbours so panels can sit edge-to-edge.
                 let snapped = PanelResizeMath.snap(
                     frame: candidate,
                     handle: handle,
                     others: others,
                     bounds: bounds
                 )
-                let resolved = PanelResizeMath.resolveOverlap(
-                    candidate: snapped,
-                    startFrame: start,
-                    handle: handle,
-                    others: others
-                )
-                layout.setFrame(resolved, for: panel.id)
+                if handle == .move {
+                    // A move follows the cursor freely and may pass OVER neighbours
+                    // mid-drag — overlap is settled on release (nearestVacant), so a
+                    // panel boxed in by others can be dragged across them into open
+                    // space instead of being blocked at every step.
+                    layout.setFrame(snapped, for: panel.id)
+                } else {
+                    // A resize stays strict: it can't grow through a neighbour, so it
+                    // stops at the neighbour's edge as it's dragged.
+                    let resolved = PanelResizeMath.resolveOverlap(
+                        candidate: snapped,
+                        startFrame: start,
+                        handle: handle,
+                        others: others
+                    )
+                    layout.setFrame(resolved, for: panel.id)
+                }
             }
             .onEnded { _ in
+                // On release, a moved panel settles onto the non-overlapping spot
+                // nearest where it was dropped — a drop in the clear stays put; a
+                // drop over neighbours slides to the closest open space.
+                if let drag = activeDrag, drag.handle == .move,
+                   let dropped = layout.panels.first(where: { $0.id == drag.id })?.frame {
+                    let others = layout.panels.filter { $0.id != drag.id }.map(\.frame)
+                    let settled = PanelResizeMath.nearestVacant(to: dropped, others: others, bounds: bounds)
+                    withAnimation(.easeOut(duration: 0.18)) { layout.setFrame(settled, for: drag.id) }
+                }
                 activeDrag = nil
                 onLayoutCommitted()
             }

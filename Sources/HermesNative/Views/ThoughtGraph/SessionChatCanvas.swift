@@ -43,6 +43,10 @@ internal struct SessionChatCanvas: View {
     /// user taps Edit. This is the "go into edit mode, make changes, save, then
     /// just use it" model — and the reason panels no longer feel grabby.
     @State private var isEditing = false
+    /// Show each panel's title bar, or hide all of them for a chrome-free canvas
+    /// that's just the panels' content. Persisted with the layout so the canvas
+    /// reopens the way it was left.
+    @AppStorage("sessionChatCanvasShowsTitleBars") private var showsTitleBars = true
     /// Cross-highlight shared between the flamechart, tools, and files panels.
     @State private var selectedNodeID: String?
     private let registry = PanelRegistry.chatCanvas
@@ -79,6 +83,7 @@ internal struct SessionChatCanvas: View {
                 DashboardCanvasView(
                     layout: $layout,
                     isEditing: isEditing,
+                    showsTitleBars: showsTitleBars,
                     title: { registry.title(for: $0) },
                     icon: { registry.icon(for: $0) },
                     onLayoutCommitted: { layout.store(key: DashboardLayout.chatCanvasKey) },
@@ -172,6 +177,18 @@ internal struct SessionChatCanvas: View {
                 .foregroundStyle(Theme.tertiary)
                 .help("Reset to the default canvas layout")
             }
+
+            // Header toggle: hide/show every panel's title bar for a chrome-free
+            // canvas. Available in both modes — it's a viewing preference, not an edit.
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { showsTitleBars.toggle() }
+            } label: {
+                Image(systemName: showsTitleBars ? "menubar.rectangle" : "rectangle")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(showsTitleBars ? Theme.secondary : Theme.accent)
+            .help(showsTitleBars ? "Hide panel headers" : "Show panel headers")
 
             // The mode toggle: Edit ↔ Done. Done persists the arrangement and
             // locks the canvas for use.

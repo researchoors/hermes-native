@@ -204,6 +204,42 @@ internal enum PanelResizeMath {
         return CGRect(x: 0, y: 0, width: size.width, height: size.height)
     }
 
+    /// Settle a just-dropped `desired` frame onto the non-overlapping spot
+    /// closest to where the user released it. If the drop is already clear it's
+    /// returned untouched (a drop in empty space stays exactly where it lands);
+    /// otherwise a coarse grid is scanned and the free cell whose origin is
+    /// nearest the drop wins — so a panel dragged over its neighbours settles
+    /// beside them rather than snapping to a far corner. This is what lets a
+    /// boxed-in panel be dragged freely across others and land in open space:
+    /// the drag itself never resolves overlap, only this release step does.
+    internal static func nearestVacant(to desired: CGRect, others: [CGRect], bounds: CGSize) -> CGRect {
+        func clear(_ rect: CGRect) -> Bool { !others.contains { $0.intersects(rect) } }
+        let inBounds = desired.minX >= 0 && desired.minY >= 0
+            && desired.maxX <= bounds.width + 0.5 && desired.maxY <= bounds.height + 0.5
+        if inBounds && clear(desired) { return desired }
+
+        let step: CGFloat = 24
+        let maxX = max(0, bounds.width - desired.width)
+        let maxY = max(0, bounds.height - desired.height)
+        var best: CGRect?
+        var bestDist = CGFloat.greatestFiniteMagnitude
+        var y: CGFloat = 0
+        while y <= maxY {
+            var x: CGFloat = 0
+            while x <= maxX {
+                let candidate = CGRect(x: x, y: y, width: desired.width, height: desired.height)
+                if clear(candidate) {
+                    let dx = x - desired.minX, dy = y - desired.minY
+                    let dist = dx * dx + dy * dy
+                    if dist < bestDist { bestDist = dist; best = candidate }
+                }
+                x += step
+            }
+            y += step
+        }
+        return best ?? CGRect(origin: .zero, size: desired.size)
+    }
+
     // MARK: Move
 
     private static func move(_ frame: CGRect, by t: CGSize, bounds: CGSize) -> CGRect {
