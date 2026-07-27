@@ -66,6 +66,12 @@ internal struct SessionChatCanvas: View {
     /// on screen is pure noise. Turn it on once you've added lens panels worth
     /// labelling.
     @AppStorage("sessionChatCanvasShowsTitleBars") private var showsTitleBars = false
+    /// Collapse the whole canvas toolbar to a slim strip. Defaults collapsed:
+    /// the toolbar carries a lot of chrome (reset, session graph, usage,
+    /// response style, export, TTS, edit) that adds cognitive load to everyday
+    /// chatting, so the canvas opens clean — just the conversation and composer —
+    /// and the bar expands on demand. Persisted so it reopens the way it was left.
+    @AppStorage("sessionChatCanvasToolbarCollapsed") private var toolbarCollapsed = true
     /// Scroll (the ever-growing transcript, live current-turn lenses) vs. Turns
     /// (page one turn at a time; the per-turn lenses show THAT turn). Session-
     /// global panels — artifacts and the metrics badge — persist across turns
@@ -157,7 +163,11 @@ internal struct SessionChatCanvas: View {
 
     internal var body: some View {
         VStack(spacing: 0) {
-            toolbar
+            if toolbarCollapsed {
+                collapsedToolbar
+            } else {
+                toolbar
+            }
             Divider().overlay(Theme.border)
             GeometryReader { geo in
                 DashboardCanvasView(
@@ -211,6 +221,18 @@ internal struct SessionChatCanvas: View {
         if panel.kind == .artifacts {
             return AnyView(ArtifactsPanel())
         }
+        // Session Graph — the macro all-turns plot, host-rendered (needs both
+        // integrators + jump-to-tool). Docked in-canvas rather than a sheet.
+        if panel.kind == .sessionGraph {
+            return AnyView(
+                SessionGraphPane(
+                    chatViewModel: chatViewModel,
+                    subagentGraph: subagentGraph,
+                    reasoningGraph: reasoningGraph,
+                    onJumpToTool: { selectedNodeID = $0 }
+                )
+            )
+        }
         return registry.content(for: panel.kind, context: panelContext)
     }
 
@@ -230,15 +252,17 @@ internal struct SessionChatCanvas: View {
             .foregroundStyle(Theme.secondary)
             .help("Reset to the default view — a single full-width conversation")
 
-            // Session Graph opener — folded INTO the canvas toolbar (was floating
-            // above the canvas) so the expander belongs to the canvas chrome.
-            Button(action: onOpenSessionGraph) {
+            // Session Graph opener — reveals the all-turns graph as an IN-CANVAS
+            // panel (docked beside the conversation), not a fullscreen sheet. If
+            // it's already on the canvas this brings it to front instead of
+            // adding a duplicate (it's a singleton kind).
+            Button(action: revealSessionGraph) {
                 Label("Session Graph", systemImage: "chart.bar.xaxis")
                     .font(.system(size: 11, weight: .medium))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Theme.secondary)
-            .help("Open the all-turns Session Graph")
+            .foregroundStyle(hasSessionGraphPanel ? Theme.accent : Theme.secondary)
+            .help("Show the all-turns Session Graph as a panel")
 
             // Session-global metrics: cumulative tokens / cost / context %.
             // Pinned here so it persists across turns and scroll — it never
@@ -305,10 +329,61 @@ internal struct SessionChatCanvas: View {
             .buttonStyle(.plain)
             .foregroundStyle(isEditing ? Theme.accent : Theme.secondary)
             .help(isEditing ? "Save this arrangement and lock the canvas" : "Rearrange the panels")
+
+            // Collapse the toolbar away to its slim strip — the everyday state.
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { toolbarCollapsed = true }
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.tertiary)
+            .help("Collapse the toolbar")
         }
         .padding(.horizontal, 12)
         .frame(height: 34)
         .background(Theme.surface.opacity(0.5))
+    }
+
+    /// The everyday state: the toolbar folded to a slim strip so the canvas is
+    /// just the conversation and composer. A single expander opens the full bar;
+    /// while collapsed we still surface the two things worth a glance without
+    /// expanding — the Turn N of M counter when paging, and a streaming dot — but
+    /// nothing clickable-yet-disabled, so a fresh session shows only the expander.
+    private var collapsedToolbar: some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { toolbarCollapsed = false }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(width: 22, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Show the canvas toolbar")
+
+            if displayMode == .turns, !turns.isEmpty {
+                Text("Turn \(selectedTurnNumber) of \(turns.count)")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Theme.tertiary)
+                    .monospacedDigit()
+            }
+
+            Spacer()
+
+            if chatViewModel.isStreaming {
+                Circle()
+                    .fill(Theme.accent)
+                    .frame(width: 6, height: 6)
+                    .help("Streaming")
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 22)
+        .background(Theme.surface.opacity(0.35))
     }
 
     /// Reset the canvas to its default expression: a single full-width
@@ -494,6 +569,13 @@ internal struct SessionChatCanvas: View {
     }
 
     private func addPanel(_ descriptor: PanelDescriptor) {
+        addPanel(kind: descriptor.kind)
+    }
+
+    /// Add a panel of `kind` in the first vacant slot (or a sensible default
+    /// size), bring it to front, and persist. Shared by the add-palette and the
+    /// toolbar's reveal actions.
+    private func addPanel(kind: PanelKind) {
         let size = CGSize(
             width: min(360, max(DashboardPanel.minSize.width, canvasBounds.width * 0.4)),
             height: min(300, max(DashboardPanel.minSize.height, canvasBounds.height * 0.5))
@@ -505,9 +587,29 @@ internal struct SessionChatCanvas: View {
             others: layout.panels.map(\.frame),
             bounds: canvasBounds
         )
-        let panel = DashboardPanel(kind: descriptor.kind, frame: frame).clamped(to: canvasBounds)
+        let panel = DashboardPanel(kind: kind, frame: frame).clamped(to: canvasBounds)
         layout.panels.append(panel)
+        layout.bringToFront(panel.id)
         layout.store(key: DashboardLayout.chatCanvasKey)
+    }
+
+    /// True when the Session Graph tile is already on the canvas — the toolbar
+    /// button highlights and, on tap, brings it to front rather than duplicating.
+    private var hasSessionGraphPanel: Bool {
+        layout.panels.contains { $0.kind == .sessionGraph }
+    }
+
+    /// Reveal the Session Graph as an in-canvas panel: bring it to front if it's
+    /// already there, else add it. Replaces the old fullscreen-sheet opener.
+    private func revealSessionGraph() {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if let existing = layout.panels.first(where: { $0.kind == .sessionGraph }) {
+                layout.bringToFront(existing.id)
+                layout.store(key: DashboardLayout.chatCanvasKey)
+            } else {
+                addPanel(kind: .sessionGraph)
+            }
+        }
     }
 }
 #endif

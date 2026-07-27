@@ -1200,7 +1200,7 @@ struct ChatView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
-            ThoughtGraphSheetContent(
+            SessionGraphPane(
                 chatViewModel: chatViewModel,
                 subagentGraph: chatViewModel.subagentGraph,
                 reasoningGraph: chatViewModel.reasoningGraph,
@@ -1209,57 +1209,6 @@ struct ChatView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Theme.background)
-    }
-
-    /// Thought-graph sheet body. Split out so the two graph integrators are
-    /// observed directly — ChatView only observes chatViewModel, and nested
-    /// ObservableObject publishes (subagent/reasoning nodes) don't re-render
-    /// the parent. This view rebuilds live as agent subtrees grow.
-    private struct ThoughtGraphSheetContent: View {
-        @ObservedObject var chatViewModel: ChatViewModel
-        @ObservedObject var subagentGraph: SubagentGraphIntegrator
-        @ObservedObject var reasoningGraph: ReasoningGraphIntegrator
-        let onJumpToTool: (String) -> Void
-
-        /// Every turn in the session: persisted past turns (from the
-        /// transcript, replayed with whatever depth was captured) plus, while
-        /// streaming, the live turn synthesized from the active integrators —
-        /// which the transcript doesn't hold until the turn completes.
-        private var turns: [SessionTurn] {
-            var all = SessionTurnBuilder.turns(from: chatViewModel.messages)
-            if chatViewModel.isStreaming || !chatViewModel.activeToolCalls.isEmpty {
-                let liveNodes = ThoughtGraphLayoutEngine.composeTimeline(
-                    tools: Array(chatViewModel.activeToolCalls.values).sorted { $0.id < $1.id },
-                    agentNodes: subagentGraph.agentNodes,
-                    reasoningNodes: reasoningGraph.reasoningNodes
-                )
-                if !liveNodes.isEmpty {
-                    all.append(SessionTurn(
-                        id: liveTurnID,
-                        index: all.count + 1,
-                        prompt: "Current turn",
-                        replyPreview: "",
-                        nodes: liveNodes,
-                        compactions: chatViewModel.currentTurnCompactions,
-                        skills: chatViewModel.activeSkills,
-                        toolCount: chatViewModel.activeToolCalls.count,
-                        toolsOnly: false
-                    ))
-                }
-            }
-            return all
-        }
-
-        /// Stable id for the synthesized live turn so re-renders don't reset it.
-        private let liveTurnID = UUID()
-
-        var body: some View {
-            SessionThoughtGraphView(
-                turns: turns,
-                isThinking: reasoningGraph.isThinking,
-                onJumpToTool: onJumpToTool
-            )
-        }
     }
 
     private func scheduleScrollToBottom(proxy: ScrollViewProxy, reason: String) {

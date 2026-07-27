@@ -207,6 +207,16 @@ internal final class PanelRegistry {
             singleton: true,
             build: nil  // host-rendered — see SessionChatCanvas
         ))
+        // Session Graph — the macro all-turns plot, session-global and
+        // host-rendered (needs both integrators + jump-to-tool). Docked as a
+        // canvas tile instead of a fullscreen sheet.
+        registry.register(PanelDescriptor(
+            kind: .sessionGraph,
+            title: "Session Graph",
+            icon: "chart.bar.xaxis",
+            singleton: true,
+            build: nil  // host-rendered — see SessionChatCanvas
+        ))
         return registry
     }()
 }
