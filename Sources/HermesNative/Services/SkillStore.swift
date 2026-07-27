@@ -148,7 +148,6 @@ enum SkillStoreDisk {
 
 // MARK: - SkillStore
 
-@MainActor
 @Observable
 internal final class SkillStore {
     static let shared = SkillStore()
