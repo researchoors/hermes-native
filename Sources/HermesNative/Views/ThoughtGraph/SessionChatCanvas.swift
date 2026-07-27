@@ -45,9 +45,6 @@ internal struct SessionChatCanvas: View {
     /// first-responder just like the normal transcript).
     internal var isInputFocused: FocusState<Bool>.Binding
     @Binding internal var inputFieldRef: FocusableTextView?
-    /// Open the macro all-turns Session Graph. Folded into the canvas toolbar so
-    /// the expander lives WITH the canvas instead of floating above it.
-    internal let onOpenSessionGraph: () -> Void
 
     @StateObject private var engine = ThoughtGraphLayoutEngine()
     @State private var layout = DashboardLayout()
@@ -202,16 +199,19 @@ internal struct SessionChatCanvas: View {
             return AnyView(
                 ConversationPanel(
                     chatViewModel: chatViewModel,
+                    subagentGraph: subagentGraph,
+                    reasoningGraph: reasoningGraph,
                     persona: persona,
                     skinProvider: skinProvider,
                     // Turns mode isolates the selected turn; Scroll shows it all.
                     focusedTurnID: displayMode == .turns ? selectedTurn?.id : nil,
-                    // When the conversation is the ONLY panel, it stands in for
-                    // the classic transcript, so it shows the inline activity
-                    // strip. Peel any lens into its own panel and this drops —
-                    // that lens now has a dedicated home.
-                    soloMode: layout.panels.count == 1,
-                    onExpandTimeline: onOpenSessionGraph
+                    engine: engine,
+                    selection: $selectedNodeID,
+                    // Each turn's inline rail shows the registry's inline lenses
+                    // MINUS any already peeled onto the canvas — peel a lens and
+                    // it leaves the rail for its dedicated panel (no duplication).
+                    inlineLenses: registry.inlineLenses(peeled: layout.panels.map(\.kind)),
+                    onPeel: peelLens
                 )
             )
         }
@@ -591,6 +591,23 @@ internal struct SessionChatCanvas: View {
         layout.panels.append(panel)
         layout.bringToFront(panel.id)
         layout.store(key: DashboardLayout.chatCanvasKey)
+    }
+
+    /// Peel a rail lens onto the canvas as its own panel. Adds a panel of that
+    /// kind (in the first vacant slot) if it isn't already present, else raises
+    /// the existing one. Because the conversation's rail is fed
+    /// `inlineLenses(peeled:)`, the lens leaves the rail the moment its panel
+    /// exists — the rail↔canvas move is driven entirely by what's on the canvas,
+    /// so there's no separate "peeled" state to keep in sync.
+    private func peelLens(_ kind: PanelKind) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if let existing = layout.panels.first(where: { $0.kind == kind }) {
+                layout.bringToFront(existing.id)
+                layout.store(key: DashboardLayout.chatCanvasKey)
+            } else {
+                addPanel(kind: kind)
+            }
+        }
     }
 
     /// True when the Session Graph tile is already on the canvas — the toolbar

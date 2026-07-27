@@ -6,16 +6,24 @@ import SwiftUI
 /// observes the live `ChatViewModel`, so tokens stream in and bubbles grow here
 /// exactly as they do in the normal chat.
 ///
-/// It renders the dialogue and the "typing" indicator only. The flamechart,
-/// tools, thinking, and skills each get their OWN canvas panels in Canvas mode,
-/// so this panel deliberately omits the inline timeline / skills lens that the
-/// normal transcript shows beside a streaming turn — no duplication.
+/// Under EACH turn it renders that turn's inline lens rail (`InlineTurnRail`):
+/// the compact flamechart strip and skills chips, driven by the shared panel
+/// registry. Past turns replay their rail from the recorded transcript; the live
+/// turn's rail updates as it streams. Any rail lens can be peeled onto the canvas
+/// as its own panel, at which point the registry drops it from the rail — one
+/// lens definition, two placements, no duplication. This is what makes the
+/// in-chat activity targetable instead of a hardcoded live-only block.
 ///
-/// Timer-free: it re-renders on `ChatViewModel` publishes (new/'grown messages,
-/// streaming toggles), never on a clock, so it's safe to compose alongside the
-/// singleton flamechart without adding to the canvas's timer cost.
+/// Timer-free at this level: it re-renders on `ChatViewModel` publishes (new /
+/// grown messages, streaming toggles), never on a clock. The only timer is
+/// inside the live turn's flamechart strip, gated on a still-growing bar, so the
+/// canvas stays at one timer.
 internal struct ConversationPanel: View {
     @ObservedObject internal var chatViewModel: ChatViewModel
+    /// The two per-turn graph integrators, observed by the live rail so it
+    /// rebuilds as nested subagent/reasoning nodes land.
+    internal var subagentGraph: SubagentGraphIntegrator
+    internal var reasoningGraph: ReasoningGraphIntegrator
     /// The identity the chat presents (harness persona for Centaur, else the
     /// user's Hermes persona) — passed in so this panel doesn't re-derive it.
     internal let persona: Persona
@@ -25,22 +33,41 @@ internal struct ConversationPanel: View {
     /// message with this id and the user prompt that opened it — instead of the
     /// whole transcript. Nil (Scroll mode) shows the full ever-growing thread.
     internal var focusedTurnID: UUID?
-    /// Solo mode: the conversation is the ONLY panel on the canvas (the default
-    /// full-bleed chat). It then shows the inline live-activity strip (timeline +
-    /// skills lens) beside a streaming turn, exactly like the classic transcript,
-    /// so a bare canvas reads as today's chat. When any lens is peeled into its
-    /// own panel the host turns this off and the strip drops (no duplication —
-    /// the lens now has a dedicated panel).
-    internal var soloMode: Bool = false
-    /// Opens the full session graph from the inline strip's tap target. Only used
-    /// in solo mode.
-    internal var onExpandTimeline: (() -> Void)?
+    /// The shared flamechart engine (carried in each turn's context for parity
+    /// with the canvas; the inline strip owns its own layout engine).
+    internal var engine: ThoughtGraphLayoutEngine
+    /// Cross-highlight selection shared with the canvas lenses.
+    internal var selection: Binding<String?>?
+    /// The rail lenses to render under each turn — the registry's inline lenses
+    /// minus any already peeled onto the canvas, so a peeled lens leaves the rail.
+    internal var inlineLenses: [(kind: PanelKind, lens: InlineLens)] = []
+    /// Peel a rail lens onto the canvas as its own panel. Nil where there's no
+    /// canvas to peel onto (the rail is then read-only).
+    internal var onPeel: ((PanelKind) -> Void)?
 
     /// Coalesce token-by-token auto-scroll: bucket the streaming tail so a full
     /// scroll pass fires per ~256 chars, not per delta (mirrors ChatView).
     private var streamTailKey: String {
         guard let last = chatViewModel.messages.last else { return "none" }
         return "\(last.id):\(last.content.count / 256):\(last.isStreaming)"
+    }
+
+    /// Memoized per-turn snapshots for SETTLED turns, keyed so the fold only
+    /// re-runs when the settled set actually changes (a new turn, a completed
+    /// stream, or a session switch) — never per streaming token. The live turn is
+    /// rendered separately from the integrators, so it's excluded here.
+    private static let settledTurnMemo = RenderMemo<[UUID: SessionTurn]>(limit: 8)
+
+    private var settledTurnsByID: [UUID: SessionTurn] {
+        var msgs = chatViewModel.messages
+        if chatViewModel.isStreaming, msgs.last?.isStreaming == true { msgs.removeLast() }
+        let key = "\(chatViewModel.currentSessionID ?? "none"):\(msgs.count):\(chatViewModel.isStreaming)"
+        return Self.settledTurnMemo.value(for: key) {
+            Dictionary(
+                SessionTurnBuilder.turns(from: msgs).map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
     }
 
     /// The messages to render: the whole transcript in Scroll mode, or just the
@@ -71,55 +98,17 @@ internal struct ConversationPanel: View {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     let msgs = visibleMessages
                     ForEach(msgs) { message in
-                        let showTimestamp = ChatView.isLastMessageInGroup(message: message, msgs: msgs)
-                        let prepared = ChatView.prepareBubbleMessage(message, showTimestamp: showTimestamp)
-                        skinProvider.messageBubble(message: prepared, persona: persona)
-                            .id(message.id)
-                    }
-
-                    if chatViewModel.isStreaming && showsLiveTail {
-                        if soloMode {
-                            // Solo: reproduce the classic transcript's inline
-                            // activity — status + live timeline stacked, skills
-                            // lens pinned right — so a bare canvas == today's chat.
-                            HStack(alignment: .top, spacing: 10) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    skinProvider.streamingPanel(
-                                        state: chatViewModel.avatarState,
-                                        activeToolCalls: chatViewModel.activeToolCalls,
-                                        personaName: persona.name,
-                                        accentColor: persona.accentColor
-                                    )
-                                    .id("conversation-streaming-status")
-
-                                    InlineTurnTimelineLive(
-                                        chatViewModel: chatViewModel,
-                                        subagentGraph: chatViewModel.subagentGraph,
-                                        reasoningGraph: chatViewModel.reasoningGraph,
-                                        onExpand: onExpandTimeline
-                                    )
-                                    .id("conversation-inline-timeline")
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                                if !chatViewModel.activeSkills.isEmpty {
-                                    TurnSkillsLens(skills: chatViewModel.activeSkills)
-                                        .frame(width: 168)
-                                        .id("conversation-turn-skills")
-                                }
-                            }
-                            .transition(.opacity)
-                        } else {
-                            // Composed alongside dedicated lens panels — just the
-                            // "typing" indicator; the trace lives in those panels.
-                            skinProvider.streamingPanel(
-                                state: chatViewModel.avatarState,
-                                activeToolCalls: chatViewModel.activeToolCalls,
-                                personaName: persona.name,
-                                accentColor: persona.accentColor
-                            )
-                            .id("conversation-streaming-status")
+                        VStack(alignment: .leading, spacing: 4) {
+                            let showTimestamp = ChatView.isLastMessageInGroup(message: message, msgs: msgs)
+                            let prepared = ChatView.prepareBubbleMessage(message, showTimestamp: showTimestamp)
+                            skinProvider.messageBubble(message: prepared, persona: persona)
+                            // The turn's inline lens rail, right under its reply:
+                            // live for the streaming turn, replayed snapshot for a
+                            // settled one. Bubbles that don't close a turn (user
+                            // prompts, mid-turn parts) render no rail.
+                            railUnder(message)
                         }
+                        .id(message.id)
                     }
 
                     // Bottom anchor for auto-scroll.
@@ -134,6 +123,50 @@ internal struct ConversationPanel: View {
             .onChange(of: chatViewModel.messages.count) { _, _ in if showsLiveTail { scrollToBottom(proxy) } }
             .onChange(of: focusedTurnID) { _, _ in scrollToTop(proxy) }
             .onAppear { if showsLiveTail { scrollToBottom(proxy, animated: false) } }
+        }
+    }
+
+    /// The lens rail (and, for the live turn, the streaming-status line) shown
+    /// beneath `message`. The streaming assistant message gets the live rail wired
+    /// to the integrators; a settled turn's assistant message gets a static rail
+    /// replayed from its recorded snapshot; every other message gets nothing.
+    @ViewBuilder
+    private func railUnder(_ message: ChatMessage) -> some View {
+        if message.isStreaming {
+            skinProvider.streamingPanel(
+                state: chatViewModel.avatarState,
+                activeToolCalls: chatViewModel.activeToolCalls,
+                personaName: persona.name,
+                accentColor: persona.accentColor
+            )
+            .id("conversation-streaming-status")
+
+            LiveInlineTurnRail(
+                chatViewModel: chatViewModel,
+                subagentGraph: subagentGraph,
+                reasoningGraph: reasoningGraph,
+                engine: engine,
+                selection: selection,
+                lenses: inlineLenses,
+                onPeel: onPeel
+            )
+            .id("conversation-live-rail")
+        } else if let turn = settledTurnsByID[message.id] {
+            InlineTurnRail(
+                context: PanelContext(
+                    nodes: turn.nodes,
+                    compactions: turn.compactions,
+                    skills: turn.skills,
+                    isThinking: false,   // settled — no heartbeat
+                    isStreaming: false,  // …and no growing bars
+                    selection: selection,
+                    engine: engine,
+                    onJumpToTool: nil
+                ),
+                lenses: inlineLenses,
+                onPeel: onPeel
+            )
+            .id("conversation-rail-\(message.id)")
         }
     }
 

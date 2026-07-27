@@ -281,8 +281,9 @@ struct ChatView: View {
 
             // ── Thought Graph (collapsible) ──
             // On macOS the Session Graph opener lives INSIDE the canvas toolbar
-            // (see SessionChatCanvas.onOpenSessionGraph), so this floating section
-            // is iOS-only now — `isInCanvasMode` is always true on macOS.
+            // (SessionChatCanvas reveals it as an in-canvas panel), so this
+            // floating section is iOS-only now — `isInCanvasMode` is always true
+            // on macOS.
             if shouldShowThoughtGraphToggle && !isInCanvasMode {
                 thoughtGraphSection
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -301,8 +302,7 @@ struct ChatView: View {
                 skinProvider: skinProvider,
                 client: gatewayClientWrapper.client,
                 isInputFocused: $isInputFocused,
-                inputFieldRef: $inputFieldRef,
-                onOpenSessionGraph: { showThoughtGraph = true }
+                inputFieldRef: $inputFieldRef
             )
             #else
 // Message list
