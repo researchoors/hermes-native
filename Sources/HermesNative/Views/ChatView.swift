@@ -42,19 +42,16 @@ struct ChatView: View {
     // ── Thought Graph ──
     @State private var showThoughtGraph = false
 
-    #if os(macOS)
-    /// Canvas mode: rearrange this session into resizable panels — the
-    /// conversation itself plus the live lenses — instead of the full-width
-    /// transcript. Per-session UI state (not persisted); the panel arrangement
-    /// it uses IS persisted, under DashboardLayout.chatCanvasKey.
-    @State private var canvasMode = false
-    #endif
-
-    /// Cross-platform view of `canvasMode` (macOS-only) so shared chat chrome can
-    /// branch on it without `#if` at every use site. Always `false` on iOS.
+    /// On macOS the chat IS the canvas: the session always renders as
+    /// `SessionChatCanvas` (its default layout is a single full-width
+    /// conversation panel, so a fresh session reads exactly like the classic
+    /// transcript). There's no per-session toggle anymore — the canvas owns its
+    /// own toolbar, composer, and a "Reset to default view" action. iOS keeps the
+    /// plain transcript. This computed exists so shared chrome can branch without
+    /// `#if` at every use site.
     private var isInCanvasMode: Bool {
         #if os(macOS)
-        canvasMode
+        true
         #else
         false
         #endif
@@ -282,100 +279,31 @@ struct ChatView: View {
             Divider()
             #endif
 
-            #if os(macOS)
-            HStack {
-                // Cumulative session usage (tokens + cost), leading edge.
-                SessionUsageBadge(chatViewModel: chatViewModel, client: gatewayClientWrapper.client)
-                Spacer()
-                // Response style (deep map / balanced / direct)
-                if chatViewModel.backendCapabilities.supportsResponseStyles {
-                    Menu {
-                        ForEach(ResponseStyle.allCases) { style in
-                            Button {
-                                chatViewModel.setResponseStyle(style)
-                            } label: {
-                                if style == chatViewModel.responseStyle {
-                                    Label(style.label, systemImage: "checkmark")
-                                } else {
-                                    Text(style.label)
-                                }
-                            }
-                            .help(style.help)
-                        }
-                    } label: {
-                        Label(chatViewModel.responseStyle.label,
-                              systemImage: chatViewModel.responseStyle.icon)
-                            .font(.caption)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .foregroundStyle(Theme.secondary)
-                    .help("Response style: \(chatViewModel.responseStyle.help). Use /brief for a one-off direct answer.")
-                    .padding(.horizontal, 8)
-                }
-
-                // Export session as Markdown / PDF
-                SessionExportMenu(assistantName: displayPersona.name)
-                    .padding(.horizontal, 8)
-
-                // TTS toggle
-                Button {
-                    ttsService.toggle()
-                } label: {
-                    Label(ttsService.isEnabled ? "Speaking" : "Muted",
-                          systemImage: ttsService.isEnabled ? "speaker.wave.3.fill" : "speaker.slash")
-                        .font(.caption)
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(ttsService.isEnabled ? Theme.accent : Theme.secondary)
-                .help(ttsService.isEnabled ? "Text-to-speech enabled" : "Text-to-speech disabled")
-                .padding(.horizontal, 8)
-
-                // Canvas mode: rearrange this session into resizable panels
-                // (conversation + live lenses). Toggle back with the same button.
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { canvasMode.toggle() }
-                } label: {
-                    Label(canvasMode ? "Exit Canvas" : "Canvas",
-                          systemImage: canvasMode ? "rectangle.compress.vertical" : "rectangle.split.3x1")
-                        .font(.caption)
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(canvasMode ? Theme.accent : Theme.secondary)
-                .help("Canvas mode — drag & resize the conversation and its lenses as panels")
-                .padding(.horizontal, 8)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            #endif
-
             // ── Thought Graph (collapsible) ──
-            // In Canvas mode the Session Graph opener lives INSIDE the canvas
-            // toolbar (see SessionChatCanvas.onOpenSessionGraph), so we don't
-            // also float this section above the canvas.
+            // On macOS the Session Graph opener lives INSIDE the canvas toolbar
+            // (see SessionChatCanvas.onOpenSessionGraph), so this floating section
+            // is iOS-only now — `isInCanvasMode` is always true on macOS.
             if shouldShowThoughtGraphToggle && !isInCanvasMode {
                 thoughtGraphSection
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             #if os(macOS)
-            if canvasMode {
-                // Canvas mode owns its own composer (docked at its bottom), so
-                // it replaces the message list AND the normal input bar.
-                SessionChatCanvas(
-                    chatViewModel: chatViewModel,
-                    subagentGraph: chatViewModel.subagentGraph,
-                    reasoningGraph: chatViewModel.reasoningGraph,
-                    persona: displayPersona,
-                    skinProvider: skinProvider,
-                    isInputFocused: $isInputFocused,
-                    inputFieldRef: $inputFieldRef,
-                    onExit: { withAnimation(.easeInOut(duration: 0.2)) { canvasMode = false } },
-                    onOpenSessionGraph: { showThoughtGraph = true }
-                )
-            } else {
-                messageListArea
-            }
+            // macOS chat IS the canvas: it owns the whole toolbar (usage,
+            // response style, export, TTS, Session Graph), the message area, AND
+            // the docked composer. Its default layout is a single full-width
+            // conversation, so a fresh session reads as the classic transcript.
+            SessionChatCanvas(
+                chatViewModel: chatViewModel,
+                subagentGraph: chatViewModel.subagentGraph,
+                reasoningGraph: chatViewModel.reasoningGraph,
+                persona: displayPersona,
+                skinProvider: skinProvider,
+                client: gatewayClientWrapper.client,
+                isInputFocused: $isInputFocused,
+                inputFieldRef: $inputFieldRef,
+                onOpenSessionGraph: { showThoughtGraph = true }
+            )
             #else
 // Message list
             messageListArea

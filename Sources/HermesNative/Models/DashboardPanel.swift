@@ -34,6 +34,13 @@ internal struct PanelKind: RawRepresentable, Codable, Hashable, Identifiable {
     /// content comes from the chat view, not a `PanelContext`, so the registry
     /// never builds it.
     internal static let conversation = PanelKind(rawValue: "conversation")
+    /// The session's living artifacts (maps, datasets, docs, HTML pages the
+    /// agent maintains). Session-global — it reads `ArtifactStore.shared`, so it
+    /// persists regardless of transcript scroll or which turn is selected: an
+    /// artifact stays put on the canvas while you page turns or scroll the chat.
+    /// Singleton (one artifacts pane) and host-rendered (it needs the store, not
+    /// a per-turn `PanelContext`).
+    internal static let artifacts = PanelKind(rawValue: "artifacts")
 }
 
 /// One panel on the dashboard canvas: a kind (what it shows) placed at a frame

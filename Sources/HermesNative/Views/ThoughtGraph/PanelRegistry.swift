@@ -198,6 +198,15 @@ internal final class PanelRegistry {
                 registry.register(descriptor)
             }
         }
+        // Artifacts — session-global, host-rendered (reads ArtifactStore.shared,
+        // not a per-turn context) so it persists across scroll and turn paging.
+        registry.register(PanelDescriptor(
+            kind: .artifacts,
+            title: "Artifacts",
+            icon: "shippingbox",
+            singleton: true,
+            build: nil  // host-rendered — see SessionChatCanvas
+        ))
         return registry
     }()
 }

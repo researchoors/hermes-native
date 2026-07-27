@@ -1,6 +1,17 @@
 #if os(macOS)
 import SwiftUI
 
+/// How the canvas drives its per-turn lenses. `scroll` = the live current turn
+/// (the ever-growing transcript, panels update as the turn streams); `turns` =
+/// page one settled turn at a time (the panels show that turn's snapshot). The
+/// conversation panel and session-global panels (artifacts, metrics) behave the
+/// same in both — only the per-turn lenses (flamechart/tools/thinking/skills)
+/// and the conversation's focus change.
+internal enum CanvasDisplayMode: String {
+    case scroll
+    case turns
+}
+
 /// Canvas mode for the live chat (option B): the current session rearranged into
 /// resizable, draggable panels — the **conversation itself** as the dominant
 /// panel, with the live lenses (flamechart, tools, thinking, skills, files)
@@ -23,12 +34,17 @@ internal struct SessionChatCanvas: View {
     /// matches the rest of the app.
     internal let persona: Persona
     internal let skinProvider: ChatSkinProviding
+    /// Gateway client for the pinned session-usage badge (cumulative tokens /
+    /// cost / context %). Session-global metrics that persist across turns.
+    internal let client: GatewayClient
+    /// Text-to-speech, folded into the canvas toolbar alongside the other
+    /// session-global chrome (usage, response style, export) now that the canvas
+    /// IS the chat and owns the whole toolbar.
+    @EnvironmentObject internal var ttsService: TTSService
     /// Composer focus wiring, owned by ChatView (so canvas clicks can restore
     /// first-responder just like the normal transcript).
     internal var isInputFocused: FocusState<Bool>.Binding
     @Binding internal var inputFieldRef: FocusableTextView?
-    /// Leave Canvas mode (back to the normal transcript).
-    internal let onExit: () -> Void
     /// Open the macro all-turns Session Graph. Folded into the canvas toolbar so
     /// the expander lives WITH the canvas instead of floating above it.
     internal let onOpenSessionGraph: () -> Void
@@ -44,12 +60,60 @@ internal struct SessionChatCanvas: View {
     /// just use it" model — and the reason panels no longer feel grabby.
     @State private var isEditing = false
     /// Show each panel's title bar, or hide all of them for a chrome-free canvas
-    /// that's just the panels' content. Persisted with the layout so the canvas
-    /// reopens the way it was left.
-    @AppStorage("sessionChatCanvasShowsTitleBars") private var showsTitleBars = true
+    /// that's just the panels' content. Persisted so the canvas reopens the way
+    /// it was left. Defaults OFF: the canvas now IS the chat, and its default is
+    /// a single conversation panel — a "Conversation" header over the only thing
+    /// on screen is pure noise. Turn it on once you've added lens panels worth
+    /// labelling.
+    @AppStorage("sessionChatCanvasShowsTitleBars") private var showsTitleBars = false
+    /// Scroll (the ever-growing transcript, live current-turn lenses) vs. Turns
+    /// (page one turn at a time; the per-turn lenses show THAT turn). Session-
+    /// global panels — artifacts and the metrics badge — persist across turns
+    /// either way. Ephemeral per-session UI state, like `isEditing`.
+    @State private var displayMode: CanvasDisplayMode = .scroll
+    /// Which turn is shown in Turns mode. Nil follows the latest turn (tail-
+    /// follow): sending a message advances here so you watch your new turn
+    /// stream, and stepping back off the last turn pins an explicit id.
+    @State private var selectedTurnID: UUID?
     /// Cross-highlight shared between the flamechart, tools, and files panels.
     @State private var selectedNodeID: String?
     private let registry = PanelRegistry.chatCanvas
+
+    /// The session split into turns (one assistant message = one turn), rebuilt
+    /// from the live transcript. Empty until the first turn completes enough to
+    /// graph.
+    private var turns: [SessionTurn] {
+        SessionTurnBuilder.turns(from: chatViewModel.messages)
+    }
+
+    /// The turn Turns mode is showing: the explicitly-selected one, else the
+    /// latest (tail-follow).
+    private var selectedTurn: SessionTurn? {
+        turns.first { $0.id == selectedTurnID } ?? turns.last
+    }
+
+    /// 1-based position of the selected turn, for the "Turn N of M" counter.
+    private var selectedTurnNumber: Int {
+        guard let selectedTurn else { return 0 }
+        return (turns.firstIndex { $0.id == selectedTurn.id } ?? 0) + 1
+    }
+
+    /// Export scope for the toolbar's Export menu. In Turns mode it's the turn on
+    /// screen (its user prompt + assistant reply), so export offers "this turn"
+    /// beside "whole session"; nil in Scroll mode → whole-session export only.
+    /// The turn is the user+assistant pair keyed by the assistant message id —
+    /// the same slice the conversation panel shows in Turns mode.
+    private var turnExportScope: TurnExportScope? {
+        guard displayMode == .turns, let selectedTurn else { return nil }
+        let all = chatViewModel.messages
+        guard let assistantIdx = all.firstIndex(where: { $0.id == selectedTurn.id }) else { return nil }
+        var start = assistantIdx
+        if assistantIdx > 0, all[assistantIdx - 1].role == .user { start = assistantIdx - 1 }
+        return TurnExportScope(
+            label: "Turn \(selectedTurnNumber)",
+            messages: Array(all[start...assistantIdx])
+        )
+    }
 
     /// The current turn's live nodes, composed from the active tool calls and
     /// the two graph integrators — the same composition the inline strip and the
@@ -62,8 +126,24 @@ internal struct SessionChatCanvas: View {
         )
     }
 
-    private var liveContext: PanelContext {
-        PanelContext(
+    /// The context the per-turn lenses render. In **scroll** mode it's the live
+    /// current turn (streaming); in **turns** mode it's the selected turn's
+    /// settled snapshot, so the flamechart/tools/thinking rewind with the pager
+    /// while the conversation, artifacts, and metrics stay put.
+    private var panelContext: PanelContext {
+        if displayMode == .turns, let turn = selectedTurn {
+            return PanelContext(
+                nodes: turn.nodes,
+                compactions: turn.compactions,
+                skills: turn.skills,
+                isThinking: false,       // a settled past turn isn't thinking
+                isStreaming: false,      // …and isn't streaming — no growing bars
+                selection: $selectedNodeID,
+                engine: engine,
+                onJumpToTool: nil
+            )
+        }
+        return PanelContext(
             nodes: liveNodes,
             compactions: chatViewModel.currentTurnCompactions,
             skills: chatViewModel.activeSkills,
@@ -113,24 +193,42 @@ internal struct SessionChatCanvas: View {
                 ConversationPanel(
                     chatViewModel: chatViewModel,
                     persona: persona,
-                    skinProvider: skinProvider
+                    skinProvider: skinProvider,
+                    // Turns mode isolates the selected turn; Scroll shows it all.
+                    focusedTurnID: displayMode == .turns ? selectedTurn?.id : nil,
+                    // When the conversation is the ONLY panel, it stands in for
+                    // the classic transcript, so it shows the inline activity
+                    // strip. Peel any lens into its own panel and this drops —
+                    // that lens now has a dedicated home.
+                    soloMode: layout.panels.count == 1,
+                    onExpandTimeline: onOpenSessionGraph
                 )
             )
         }
-        return registry.content(for: panel.kind, context: liveContext)
+        // Artifacts are session-global (ArtifactStore.shared), host-rendered so
+        // they persist across scroll and turn paging — not built from the
+        // per-turn PanelContext.
+        if panel.kind == .artifacts {
+            return AnyView(ArtifactsPanel())
+        }
+        return registry.content(for: panel.kind, context: panelContext)
     }
 
     // MARK: - Chrome
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            Button(action: onExit) {
-                Label("Exit Canvas", systemImage: "rectangle.compress.vertical")
+            // Reset the arrangement back to the plain single-conversation chat —
+            // the canvas IS the chat now, so there's nothing to "exit" to; this
+            // is the one-click way back to the default view. Non-destructive: the
+            // conversation is untouched, only the panel layout resets.
+            Button(action: resetToDefault) {
+                Label("Reset to default view", systemImage: "rectangle.arrowtriangle.2.inward")
                     .font(.system(size: 11, weight: .medium))
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.secondary)
-            .help("Back to the normal transcript")
+            .help("Reset to the default view — a single full-width conversation")
 
             // Session Graph opener — folded INTO the canvas toolbar (was floating
             // above the canvas) so the expander belongs to the canvas chrome.
@@ -142,19 +240,31 @@ internal struct SessionChatCanvas: View {
             .foregroundStyle(Theme.secondary)
             .help("Open the all-turns Session Graph")
 
-            // Mode-aware hint: what you can do right now.
-            Text(isEditing
-                 ? "drag a panel to move · drag an edge or corner to resize"
-                 : "using the canvas — tap Edit to rearrange")
-                .font(.system(size: 10))
-                .foregroundStyle(Theme.tertiary)
-                .lineLimit(1)
-                .layoutPriority(-1)
+            // Session-global metrics: cumulative tokens / cost / context %.
+            // Pinned here so it persists across turns and scroll — it never
+            // rewinds with the per-turn pager.
+            SessionUsageBadge(chatViewModel: chatViewModel, client: client)
 
             Spacer()
 
-            // Edit-only controls: adding and resetting are edits, so they live
-            // behind Edit mode.
+            // Scroll ↔ Turns, and (in Turns) the prev/next pager. Centered so it
+            // reads as the canvas's primary navigation.
+            displayModeControls
+
+            Spacer()
+
+            // ── Session-global chrome, folded in from the old chat header now
+            // that the canvas owns the whole toolbar: response style, export, TTS.
+            responseStyleMenu
+
+            // Export — turn-aware: in Turns mode it also offers the turn on
+            // screen; in Scroll mode it's whole-session, as before.
+            SessionExportMenu(assistantName: persona.name, turnScope: turnExportScope)
+                .padding(.horizontal, 2)
+
+            ttsToggle
+
+            // Edit-only: adding a panel is an edit, so it lives behind Edit mode.
             if isEditing {
                 Button {
                     showAddPalette.toggle()
@@ -165,17 +275,6 @@ internal struct SessionChatCanvas: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.accent)
                 .popover(isPresented: $showAddPalette, arrowEdge: .bottom) { addPalette }
-
-                Button {
-                    layout = DashboardLayout.seededChatCanvas(for: canvasBounds)
-                    layout.store(key: DashboardLayout.chatCanvasKey)
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.tertiary)
-                .help("Reset to the default canvas layout")
             }
 
             // Header toggle: hide/show every panel's title bar for a chrome-free
@@ -210,6 +309,116 @@ internal struct SessionChatCanvas: View {
         .padding(.horizontal, 12)
         .frame(height: 34)
         .background(Theme.surface.opacity(0.5))
+    }
+
+    /// Reset the canvas to its default expression: a single full-width
+    /// conversation, headers off, following the live tail in Scroll mode. The
+    /// conversation itself is never touched — only the panel arrangement.
+    private func resetToDefault() {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            layout = DashboardLayout.seededChatCanvas(for: canvasBounds)
+            showsTitleBars = false
+            displayMode = .scroll
+            selectedTurnID = nil
+            isEditing = false
+        }
+        layout.store(key: DashboardLayout.chatCanvasKey)
+    }
+
+    /// Response style (deep map / balanced / direct) — a SESSION-global setting:
+    /// it steers how every following turn is answered, so it stays in the toolbar
+    /// rather than rewinding with the per-turn pager. Shown only when the backend
+    /// supports it, exactly as the old chat header did.
+    @ViewBuilder
+    private var responseStyleMenu: some View {
+        if chatViewModel.backendCapabilities.supportsResponseStyles {
+            Menu {
+                ForEach(ResponseStyle.allCases) { style in
+                    Button {
+                        chatViewModel.setResponseStyle(style)
+                    } label: {
+                        if style == chatViewModel.responseStyle {
+                            Label(style.label, systemImage: "checkmark")
+                        } else {
+                            Text(style.label)
+                        }
+                    }
+                    .help(style.help)
+                }
+            } label: {
+                Label(chatViewModel.responseStyle.label, systemImage: chatViewModel.responseStyle.icon)
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .foregroundStyle(Theme.secondary)
+            .help("Response style: \(chatViewModel.responseStyle.help). Use /brief for a one-off direct answer.")
+        }
+    }
+
+    private var ttsToggle: some View {
+        Button {
+            ttsService.toggle()
+        } label: {
+            Image(systemName: ttsService.isEnabled ? "speaker.wave.3.fill" : "speaker.slash")
+                .font(.system(size: 11, weight: .medium))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(ttsService.isEnabled ? Theme.accent : Theme.secondary)
+        .help(ttsService.isEnabled ? "Text-to-speech enabled" : "Text-to-speech disabled")
+    }
+
+    /// Scroll ↔ Turns switch plus, in Turns mode, the prev/next pager and the
+    /// "Turn N of M" counter. Disabled until there's at least one turn to page.
+    @ViewBuilder
+    private var displayModeControls: some View {
+        HStack(spacing: 8) {
+            Picker("", selection: $displayMode) {
+                Label("Scroll", systemImage: "scroll").tag(CanvasDisplayMode.scroll)
+                Label("Turns", systemImage: "square.stack").tag(CanvasDisplayMode.turns)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .disabled(turns.isEmpty)
+            .help(turns.isEmpty
+                  ? "Turn-by-turn is available once the first turn completes"
+                  : "Scroll the whole thread, or page one turn at a time")
+
+            if displayMode == .turns {
+                HStack(spacing: 4) {
+                    Button { step(-1) } label: {
+                        Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selectedTurnNumber <= 1)
+                    .help("Previous turn")
+
+                    Text(turns.isEmpty ? "—" : "Turn \(selectedTurnNumber) of \(turns.count)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.secondary)
+                        .monospacedDigit()
+                        .frame(minWidth: 84)
+
+                    Button { step(1) } label: {
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selectedTurnNumber >= turns.count)
+                    .help("Next turn")
+                }
+                .foregroundStyle(Theme.accent)
+            }
+        }
+    }
+
+    /// Move the selected turn by `delta` (clamped), pinning an explicit id so the
+    /// pager stops following the tail.
+    private func step(_ delta: Int) {
+        guard !turns.isEmpty else { return }
+        let current = max(1, selectedTurnNumber)
+        let next = min(max(1, current + delta), turns.count)
+        selectedTurnID = turns[next - 1].id
     }
 
     private var addPalette: some View {
