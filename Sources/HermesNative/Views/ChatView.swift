@@ -50,6 +50,16 @@ struct ChatView: View {
     @State private var canvasMode = false
     #endif
 
+    /// Cross-platform view of `canvasMode` (macOS-only) so shared chat chrome can
+    /// branch on it without `#if` at every use site. Always `false` on iOS.
+    private var isInCanvasMode: Bool {
+        #if os(macOS)
+        canvasMode
+        #else
+        false
+        #endif
+    }
+
     // ── Quiz Mode ──
     @State private var showQuizSheet = false
     @State private var showDecksSheet = false
@@ -340,7 +350,10 @@ struct ChatView: View {
             #endif
 
             // ── Thought Graph (collapsible) ──
-            if shouldShowThoughtGraphToggle {
+            // In Canvas mode the Session Graph opener lives INSIDE the canvas
+            // toolbar (see SessionChatCanvas.onOpenSessionGraph), so we don't
+            // also float this section above the canvas.
+            if shouldShowThoughtGraphToggle && !isInCanvasMode {
                 thoughtGraphSection
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -357,7 +370,8 @@ struct ChatView: View {
                     skinProvider: skinProvider,
                     isInputFocused: $isInputFocused,
                     inputFieldRef: $inputFieldRef,
-                    onExit: { withAnimation(.easeInOut(duration: 0.2)) { canvasMode = false } }
+                    onExit: { withAnimation(.easeInOut(duration: 0.2)) { canvasMode = false } },
+                    onOpenSessionGraph: { showThoughtGraph = true }
                 )
             } else {
                 messageListArea

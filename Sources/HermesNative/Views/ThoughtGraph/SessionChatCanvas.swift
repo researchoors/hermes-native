@@ -29,12 +29,20 @@ internal struct SessionChatCanvas: View {
     @Binding internal var inputFieldRef: FocusableTextView?
     /// Leave Canvas mode (back to the normal transcript).
     internal let onExit: () -> Void
+    /// Open the macro all-turns Session Graph. Folded into the canvas toolbar so
+    /// the expander lives WITH the canvas instead of floating above it.
+    internal let onOpenSessionGraph: () -> Void
 
     @StateObject private var engine = ThoughtGraphLayoutEngine()
     @State private var layout = DashboardLayout()
     @State private var didLoadLayout = false
     @State private var showAddPalette = false
     @State private var canvasBounds: CGSize = .zero
+    /// Edit vs. use. Starts in **use** mode: the canvas is immediately usable
+    /// (scroll the chat, read the lenses) and only becomes rearrangeable when the
+    /// user taps Edit. This is the "go into edit mode, make changes, save, then
+    /// just use it" model — and the reason panels no longer feel grabby.
+    @State private var isEditing = false
     /// Cross-highlight shared between the flamechart, tools, and files panels.
     @State private var selectedNodeID: String?
     private let registry = PanelRegistry.chatCanvas
@@ -70,6 +78,7 @@ internal struct SessionChatCanvas: View {
             GeometryReader { geo in
                 DashboardCanvasView(
                     layout: $layout,
+                    isEditing: isEditing,
                     title: { registry.title(for: $0) },
                     icon: { registry.icon(for: $0) },
                     onLayoutCommitted: { layout.store(key: DashboardLayout.chatCanvasKey) },
@@ -118,7 +127,20 @@ internal struct SessionChatCanvas: View {
             .foregroundStyle(Theme.secondary)
             .help("Back to the normal transcript")
 
-            Text("drag the title bar to move · drag an edge or corner to resize")
+            // Session Graph opener — folded INTO the canvas toolbar (was floating
+            // above the canvas) so the expander belongs to the canvas chrome.
+            Button(action: onOpenSessionGraph) {
+                Label("Session Graph", systemImage: "chart.bar.xaxis")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.secondary)
+            .help("Open the all-turns Session Graph")
+
+            // Mode-aware hint: what you can do right now.
+            Text(isEditing
+                 ? "drag a panel to move · drag an edge or corner to resize"
+                 : "using the canvas — tap Edit to rearrange")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.tertiary)
                 .lineLimit(1)
@@ -126,26 +148,47 @@ internal struct SessionChatCanvas: View {
 
             Spacer()
 
-            Button {
-                showAddPalette.toggle()
-            } label: {
-                Label("Add panel", systemImage: "plus.rectangle")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.accent)
-            .popover(isPresented: $showAddPalette, arrowEdge: .bottom) { addPalette }
+            // Edit-only controls: adding and resetting are edits, so they live
+            // behind Edit mode.
+            if isEditing {
+                Button {
+                    showAddPalette.toggle()
+                } label: {
+                    Label("Add panel", systemImage: "plus.rectangle")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.accent)
+                .popover(isPresented: $showAddPalette, arrowEdge: .bottom) { addPalette }
 
+                Button {
+                    layout = DashboardLayout.seededChatCanvas(for: canvasBounds)
+                    layout.store(key: DashboardLayout.chatCanvasKey)
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.tertiary)
+                .help("Reset to the default canvas layout")
+            }
+
+            // The mode toggle: Edit ↔ Done. Done persists the arrangement and
+            // locks the canvas for use.
             Button {
-                layout = DashboardLayout.seededChatCanvas(for: canvasBounds)
-                layout.store(key: DashboardLayout.chatCanvasKey)
+                if isEditing {
+                    layout.store(key: DashboardLayout.chatCanvasKey)
+                    showAddPalette = false
+                }
+                withAnimation(.easeInOut(duration: 0.15)) { isEditing.toggle() }
             } label: {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 11, weight: .medium))
+                Label(isEditing ? "Done" : "Edit",
+                      systemImage: isEditing ? "checkmark" : "slider.horizontal.3")
+                    .font(.system(size: 11, weight: .semibold))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Theme.tertiary)
-            .help("Reset to the default canvas layout")
+            .foregroundStyle(isEditing ? Theme.accent : Theme.secondary)
+            .help(isEditing ? "Save this arrangement and lock the canvas" : "Rearrange the panels")
         }
         .padding(.horizontal, 12)
         .frame(height: 34)

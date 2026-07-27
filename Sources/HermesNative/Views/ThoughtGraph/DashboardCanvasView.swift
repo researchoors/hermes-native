@@ -14,6 +14,14 @@ import SwiftUI
 /// drag-end, keeping UserDefaults writes off the per-frame path.
 internal struct DashboardCanvasView: View {
     @Binding internal var layout: DashboardLayout
+    /// Edit vs. use. In **edit** mode the whole panel is a drag surface (its
+    /// content goes inert), resize grips show, and the border is a dashed accent
+    /// — you rearrange freely without hunting for the title bar or fighting a
+    /// scroll view. In **use** mode frames are locked, no grips or drag, and the
+    /// content is fully interactive (scroll the chat, pan the flamechart). This
+    /// mode split is what makes dragging reliable: there's no scroll-vs-move
+    /// ambiguity because the two never coexist.
+    internal var isEditing: Bool = true
     internal let title: (PanelKind) -> String
     internal let icon: (PanelKind) -> String
     internal let onLayoutCommitted: () -> Void
@@ -77,33 +85,70 @@ internal struct DashboardCanvasView: View {
 
     @ViewBuilder
     private func panelView(_ panel: DashboardPanel, bounds: CGSize) -> some View {
-        let isFocused = layout.panels.last?.id == panel.id
+        // Only the frontmost panel "focuses" (accent chrome) — and only while
+        // editing, since use mode has no movable/selected panel.
+        let isFocused = isEditing && layout.panels.last?.id == panel.id
         VStack(spacing: 0) {
             titleBar(panel, bounds: bounds, isFocused: isFocused)
             content(panel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
+                // Edit mode: content is inert so a drag moves the panel and
+                // doesn't scroll/select inside it (the fix for "can't drag it").
+                // Use mode: content is fully interactive.
+                .allowsHitTesting(!isEditing)
+                .overlay { moveSurface(panel, bounds: bounds) }
         }
         .frame(width: panel.frame.width, height: panel.frame.height)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(isFocused ? Theme.accent.opacity(0.55) : Theme.border, lineWidth: isFocused ? 1.5 : 1)
-        )
+        .overlay(panelBorder(isFocused: isFocused))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .shadow(color: .black.opacity(isFocused ? 0.35 : 0.2), radius: isFocused ? 12 : 6, y: 3)
-        .overlay(resizeGrips(panel, bounds: bounds, isFocused: isFocused))
+        // Resize grips only exist while editing; use mode locks every frame.
+        .overlay { if isEditing { resizeGrips(panel, bounds: bounds, isFocused: isFocused) } }
         .offset(x: panel.frame.minX, y: panel.frame.minY)
-        // Any touch on the panel body focuses it (without stealing drags).
-        .simultaneousGesture(TapGesture().onEnded { layout.bringToFront(panel.id) })
+        // Touching a panel while editing raises it; in use mode taps fall
+        // through to the live content.
+        .simultaneousGesture(TapGesture().onEnded {
+            if isEditing { layout.bringToFront(panel.id) }
+        })
+    }
+
+    /// The transparent, whole-body drag surface shown only in edit mode: drag
+    /// anywhere on the panel to move it — no title-bar hunting, no scroll-vs-move
+    /// fight (the content beneath is inert while editing).
+    @ViewBuilder
+    private func moveSurface(_ panel: DashboardPanel, bounds: CGSize) -> some View {
+        if isEditing {
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(dragGesture(.move, panel: panel, bounds: bounds))
+                .pointerStyleGrab()
+        }
+    }
+
+    /// Dashed accent border while editing (reads as "editable"); a quiet solid
+    /// hairline in use mode (reads as a settled, locked panel).
+    private func panelBorder(isFocused: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 10)
+            .strokeBorder(
+                isFocused ? Theme.accent.opacity(0.7) : (isEditing ? Theme.accent.opacity(0.3) : Theme.border),
+                style: StrokeStyle(
+                    lineWidth: isFocused ? 1.5 : 1,
+                    dash: isEditing ? [5, 4] : []
+                )
+            )
     }
 
     private func titleBar(_ panel: DashboardPanel, bounds: CGSize, isFocused: Bool) -> some View {
         HStack(spacing: 6) {
-            // Grip glyph → this bar is the drag handle for moving the panel.
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(isFocused ? Theme.secondary : Theme.tertiary)
+            // Grip glyph → this bar is a drag handle. Editing only; in use mode
+            // the panel is locked so the affordance would lie.
+            if isEditing {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(isFocused ? Theme.secondary : Theme.tertiary)
+            }
             Image(systemName: icon(panel.kind))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(isFocused ? Theme.accent : Theme.secondary)
@@ -112,26 +157,30 @@ internal struct DashboardCanvasView: View {
                 .foregroundStyle(Theme.primary)
                 .lineLimit(1)
             Spacer(minLength: 4)
-            Button {
-                layout.remove(panel.id)
-                onLayoutCommitted()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Theme.tertiary)
-                    .padding(3)
-                    .contentShape(Rectangle())
+            // Remove is a destructive edit — hidden in use mode.
+            if isEditing {
+                Button {
+                    layout.remove(panel.id)
+                    onLayoutCommitted()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Theme.tertiary)
+                        .padding(3)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Remove panel")
             }
-            .buttonStyle(.plain)
-            .help("Remove panel")
         }
         .padding(.horizontal, 8)
         .frame(height: Self.titleBarHeight)
         .frame(maxWidth: .infinity)
         .background(isFocused ? Theme.surfaceHover : Theme.surface.opacity(0.6))
         .contentShape(Rectangle())
-        .gesture(dragGesture(.move, panel: panel, bounds: bounds))
-        .pointerStyleGrab()
+        // The title bar is a move handle only while editing (masked off in use mode).
+        .gesture(dragGesture(.move, panel: panel, bounds: bounds), including: isEditing ? .all : .subviews)
+        .pointerStyleGrab(active: isEditing)
     }
 
     // MARK: - Resize grips (8 edges + corners)
@@ -279,12 +328,14 @@ private extension View {
         #endif
     }
 
-    /// Show an open-hand cursor over a draggable title bar on macOS.
+    /// Show an open-hand cursor over a draggable surface on macOS — only when
+    /// `active` (edit mode); in use mode the panel is locked so the cursor stays
+    /// the plain arrow.
     @ViewBuilder
-    func pointerStyleGrab() -> some View {
+    func pointerStyleGrab(active: Bool = true) -> some View {
         #if os(macOS)
         self.onHover { inside in
-            if inside { NSCursor.openHand.set() } else { NSCursor.arrow.set() }
+            if inside && active { NSCursor.openHand.set() } else { NSCursor.arrow.set() }
         }
         #else
         self

@@ -116,6 +116,10 @@ internal struct SessionThoughtGraphView: View {
     /// Last measured canvas size, so "reset layout" can re-tile for the real
     /// viewport even though the reset button has no geometry of its own.
     @State private var canvasBounds: CGSize = .zero
+    /// Edit vs. use — same model as the live chat canvas. Starts in use mode so
+    /// the dashboard is immediately readable and only becomes rearrangeable on
+    /// Edit; panels don't feel grabby while you're just inspecting a turn.
+    @State private var isEditing = false
     private let registry = PanelRegistry.standard
 
     internal var onJumpToTool: ((String) -> Void)?
@@ -167,6 +171,7 @@ internal struct SessionThoughtGraphView: View {
             GeometryReader { geo in
                 DashboardCanvasView(
                     layout: $layout,
+                    isEditing: isEditing,
                     title: { registry.title(for: $0) },
                     icon: { registry.icon(for: $0) },
                     onLayoutCommitted: { layout.store() },
@@ -194,33 +199,51 @@ internal struct SessionThoughtGraphView: View {
             Text(selectedTurn.map { "Turn \($0.index)" } ?? "Dashboard")
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.secondary)
-            Text("drag the title bar to move · drag an edge or corner to resize")
+            Text(isEditing
+                 ? "drag a panel to move · drag an edge or corner to resize"
+                 : "using the dashboard — tap Edit to rearrange")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.tertiary)
                 .lineLimit(1)
                 .layoutPriority(-1)
             Spacer()
+            if isEditing {
+                Button {
+                    showAddPalette.toggle()
+                } label: {
+                    Label("Add panel", systemImage: "plus.rectangle")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.accent)
+                .popover(isPresented: $showAddPalette, arrowEdge: .bottom) {
+                    addPalette
+                }
+                Button {
+                    layout = DashboardLayout.seededDefault(for: canvasBounds)
+                    layout.store()
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.tertiary)
+                .help("Reset to the default layout")
+            }
             Button {
-                showAddPalette.toggle()
+                if isEditing {
+                    layout.store()
+                    showAddPalette = false
+                }
+                withAnimation(.easeInOut(duration: 0.15)) { isEditing.toggle() }
             } label: {
-                Label("Add panel", systemImage: "plus.rectangle")
-                    .font(.system(size: 11, weight: .medium))
+                Label(isEditing ? "Done" : "Edit",
+                      systemImage: isEditing ? "checkmark" : "slider.horizontal.3")
+                    .font(.system(size: 11, weight: .semibold))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Theme.accent)
-            .popover(isPresented: $showAddPalette, arrowEdge: .bottom) {
-                addPalette
-            }
-            Button {
-                layout = DashboardLayout.seededDefault(for: canvasBounds)
-                layout.store()
-            } label: {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.tertiary)
-            .help("Reset to the default layout")
+            .foregroundStyle(isEditing ? Theme.accent : Theme.secondary)
+            .help(isEditing ? "Save this arrangement and lock the dashboard" : "Rearrange the panels")
         }
         .padding(.horizontal, 12)
         .frame(height: 34)
