@@ -188,27 +188,33 @@ struct MacInputTextField: NSViewRepresentable {
         var reportedHeight: CGFloat?
         /// Deferred invalidation scheduled for the next runloop turn.
         private var pendingInvalidation = false
+        /// Earliest time at which another invalidateIntrinsicContentSize is
+        /// allowed. Prevents async layout loops: even with the tolerance guard
+        /// in shouldAdoptInputHeight, AppKit's scroll-view layout can shift the
+        /// used rect by sub-point deltas that pass the 0.5pt tolerance on every
+        /// pass, so the deferred invalidation keeps re-arming. The cooldown
+        /// forces at least 200ms between SwiftUI re-layouts of the input field.
+        private var earliestNextInvalidation: Date = .distantPast
 
-        /// Absorb sub-point height noise and defer the SwiftUI invalidation
-        /// out of the current layout pass.
-        ///
-        /// reportContentHeight fires from didChangeText but ALSO after
-        /// AppKit resizes/relayouts the text view — which happens INSIDE
-        /// SwiftUI's own layout pass (sizeThatFits → NSScrollView layout →
-        /// usedRect shift → onHeightChange → invalidateIntrinsicContentSize
-        /// → new layout pass → …). Invalidating synchronously from within
-        /// layout is what re-arms the loop the sizeThatFits comment says
-        /// can't form; deferring to the next runloop turn coalesces the
-        /// storm to one invalidation, and the tolerance (ChatLayoutMath.
-        /// shouldAdoptInputHeight — sub-point deltas are relayout noise of
-        /// the same text, a real line change is ~18pt) stops the fixed
-        /// point from oscillating between two sub-point heights.
-        ///
         func applyReportedHeight(_ height: CGFloat) {
             guard ChatLayoutMath.shouldAdoptInputHeight(current: reportedHeight, proposed: height) else { return }
             reportedHeight = height
             guard !pendingInvalidation else { return }
+            let now = Date()
+            let delay = max(0, earliestNextInvalidation.timeIntervalSince(now))
+            if delay > 0 {
+                pendingInvalidation = true
+                Task { @MainActor [weak self] in
+                    do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
+                    guard let self else { return }
+                    self.pendingInvalidation = false
+                    self.earliestNextInvalidation = Date().addingTimeInterval(0.2)
+                    self.textView?.enclosingScrollView?.invalidateIntrinsicContentSize()
+                }
+                return
+            }
             pendingInvalidation = true
+            earliestNextInvalidation = now.addingTimeInterval(0.2)
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.pendingInvalidation = false
