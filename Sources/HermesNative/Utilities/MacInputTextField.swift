@@ -34,9 +34,7 @@ struct MacInputTextField: NSViewRepresentable {
         tv.delegate = context.coordinator
         tv.onSubmit = onSubmit
         tv.onImagePaste = onImagePaste
-        tv.onHeightChange = { [weak coordinator = context.coordinator] height in
-            coordinator?.applyReportedHeight(height)
-        }
+        tv.onHeightChange = nil
         tv.onTextChange = onTextChange
         tv.onNavigateUp = onNavigateUp
         tv.onNavigateDown = onNavigateDown
@@ -99,9 +97,7 @@ struct MacInputTextField: NSViewRepresentable {
         nsView.placeholder = placeholder
         nsView.onSubmit = onSubmit
         nsView.onImagePaste = onImagePaste
-        nsView.onHeightChange = { [weak coordinator = context.coordinator] height in
-            coordinator?.applyReportedHeight(height)
-        }
+        nsView.onHeightChange = nil
         nsView.onTextChange = onTextChange
         nsView.onNavigateUp = onNavigateUp
         nsView.onNavigateDown = onNavigateDown
@@ -122,38 +118,34 @@ struct MacInputTextField: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView scrollView: NSScrollView, context: Context) -> CGSize? {
-        // DURABLE FIX for the recurring layout-loop beachball.
-        //
-        // The old design RETURNED a height computed from the proposed width.
-        // That is inherently self-referential: SwiftUI proposes a width →
-        // we return a height → the parent reflows → proposes a slightly
-        // different width → we return a slightly different height → … an
-        // infinite relayout that pegs the main thread. Quantization + caches
-        // only narrowed the window; under a ScrollView/LazyVStack host (which
-        // re-proposes aggressively) it still oscillated.
-        //
-        // Now: do NOT derive height from the proposal here. Accept SwiftUI's
-        // proposed width (return nil width) and report a height that the
-        // AppKit side already computed on the last *content* change
-        // (coordinator.reportedHeight) — a value that does NOT change when the
-        // proposed width jitters. With height no longer a function of the
-        // proposed width, the feedback loop cannot form.
         guard let nsView = scrollView.documentView as? FocusableTextView else { return nil }
         let coordinator = context.coordinator
-        // Record the width fallback only on a meaningful change — sub-point
-        // proposal churn is the loop re-proposing, not a real resize, and
-        // the stored value must not drift with it.
         if let w = proposal.width, w.isFinite, w > 0,
            ChatLayoutMath.widthMeaningfullyChanged(current: coordinator.lastMeasuredWidth, proposed: w) {
             coordinator.lastMeasuredWidth = w
         }
         let width = proposal.width ?? coordinator.lastMeasuredWidth ?? 300
-        // Height comes from the AppKit view's reported content height (updated
-        // only on text changes), clamped to maxLines and rounded to whole
-        // points — NOT recomputed from the proposed width. Identical content
-        // therefore always returns the identical size, which is what prevents
-        // the relayout feedback loop.
-        let height = coordinator.clampedReportedHeight(font: nsView.font, maxLines: nsView.maxLines)
+
+        // Compute height directly from the text view's layout manager.
+        // This avoids the callback-based reportedHeight → invalidateIntrinsic
+        // → re-layout feedback loop that caused the spinning wheel.
+        // Round to whole points so sub-pixel jitter doesn't mint distinct
+        // sizes on successive calls within the same layout pass.
+        let lineHeight = (nsView.font ?? .systemFont(ofSize: 15, weight: .regular)).boundingRectForFont.height
+        let minH = lineHeight + 12
+        let maxH = lineHeight * CGFloat(nsView.maxLines) + 12
+        let rawH: CGFloat
+        if let lm = nsView.layoutManager, let tc = nsView.textContainer {
+            lm.ensureLayout(for: tc)
+            rawH = lm.usedRect(for: tc).height + nsView.textContainerInset.height * 2
+        } else {
+            rawH = coordinator.reportedHeight ?? minH
+        }
+        // Cache for updateNSView path (external text changes)
+        if ChatLayoutMath.shouldAdoptInputHeight(current: coordinator.reportedHeight, proposed: rawH) {
+            coordinator.reportedHeight = rawH
+        }
+        let height = min(max(rawH, minH), maxH).rounded()
         return CGSize(width: width, height: height)
     }
 
@@ -182,45 +174,10 @@ struct MacInputTextField: NSViewRepresentable {
         var wasFocused: Bool = false
         var lastMeasuredWidth: CGFloat?
         /// Content height reported by the AppKit text view on its last text
-        /// change. This is the single source of truth for the field's height;
-        /// sizeThatFits returns it verbatim (clamped), so the height never
-        /// varies with the proposed width and the relayout loop can't form.
+        /// change. Now used only as a fallback in sizeThatFits when the
+        /// layout manager isn't available yet; height is computed directly
+        /// from the layout manager each time sizeThatFits is called.
         var reportedHeight: CGFloat?
-        /// Deferred invalidation scheduled for the next runloop turn.
-        private var pendingInvalidation = false
-        /// Earliest time at which another invalidateIntrinsicContentSize is
-        /// allowed. Prevents async layout loops: even with the tolerance guard
-        /// in shouldAdoptInputHeight, AppKit's scroll-view layout can shift the
-        /// used rect by sub-point deltas that pass the 0.5pt tolerance on every
-        /// pass, so the deferred invalidation keeps re-arming. The cooldown
-        /// forces at least 200ms between SwiftUI re-layouts of the input field.
-        private var earliestNextInvalidation: Date = .distantPast
-
-        func applyReportedHeight(_ height: CGFloat) {
-            guard ChatLayoutMath.shouldAdoptInputHeight(current: reportedHeight, proposed: height) else { return }
-            reportedHeight = height
-            guard !pendingInvalidation else { return }
-            let now = Date()
-            let delay = max(0, earliestNextInvalidation.timeIntervalSince(now))
-            if delay > 0 {
-                pendingInvalidation = true
-                Task { @MainActor [weak self] in
-                    do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
-                    guard let self else { return }
-                    self.pendingInvalidation = false
-                    self.earliestNextInvalidation = Date().addingTimeInterval(0.2)
-                    self.textView?.enclosingScrollView?.invalidateIntrinsicContentSize()
-                }
-                return
-            }
-            pendingInvalidation = true
-            earliestNextInvalidation = now.addingTimeInterval(0.2)
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.pendingInvalidation = false
-                self.textView?.enclosingScrollView?.invalidateIntrinsicContentSize()
-            }
-        }
 
         init(_ parent: MacInputTextField) {
             self.parent = parent
