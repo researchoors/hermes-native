@@ -11,7 +11,7 @@ SCHEME_MAC := HermesNative-macOS
 CONFIG := Debug
 DERIVED := $(HOME)/Library/Developer/Xcode/DerivedData
 
-.PHONY: generate build run kill lint lint-fix lint-baseline lint-baseline-guard test check clean diagnose-hang
+.PHONY: generate build run kill lint lint-fix lint-baseline lint-baseline-guard test test-session-smoke check clean diagnose-hang
 
 # Regenerate the Xcode project from project.yml (needed after adding files).
 generate:
@@ -77,6 +77,22 @@ lint-baseline:
 test:
 	swift build --build-tests
 	swift test --disable-sandbox
+
+# Run the session lifecycle smoke tests against a live gateway.
+# Requires HERMES_NATIVE_GATEWAY_URL (and optionally HERMES_NATIVE_API_KEY).
+# Tests are skipped automatically if the env var is absent — safe to run locally
+# without a gateway, they just report "skipped".
+#
+# Covers: nav pane smoke (all sidebar/tab items), long-session second turn,
+# session switch while streaming, concurrent sessions, wiki navigation.
+test-session-smoke:
+	xcodebuild test \
+		-project $(PROJECT) \
+		-scheme HermesNativeUITests \
+		-destination 'platform=macOS' \
+		-only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests \
+		HERMES_NATIVE_GATEWAY_URL="$(HERMES_NATIVE_GATEWAY_URL)" \
+		HERMES_NATIVE_API_KEY="$(HERMES_NATIVE_API_KEY)"
 
 # One command an agent (or human) runs before pushing — the whole CI gate:
 # strict-concurrency build, tests, and baselined lint. If this is green, CI is.
