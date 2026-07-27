@@ -195,6 +195,32 @@ jobs:
             -resultBundlePath "$RESULT_BUNDLE" \
             2>&1 | tee "$RUNNER_TEMP/ios-e2e-tests.log" | xcpretty || true
 
+      - name: Run session lifecycle smoke tests
+        if: always()
+        working-directory: hermes-native
+        env:
+          HERMES_NATIVE_GATEWAY_URL: ${{ env.HERMES_CI_URL }}
+          HERMES_NATIVE_API_KEY: ${{ env.HERMES_CI_API_KEY }}
+          API_SERVER_KEY: ${{ env.HERMES_CI_API_KEY }}
+        run: |
+          set -o pipefail
+          RESULT_BUNDLE="${RUNNER_TEMP}/HermesNativeIOSSmokeTests.xcresult"
+
+          xcrun simctl boot "$SIM_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIM_ID" -b
+
+          xcodebuild test \
+            -project HermesNative.xcodeproj \
+            -scheme HermesNative-iOS \
+            -destination "platform=iOS Simulator,id=$SIM_ID" \
+            -only-testing:HermesNativeUITests/HermesNativeIOSSmokeTests/testTabNavSmoke \
+            -only-testing:HermesNativeUITests/HermesNativeIOSSmokeTests/testInputBarUsableAfterFirstResponse \
+            -only-testing:HermesNativeUITests/HermesNativeIOSSmokeTests/testInputRouting_SwitchSessionWhileStreaming \
+            -only-testing:HermesNativeUITests/HermesNativeIOSSmokeTests/testConcurrentSessions_BothInputBarsReEnable \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            2>&1 | tee "$RUNNER_TEMP/ios-session-smoke-tests.log" | xcpretty || true
+
       - name: Upload iOS simulator test artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -204,10 +230,12 @@ jobs:
             ${{ runner.temp }}/HermesNativeOfflineUITests.xcresult
             ${{ runner.temp }}/HermesNativeLocalGatewayUITests.xcresult
             ${{ runner.temp }}/HermesNativeE2ETests.xcresult
+            ${{ runner.temp }}/HermesNativeIOSSmokeTests.xcresult
             ${{ runner.temp }}/build-ios-simulator.log
             ${{ runner.temp }}/ios-ui-offline-smoke.log
             ${{ runner.temp }}/ios-ui-local-gateway-smoke.log
             ${{ runner.temp }}/ios-e2e-tests.log
+            ${{ runner.temp }}/ios-session-smoke-tests.log
             ${{ runner.temp }}/hermes-ci-home/logs/api-server.log
           if-no-files-found: ignore
           retention-days: 14
