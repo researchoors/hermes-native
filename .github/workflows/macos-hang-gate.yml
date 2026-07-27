@@ -1,9 +1,13 @@
-name: macOS Hang Gate
+name: macOS Hang Gate + Session Smoke
 
-# The beachball gate. Launches the macOS app under the MainThreadWatchdog with
-# --hang-fatal so any >250ms main-thread stall trips an assertion and fails the
-# test — before it can reach a user. Every hang this app has shipped was macOS,
-# so this runs on the platform that actually beachballs.
+# Two gates in one workflow — both run on macOS-15 with a local Hermes gateway:
+#
+#   hang-gate: launches under --hang-fatal so any >250ms main-thread stall
+#              trips an assertion and fails the test.
+#
+#   session-smoke: nav-pane traversal (every sidebar button), long-session
+#                  second-turn input-bar check, session-switch routing,
+#                  concurrent sessions, and wiki canvas interaction.
 
 on:
   push:
@@ -71,3 +75,136 @@ jobs:
             ${{ runner.temp }}/hang-gate.log
           if-no-files-found: ignore
           retention-days: 14
+
+  session-smoke:
+    name: macOS session lifecycle smoke
+    runs-on: macos-15
+    env:
+      HERMES_CI_API_KEY: hermes-native-ci-local-key
+      HERMES_CI_PORT: "18642"
+      HERMES_CI_URL: ws://127.0.0.1:18642/v1/ws
+
+    steps:
+      - name: Checkout HermesNative
+        uses: actions/checkout@v4
+        with:
+          path: hermes-native
+
+      - name: Checkout Hermes Agent
+        uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          path: hermes-agent
+
+      - name: Install build tools
+        run: brew install xcodegen
+
+      - name: Set up Hermes Agent
+        working-directory: hermes-agent
+        run: |
+          python3.11 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[messaging,cron]'
+
+      - name: Start local Hermes API server
+        working-directory: hermes-agent
+        env:
+          HERMES_HOME: ${{ runner.temp }}/hermes-ci-home
+          API_SERVER_ENABLED: "true"
+          API_SERVER_HOST: 127.0.0.1
+          API_SERVER_PORT: ${{ env.HERMES_CI_PORT }}
+          API_SERVER_KEY: ${{ env.HERMES_CI_API_KEY }}
+          HERMES_QUIET: "1"
+          HERMES_SKIP_MEMORY: "1"
+          HERMES_DISABLE_MEMORY: "1"
+          TERMINAL_CWD: ${{ github.workspace }}/hermes-native
+        run: |
+          set -euo pipefail
+          mkdir -p "$HERMES_HOME/logs"
+          cat > "$HERMES_HOME/config.yaml" <<'YAML'
+          model:
+            provider: openai
+            model: gpt-4o-mini
+          platforms:
+            api_server:
+              enabled: true
+              extra:
+                host: 127.0.0.1
+                port: 18642
+                key: hermes-native-ci-local-key
+          agent:
+            max_turns: 6
+          memory:
+            memory_enabled: false
+            user_profile_enabled: false
+          YAML
+
+          . .venv/bin/activate
+          python -m gateway.run > "$HERMES_HOME/logs/api-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/hermes-api-server.pid"
+
+          for i in {1..60}; do
+            if curl -fsS -H "Authorization: Bearer $API_SERVER_KEY" \
+                "http://127.0.0.1:${API_SERVER_PORT}/health" >/dev/null; then
+              echo "Hermes API server is healthy"
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/hermes-api-server.pid")" 2>/dev/null; then
+              echo "Hermes API server exited early"
+              cat "$HERMES_HOME/logs/api-server.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "Timed out waiting for Hermes API server"
+          cat "$HERMES_HOME/logs/api-server.log"
+          exit 1
+
+      - name: Generate Xcode project
+        working-directory: hermes-native
+        run: xcodegen generate
+
+      - name: Run macOS session lifecycle smoke tests
+        working-directory: hermes-native
+        env:
+          HERMES_NATIVE_GATEWAY_URL: ${{ env.HERMES_CI_URL }}
+          HERMES_NATIVE_API_KEY: ${{ env.HERMES_CI_API_KEY }}
+          API_SERVER_KEY: ${{ env.HERMES_CI_API_KEY }}
+        run: |
+          set -o pipefail
+          RESULT_BUNDLE="${RUNNER_TEMP}/HermesNativeSessionSmokeTests.xcresult"
+
+          xcodebuild test \
+            -project HermesNative.xcodeproj \
+            -scheme HermesNative-macOS \
+            -destination 'platform=macOS' \
+            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testNavPaneSmoke_macOSSidebar \
+            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testInputBarUsableAfterFirstResponse \
+            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testInputRouting_SwitchSessionWhileStreaming \
+            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testConcurrentSessions_BothInputBarsReEnable \
+            -only-testing:HermesNativeUITests/HermesNativeSessionSmokeTests/testWikiNavigation_GraphAndFileTree \
+            CODE_SIGNING_ALLOWED=NO \
+            HERMES_NATIVE_GATEWAY_URL="${HERMES_NATIVE_GATEWAY_URL}" \
+            HERMES_NATIVE_API_KEY="${HERMES_NATIVE_API_KEY}" \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            2>&1 | tee "${RUNNER_TEMP}/macos-session-smoke.log" | xcpretty || true
+
+      - name: Upload session smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-session-smoke-artifacts
+          path: |
+            ${{ runner.temp }}/HermesNativeSessionSmokeTests.xcresult
+            ${{ runner.temp }}/macos-session-smoke.log
+            ${{ runner.temp }}/hermes-ci-home/logs/api-server.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Stop local Hermes API server
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/hermes-api-server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/hermes-api-server.pid")" 2>/dev/null || true
+          fi
