@@ -72,59 +72,96 @@ internal struct DashboardCanvasView: View {
                 }
             }
             .coordinateSpace(name: Self.coordSpace)
-            .onChange(of: geo.size) { _, newSize in
-                // Window resized (or first layout): keep every panel on-canvas.
-                // Never reflow mid-drag — that would fight the user's hand.
+            .onChange(of: geo.size) { oldSize, newSize in
+                // Window resized: scale the layout proportionally so a full
+                // arrangement stays full (no dead space going fullscreen) and a
+                // shrunk window packs panels back in. Never reflow mid-drag —
+                // that would fight the user's hand.
                 guard activeDrag == nil else { return }
-                layout = layout.clamped(to: newSize)
+                layout = layout.reflowed(from: oldSize, to: newSize)
             }
         }
     }
 
     // MARK: - One panel
 
+    // A panel is a strict z-stack so every gesture has an unambiguous owner —
+    // the earlier bug was a resize grip whose hit area silently covered the whole
+    // panel and swallowed every drag. Bottom → top:
+    //   1. the card (title bar + content)
+    //   2. the move layer (edit only): drag anywhere to move
+    //   3. the resize handles (edit only): thin edge/corner strips
+    //   4. the delete button (edit only): always the topmost hit target
+    // Each layer above the card is exactly as big as its own hit target, so no
+    // layer can eat another's input.
     @ViewBuilder
     private func panelView(_ panel: DashboardPanel, bounds: CGSize) -> some View {
         // Only the frontmost panel "focuses" (accent chrome) — and only while
         // editing, since use mode has no movable/selected panel.
         let isFocused = isEditing && layout.panels.last?.id == panel.id
+        ZStack(alignment: .topLeading) {
+            card(panel, isFocused: isFocused)
+
+            if isEditing {
+                // 2. Move layer — a transparent sheet over the whole panel. Drag
+                // anywhere to move; content beneath is covered so there's no
+                // scroll-vs-move fight. Sits ABOVE the card, BELOW the handles.
+                Color.clear
+                    .frame(width: panel.frame.width, height: panel.frame.height)
+                    .contentShape(Rectangle())
+                    .gesture(dragGesture(.move, panel: panel, bounds: bounds))
+                    .pointerStyleGrab()
+
+                // 3. Resize handles — thin strips pinned to each edge/corner.
+                resizeGrips(panel, bounds: bounds, isFocused: isFocused)
+                    .frame(width: panel.frame.width, height: panel.frame.height)
+
+                // 4. Delete — topmost, so its click is never eaten by the move layer.
+                deleteButton(panel)
+                    .frame(width: panel.frame.width, height: panel.frame.height, alignment: .topTrailing)
+            }
+        }
+        .frame(width: panel.frame.width, height: panel.frame.height)
+        .offset(x: panel.frame.minX, y: panel.frame.minY)
+    }
+
+    /// The visual card: title bar + content, with the panel chrome. In use mode
+    /// its content is fully interactive; in edit mode the move layer above covers
+    /// it, so hit-testing here doesn't matter.
+    private func card(_ panel: DashboardPanel, isFocused: Bool) -> some View {
         VStack(spacing: 0) {
-            titleBar(panel, bounds: bounds, isFocused: isFocused)
+            titleBar(panel, isFocused: isFocused)
             content(panel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
-                // Edit mode: content is inert so a drag moves the panel and
-                // doesn't scroll/select inside it (the fix for "can't drag it").
-                // Use mode: content is fully interactive.
-                .allowsHitTesting(!isEditing)
-                .overlay { moveSurface(panel, bounds: bounds) }
         }
         .frame(width: panel.frame.width, height: panel.frame.height)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10))
         .overlay(panelBorder(isFocused: isFocused))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .shadow(color: .black.opacity(isFocused ? 0.35 : 0.2), radius: isFocused ? 12 : 6, y: 3)
-        // Resize grips only exist while editing; use mode locks every frame.
-        .overlay { if isEditing { resizeGrips(panel, bounds: bounds, isFocused: isFocused) } }
-        .offset(x: panel.frame.minX, y: panel.frame.minY)
-        // Touching a panel while editing raises it; in use mode taps fall
+        // Raise this panel when tapped while editing; in use mode taps fall
         // through to the live content.
         .simultaneousGesture(TapGesture().onEnded {
             if isEditing { layout.bringToFront(panel.id) }
         })
     }
 
-    /// The transparent, whole-body drag surface shown only in edit mode: drag
-    /// anywhere on the panel to move it — no title-bar hunting, no scroll-vs-move
-    /// fight (the content beneath is inert while editing).
-    @ViewBuilder
-    private func moveSurface(_ panel: DashboardPanel, bounds: CGSize) -> some View {
-        if isEditing {
-            Color.clear
+    /// The remove (×) button, drawn as its own top-of-stack layer so nothing can
+    /// intercept its click.
+    private func deleteButton(_ panel: DashboardPanel) -> some View {
+        Button {
+            layout.remove(panel.id)
+            onLayoutCommitted()
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.secondary, Theme.surface)
+                .padding(6)
                 .contentShape(Rectangle())
-                .gesture(dragGesture(.move, panel: panel, bounds: bounds))
-                .pointerStyleGrab()
         }
+        .buttonStyle(.plain)
+        .help("Remove panel")
     }
 
     /// Dashed accent border while editing (reads as "editable"); a quiet solid
@@ -140,10 +177,11 @@ internal struct DashboardCanvasView: View {
             )
     }
 
-    private func titleBar(_ panel: DashboardPanel, bounds: CGSize, isFocused: Bool) -> some View {
+    /// Title bar — pure chrome (icon + name). Moving is handled by the move layer
+    /// above, and deleting by the delete layer, so the bar itself owns no gesture.
+    /// The grip glyph in edit mode signals "this whole panel is draggable now".
+    private func titleBar(_ panel: DashboardPanel, isFocused: Bool) -> some View {
         HStack(spacing: 6) {
-            // Grip glyph → this bar is a drag handle. Editing only; in use mode
-            // the panel is locked so the affordance would lie.
             if isEditing {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 9, weight: .semibold))
@@ -157,103 +195,94 @@ internal struct DashboardCanvasView: View {
                 .foregroundStyle(Theme.primary)
                 .lineLimit(1)
             Spacer(minLength: 4)
-            // Remove is a destructive edit — hidden in use mode.
-            if isEditing {
-                Button {
-                    layout.remove(panel.id)
-                    onLayoutCommitted()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Theme.tertiary)
-                        .padding(3)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Remove panel")
-            }
+            // Leave room for the delete layer's × so the title doesn't run under it.
+            if isEditing { Color.clear.frame(width: 22, height: 1) }
         }
         .padding(.horizontal, 8)
         .frame(height: Self.titleBarHeight)
         .frame(maxWidth: .infinity)
         .background(isFocused ? Theme.surfaceHover : Theme.surface.opacity(0.6))
-        .contentShape(Rectangle())
-        // The title bar is a move handle only while editing (masked off in use mode).
-        .gesture(dragGesture(.move, panel: panel, bounds: bounds), including: isEditing ? .all : .subviews)
-        .pointerStyleGrab(active: isEditing)
     }
 
-    // MARK: - Resize grips (8 edges + corners)
+    // MARK: - Resize grips (4 edges + 4 corners)
     //
-    // Each grip is a generous, invisible hit zone pinned to an edge/corner,
-    // with VISIBLE handle chrome drawn on top when the panel is focused — so
-    // the user can see where to grab, not just discover it by hunting. The
-    // hovered handle brightens to accent. Chrome only shows on the focused
-    // panel to avoid a canvas full of handles.
+    // The invariant that keeps this correct: `.contentShape` + `.gesture` attach
+    // to a view whose RENDERED size equals the intended hit zone (a thin edge
+    // strip or a small corner square). Positioning is done by a SEPARATE outer
+    // `.frame(...alignment:)` that carries no gesture, so it never widens the hit
+    // area. The old code applied `.contentShape` AFTER the fill-frame, which made
+    // each corner's hit zone the whole panel — the last corner drawn then
+    // swallowed every drag as a bottom-right resize. Corners are drawn last so
+    // they win over the edges they overlap.
 
     private func resizeGrips(_ panel: DashboardPanel, bounds: CGSize, isFocused: Bool) -> some View {
         ZStack {
-            grip(panel, .top, bounds: bounds, isFocused: isFocused)
-                .frame(height: Self.edgeGrip).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            grip(panel, .bottom, bounds: bounds, isFocused: isFocused)
-                .frame(height: Self.edgeGrip).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            grip(panel, .leading, bounds: bounds, isFocused: isFocused)
-                .frame(width: Self.edgeGrip).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            grip(panel, .trailing, bounds: bounds, isFocused: isFocused)
-                .frame(width: Self.edgeGrip).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-            // Corners drawn last → win the hit test over the edges they overlap.
-            corner(panel, .topLeading, bounds: bounds, alignment: .topLeading, isFocused: isFocused)
-            corner(panel, .topTrailing, bounds: bounds, alignment: .topTrailing, isFocused: isFocused)
-            corner(panel, .bottomLeading, bounds: bounds, alignment: .bottomLeading, isFocused: isFocused)
-            corner(panel, .bottomTrailing, bounds: bounds, alignment: .bottomTrailing, isFocused: isFocused)
+            edgeGrip(panel, .top, bounds: bounds, isFocused: isFocused)
+            edgeGrip(panel, .bottom, bounds: bounds, isFocused: isFocused)
+            edgeGrip(panel, .leading, bounds: bounds, isFocused: isFocused)
+            edgeGrip(panel, .trailing, bounds: bounds, isFocused: isFocused)
+            cornerGrip(panel, .topLeading, bounds: bounds, isFocused: isFocused)
+            cornerGrip(panel, .topTrailing, bounds: bounds, isFocused: isFocused)
+            cornerGrip(panel, .bottomLeading, bounds: bounds, isFocused: isFocused)
+            cornerGrip(panel, .bottomTrailing, bounds: bounds, isFocused: isFocused)
         }
     }
 
-    private func grip(_ panel: DashboardPanel, _ handle: PanelHandle, bounds: CGSize, isFocused: Bool) -> some View {
+    /// A thin, full-length hit strip pinned to one edge. The gesture lives on the
+    /// sized strip; the outer positioning frame carries none.
+    private func edgeGrip(_ panel: DashboardPanel, _ handle: PanelHandle, bounds: CGSize, isFocused: Bool) -> some View {
         let isHot = hoveredHandle == HandleRef(id: panel.id, handle: handle)
         let horizontal = handle == .top || handle == .bottom
-        return ZStack {
-            Color.clear
-            if isFocused {
-                // A short capsule centered on the edge — the visible grab bar.
-                Capsule()
-                    .fill(isHot ? Theme.accent : Theme.secondary.opacity(0.7))
-                    .frame(
-                        width: horizontal ? Self.edgeHandleLength : Self.edgeHandleThickness,
-                        height: horizontal ? Self.edgeHandleThickness : Self.edgeHandleLength
-                    )
+        let alignment: Alignment = handle == .top ? .top
+            : handle == .bottom ? .bottom
+            : handle == .leading ? .leading : .trailing
+        return Color.clear
+            .frame(
+                maxWidth: horizontal ? .infinity : Self.edgeGrip,
+                maxHeight: horizontal ? Self.edgeGrip : .infinity
+            )
+            .overlay {
+                if isFocused {
+                    Capsule()
+                        .fill(isHot ? Theme.accent : Theme.secondary.opacity(0.7))
+                        .frame(
+                            width: horizontal ? Self.edgeHandleLength : Self.edgeHandleThickness,
+                            height: horizontal ? Self.edgeHandleThickness : Self.edgeHandleLength
+                        )
+                }
             }
-        }
-        .contentShape(Rectangle())
-        .gesture(dragGesture(handle, panel: panel, bounds: bounds))
-        .onHover { inside in setHover(inside, panel: panel, handle: handle) }
-        .pointerStyleResize(handle)
+            .contentShape(Rectangle())
+            .gesture(dragGesture(handle, panel: panel, bounds: bounds))
+            .onHover { inside in setHover(inside, panel: panel, handle: handle) }
+            .pointerStyleResize(handle)
+            // Position only — no gesture/contentShape here, so it can't widen the
+            // grabbable strip.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
     }
 
-    private func corner(
-        _ panel: DashboardPanel,
-        _ handle: PanelHandle,
-        bounds: CGSize,
-        alignment: Alignment,
-        isFocused: Bool
-    ) -> some View {
+    /// A small fixed-size hit square pinned to one corner. Same invariant: the
+    /// gesture is on the `cornerGrip`-sized view, positioned by an outer frame.
+    private func cornerGrip(_ panel: DashboardPanel, _ handle: PanelHandle, bounds: CGSize, isFocused: Bool) -> some View {
         let isHot = hoveredHandle == HandleRef(id: panel.id, handle: handle)
-        return ZStack {
-            Color.clear
-            if isFocused {
-                // A filled dot marks each corner as a resize handle.
-                Circle()
-                    .fill(isHot ? Theme.accent : Theme.surface)
-                    .overlay(Circle().stroke(isHot ? Theme.accent : Theme.secondary, lineWidth: 1.5))
-                    .frame(width: Self.cornerHandleSize, height: Self.cornerHandleSize)
+        let alignment: Alignment = handle == .topLeading ? .topLeading
+            : handle == .topTrailing ? .topTrailing
+            : handle == .bottomLeading ? .bottomLeading : .bottomTrailing
+        return Color.clear
+            .frame(width: Self.cornerGrip, height: Self.cornerGrip)
+            .overlay {
+                if isFocused {
+                    Circle()
+                        .fill(isHot ? Theme.accent : Theme.surface)
+                        .overlay(Circle().stroke(isHot ? Theme.accent : Theme.secondary, lineWidth: 1.5))
+                        .frame(width: Self.cornerHandleSize, height: Self.cornerHandleSize)
+                }
             }
-        }
-        .frame(width: Self.cornerGrip, height: Self.cornerGrip)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
-        .contentShape(Rectangle())
-        .gesture(dragGesture(handle, panel: panel, bounds: bounds))
-        .onHover { inside in setHover(inside, panel: panel, handle: handle) }
-        .pointerStyleResize(handle)
+            .contentShape(Rectangle())
+            .gesture(dragGesture(handle, panel: panel, bounds: bounds))
+            .onHover { inside in setHover(inside, panel: panel, handle: handle) }
+            .pointerStyleResize(handle)
+            // Position only.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
     }
 
     private func setHover(_ inside: Bool, panel: DashboardPanel, handle: PanelHandle) {
@@ -278,13 +307,29 @@ internal struct DashboardCanvasView: View {
                     layout.bringToFront(panel.id)
                 }
                 guard let start = activeDrag?.startFrame else { return }
-                let newFrame = PanelResizeMath.apply(
+                let others = layout.panels.filter { $0.id != panel.id }.map(\.frame)
+                let candidate = PanelResizeMath.apply(
                     handle: handle,
                     startFrame: start,
                     translation: value.translation,
                     bounds: bounds
                 )
-                layout.setFrame(newFrame, for: panel.id)
+                // Snap edges flush to walls/neighbours so panels can sit edge-to-
+                // edge, then resolve overlap (slide a move along a neighbour, stop
+                // a resize at its edge) so the snap never creates an overlap.
+                let snapped = PanelResizeMath.snap(
+                    frame: candidate,
+                    handle: handle,
+                    others: others,
+                    bounds: bounds
+                )
+                let resolved = PanelResizeMath.resolveOverlap(
+                    candidate: snapped,
+                    startFrame: start,
+                    handle: handle,
+                    others: others
+                )
+                layout.setFrame(resolved, for: panel.id)
             }
             .onEnded { _ in
                 activeDrag = nil

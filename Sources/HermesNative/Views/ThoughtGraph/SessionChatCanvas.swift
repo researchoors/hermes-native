@@ -272,13 +272,14 @@ internal struct SessionChatCanvas: View {
             width: min(360, max(DashboardPanel.minSize.width, canvasBounds.width * 0.4)),
             height: min(300, max(DashboardPanel.minSize.height, canvasBounds.height * 0.5))
         )
-        let offset = CGFloat(layout.panels.count % 5) * 24
-        let origin = CGPoint(
-            x: max(0, (canvasBounds.width - size.width) / 2 + offset),
-            y: max(0, (canvasBounds.height - size.height) / 2 + offset)
+        // Drop it into the first vacant slot so it doesn't land on top of an
+        // existing panel (the no-overlap rule applies to new panels too).
+        let frame = PanelResizeMath.vacantSlot(
+            size: size,
+            others: layout.panels.map(\.frame),
+            bounds: canvasBounds
         )
-        let panel = DashboardPanel(kind: descriptor.kind, frame: CGRect(origin: origin, size: size))
-            .clamped(to: canvasBounds)
+        let panel = DashboardPanel(kind: descriptor.kind, frame: frame).clamped(to: canvasBounds)
         layout.panels.append(panel)
         layout.store(key: DashboardLayout.chatCanvasKey)
     }

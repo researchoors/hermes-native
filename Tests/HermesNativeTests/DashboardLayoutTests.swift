@@ -99,6 +99,56 @@ internal struct DashboardLayoutTests {
         #expect(decoded.panels.first?.kind.rawValue == "custom.myPlugin")
     }
 
+    // MARK: - Reflow on resize
+
+    @Test("Reflow scales a full layout to fill larger bounds (no dead space)")
+    internal func reflowGrowsToFill() {
+        // A panel filling the whole old canvas must fill the whole new one.
+        let old = CGSize(width: 800, height: 600)
+        let new = CGSize(width: 1600, height: 900)
+        let layout = DashboardLayout(panels: [
+            DashboardPanel(kind: .conversation, frame: CGRect(x: 0, y: 0, width: 800, height: 600))
+        ])
+        let reflowed = layout.reflowed(from: old, to: new)
+        let f = reflowed.panels[0].frame
+        #expect(f.width == 1600)
+        #expect(f.height == 900)
+    }
+
+    @Test("Reflow preserves proportional position")
+    internal func reflowPreservesProportion() {
+        let old = CGSize(width: 1000, height: 1000)
+        let new = CGSize(width: 2000, height: 2000)
+        let layout = DashboardLayout(panels: [
+            DashboardPanel(kind: .files, frame: CGRect(x: 100, y: 200, width: 300, height: 400))
+        ])
+        let f = layout.reflowed(from: old, to: new).panels[0].frame
+        #expect(f.minX == 200)
+        #expect(f.minY == 400)
+        #expect(f.width == 600)
+        #expect(f.height == 800)
+    }
+
+    @Test("Reflow is a no-op when the size is unchanged")
+    internal func reflowUnchangedIsNoOp() {
+        let size = CGSize(width: 1000, height: 800)
+        let layout = DashboardLayout(panels: [
+            DashboardPanel(kind: .skills, frame: CGRect(x: 10, y: 20, width: 300, height: 200))
+        ])
+        #expect(layout.reflowed(from: size, to: size) == layout)
+    }
+
+    @Test("Reflow from a degenerate old size just clamps")
+    internal func reflowDegenerateOldSize() {
+        let layout = DashboardLayout(panels: [
+            DashboardPanel(kind: .thinking, frame: CGRect(x: 0, y: 0, width: 5000, height: 5000))
+        ])
+        // old size zero → can't scale; fall back to clamp into new bounds.
+        let reflowed = layout.reflowed(from: .zero, to: CGSize(width: 800, height: 600))
+        #expect(reflowed.panels[0].frame.width <= 800)
+        #expect(reflowed.panels[0].frame.height <= 600)
+    }
+
     // MARK: - Seeded default
 
     @Test("Seeded default tiles the built-in lenses inside the canvas")

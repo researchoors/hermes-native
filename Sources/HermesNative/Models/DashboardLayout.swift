@@ -44,13 +44,40 @@ internal struct DashboardLayout: Codable, Equatable {
         return DashboardLayout(panels: panels.map { $0.clamped(to: bounds) })
     }
 
+    /// Scale every panel's frame proportionally when the canvas changes size, so
+    /// a layout that filled the old bounds still fills the new ones (going
+    /// fullscreen grows the panels instead of leaving dead space; shrinking packs
+    /// them back). Origins and sizes scale by the per-axis ratio, then clamp.
+    /// No-op when either size is degenerate or unchanged.
+    internal func reflowed(from old: CGSize, to new: CGSize) -> DashboardLayout {
+        guard old.width > 0, old.height > 0, new.width > 0, new.height > 0 else {
+            return clamped(to: new)
+        }
+        guard old != new else { return self }
+        let sx = new.width / old.width
+        let sy = new.height / old.height
+        let scaled = panels.map { panel -> DashboardPanel in
+            let f = panel.frame
+            let reframed = CGRect(
+                x: f.minX * sx, y: f.minY * sy,
+                width: f.width * sx, height: f.height * sy
+            )
+            return DashboardPanel(id: panel.id, kind: panel.kind, frame: reframed)
+        }
+        return DashboardLayout(panels: scaled).clamped(to: new)
+    }
+
     // MARK: Persistence
 
-    /// The session-graph dashboard's layout (past-turn lenses).
-    internal static let dashboardKey = "thoughtDashboardLayout.v1"
+    /// The session-graph dashboard's layout (past-turn lenses). v2: v1 layouts
+    /// could be saved with overlapping panels by the pre-fix drag bug (every drag
+    /// was silently a bottom-right resize); bumping the key discards those so the
+    /// clean tiling re-seeds.
+    internal static let dashboardKey = "thoughtDashboardLayout.v2"
     /// The live chat canvas's layout (conversation panel + live lenses). Kept
-    /// separate so arranging one surface never disturbs the other.
-    internal static let chatCanvasKey = "sessionChatCanvasLayout.v1"
+    /// separate so arranging one surface never disturbs the other. v2 for the
+    /// same reason as `dashboardKey` — drop stale overlapping arrangements.
+    internal static let chatCanvasKey = "sessionChatCanvasLayout.v2"
 
     /// Load the saved layout for `key`, or `nil` if the user has never arranged
     /// one (the caller then seeds a sensible default). Corrupt JSON is logged and

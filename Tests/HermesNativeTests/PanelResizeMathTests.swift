@@ -117,4 +117,155 @@ internal struct PanelResizeMathTests {
         let b = PanelResizeMath.apply(handle: .bottomTrailing, startFrame: start, translation: t, bounds: bounds)
         #expect(a == b)
     }
+
+    // MARK: - No-overlap resolution
+
+    @Test("A move into clear space is unchanged")
+    internal func moveIntoClearSpaceUnchanged() {
+        let candidate = CGRect(x: 200, y: 200, width: 400, height: 300)
+        let other = CGRect(x: 700, y: 0, width: 200, height: 200)
+        let resolved = PanelResizeMath.resolveOverlap(
+            candidate: candidate, startFrame: start, handle: .move, others: [other]
+        )
+        #expect(resolved == candidate)
+    }
+
+    @Test("A move that would overlap slides along the obstacle on the free axis")
+    internal func moveSlidesAlongObstacle() {
+        // start at (100,100,400x300); an obstacle sits directly to the right.
+        let obstacle = CGRect(x: 520, y: 100, width: 200, height: 300)
+        // Try to move right+down into it. Horizontal component collides, but the
+        // vertical-only move is clear, so it should take the vertical slide.
+        let candidate = CGRect(x: 200, y: 250, width: 400, height: 300)
+        let resolved = PanelResizeMath.resolveOverlap(
+            candidate: candidate, startFrame: start, handle: .move, others: [obstacle]
+        )
+        #expect(resolved.minX == start.minX)   // horizontal blocked
+        #expect(resolved.minY == 250)          // vertical slid through
+    }
+
+    @Test("A move fully boxed in stays put")
+    internal func moveBoxedInStaysPut() {
+        // start x:[100,500] y:[100,400]. Two obstacles that don't touch start but
+        // block a down-right move on BOTH axes: one to the right (blocks the
+        // horizontal-only attempt), one below (blocks the vertical-only attempt).
+        let rightWall = CGRect(x: 510, y: 100, width: 140, height: 300)   // clears start (510 > 500)
+        let bottomWall = CGRect(x: 100, y: 410, width: 400, height: 140)  // clears start (410 > 400)
+        let candidate = CGRect(x: 250, y: 250, width: 400, height: 300)   // moved down-right into both
+        let resolved = PanelResizeMath.resolveOverlap(
+            candidate: candidate, startFrame: start, handle: .move, others: [rightWall, bottomWall]
+        )
+        #expect(resolved == start)
+    }
+
+    @Test("A resize that would overlap is rejected to the start frame")
+    internal func resizeRejectedOnOverlap() {
+        let obstacle = CGRect(x: 520, y: 100, width: 200, height: 300)
+        // Grow the trailing edge into the obstacle.
+        let candidate = CGRect(x: 100, y: 100, width: 600, height: 300)
+        let resolved = PanelResizeMath.resolveOverlap(
+            candidate: candidate, startFrame: start, handle: .trailing, others: [obstacle]
+        )
+        #expect(resolved == start)
+    }
+
+    @Test("Flush (edge-sharing) panels are not treated as overlapping")
+    internal func flushPanelsAllowed() {
+        // Obstacle's left edge is exactly the candidate's right edge.
+        let obstacle = CGRect(x: 500, y: 100, width: 200, height: 300)
+        let candidate = CGRect(x: 100, y: 100, width: 400, height: 300)  // maxX == 500
+        let resolved = PanelResizeMath.resolveOverlap(
+            candidate: candidate, startFrame: start, handle: .trailing, others: [obstacle]
+        )
+        #expect(resolved == candidate)
+    }
+
+    @Test("An already-overlapping neighbour never blocks the drag")
+    internal func alreadyOverlappingIsRecoverable() {
+        // start already intersects this obstacle (a stale saved layout). It must
+        // not freeze the panel — the user has to be able to drag apart.
+        let obstacle = CGRect(x: 120, y: 120, width: 400, height: 300)
+        let candidate = PanelResizeMath.apply(
+            handle: .move, startFrame: start, translation: CGSize(width: 300, height: 0), bounds: bounds
+        )
+        let resolved = PanelResizeMath.resolveOverlap(
+            candidate: candidate, startFrame: start, handle: .move, others: [obstacle]
+        )
+        #expect(resolved == candidate)  // moved freely despite starting overlapped
+    }
+
+    // MARK: - Vacant slot for newly-added panels
+
+    @Test("Vacant slot returns the top-left when the canvas is empty")
+    internal func vacantSlotEmptyCanvas() {
+        let slot = PanelResizeMath.vacantSlot(
+            size: CGSize(width: 300, height: 200), others: [], bounds: bounds
+        )
+        #expect(slot.origin == .zero)
+    }
+
+    @Test("Vacant slot avoids an occupied top-left corner")
+    internal func vacantSlotAvoidsOccupied() {
+        let occupied = CGRect(x: 0, y: 0, width: 300, height: 200)
+        let slot = PanelResizeMath.vacantSlot(
+            size: CGSize(width: 300, height: 200), others: [occupied], bounds: bounds
+        )
+        #expect(!slot.intersects(occupied))
+    }
+
+    @Test("Vacant slot falls back to the top-left when the canvas is full")
+    internal func vacantSlotFullCanvasFallback() {
+        let wall = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height)
+        let slot = PanelResizeMath.vacantSlot(
+            size: CGSize(width: 300, height: 200), others: [wall], bounds: bounds
+        )
+        #expect(slot.origin == .zero)
+    }
+
+    // MARK: - Snapping
+
+    @Test("A move within threshold of the left wall snaps flush to it")
+    internal func moveSnapsToLeftWall() {
+        // minX = 5 is within 8px of the wall at 0.
+        let frame = CGRect(x: 5, y: 200, width: 400, height: 300)
+        let snapped = PanelResizeMath.snap(frame: frame, handle: .move, others: [], bounds: bounds)
+        #expect(snapped.minX == 0)
+        #expect(snapped.size == frame.size)  // size preserved on a move-snap
+    }
+
+    @Test("A move snaps its trailing edge flush to a neighbour's leading edge")
+    internal func moveSnapsToNeighbourEdge() {
+        // Neighbour's left edge at x=510; our right edge at 506 is 4px away.
+        let neighbour = CGRect(x: 510, y: 200, width: 200, height: 300)
+        let frame = CGRect(x: 106, y: 200, width: 400, height: 300)  // maxX = 506
+        let snapped = PanelResizeMath.snap(frame: frame, handle: .move, others: [neighbour], bounds: bounds)
+        #expect(snapped.maxX == 510)   // now flush against the neighbour
+        #expect(snapped.width == 400)  // size unchanged
+    }
+
+    @Test("A move beyond the threshold is left untouched")
+    internal func moveNoSnapBeyondThreshold() {
+        let frame = CGRect(x: 40, y: 200, width: 400, height: 300)  // 40px from wall
+        let snapped = PanelResizeMath.snap(frame: frame, handle: .move, others: [], bounds: bounds)
+        #expect(snapped == frame)
+    }
+
+    @Test("A trailing resize snaps the right edge onto a neighbour")
+    internal func trailingResizeSnapsToNeighbour() {
+        let neighbour = CGRect(x: 600, y: 100, width: 200, height: 300)
+        // Right edge at 596 is 4px shy of the neighbour's left edge at 600.
+        let frame = CGRect(x: 100, y: 100, width: 496, height: 300)  // maxX = 596
+        let snapped = PanelResizeMath.snap(frame: frame, handle: .trailing, others: [neighbour], bounds: bounds)
+        #expect(snapped.maxX == 600)      // dragged edge latched onto the neighbour
+        #expect(snapped.minX == 100)      // anchored edge unmoved
+    }
+
+    @Test("A resize snap on the trailing edge leaves the leading edge fixed")
+    internal func resizeSnapKeepsAnchor() {
+        // Snap to the right wall; left edge must not move.
+        let frame = CGRect(x: 100, y: 100, width: 896, height: 300)  // maxX = 996, wall at 1000
+        let snapped = PanelResizeMath.snap(frame: frame, handle: .trailing, others: [], bounds: bounds)
+        #expect(snapped.maxX == bounds.width)
+        #expect(snapped.minX == 100)
+    }
 }

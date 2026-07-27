@@ -303,18 +303,17 @@ internal struct SessionThoughtGraphView: View {
         layout = loaded.clamped(to: bounds)
     }
 
-    /// Drop a new panel into the middle of the canvas at a comfortable size.
+    /// Drop a new panel into the first vacant slot so it doesn't overlap an
+    /// existing one (the no-overlap rule applies to new panels too).
     private func addPanel(_ descriptor: PanelDescriptor) {
         let size = CGSize(width: min(360, max(DashboardPanel.minSize.width, canvasBounds.width * 0.4)),
                           height: min(300, max(DashboardPanel.minSize.height, canvasBounds.height * 0.5)))
-        // Cascade new panels slightly so they don't stack exactly.
-        let offset = CGFloat(layout.panels.count % 5) * 24
-        let origin = CGPoint(
-            x: max(0, (canvasBounds.width - size.width) / 2 + offset),
-            y: max(0, (canvasBounds.height - size.height) / 2 + offset)
+        let frame = PanelResizeMath.vacantSlot(
+            size: size,
+            others: layout.panels.map(\.frame),
+            bounds: canvasBounds
         )
-        var panel = DashboardPanel(kind: descriptor.kind, frame: CGRect(origin: origin, size: size))
-        panel = panel.clamped(to: canvasBounds)
+        let panel = DashboardPanel(kind: descriptor.kind, frame: frame).clamped(to: canvasBounds)
         layout.panels.append(panel)
         layout.store()
     }
