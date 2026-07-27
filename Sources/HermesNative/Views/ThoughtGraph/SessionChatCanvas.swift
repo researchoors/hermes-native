@@ -51,6 +51,12 @@ internal struct SessionChatCanvas: View {
     @State private var didLoadLayout = false
     @State private var showAddPalette = false
     @State private var canvasBounds: CGSize = .zero
+    /// Lenses docked INSIDE the conversation panel (attached beneath the
+    /// transcript). These kinds are removed from the canvas tiles — a docked
+    /// lens is part of the conversation, not an external floating panel.
+    @State private var dockedKinds: [PanelKind] = []
+    /// Height of the docked section inside the conversation panel.
+    @State private var dockedSectionHeight: CGFloat = 220
     /// Edit vs. use. Starts in **use** mode: the canvas is immediately usable
     /// (scroll the chat, read the lenses) and only becomes rearrangeable when the
     /// user taps Edit. This is the "go into edit mode, make changes, save, then
@@ -196,6 +202,11 @@ internal struct SessionChatCanvas: View {
     /// context.
     private func panelContent(_ panel: DashboardPanel) -> AnyView {
         if panel.kind == .conversation {
+            let docked = dockedKinds.map { kind -> (kind: PanelKind, content: AnyView) in
+                let ctx = panelContext
+                let view = registry.content(for: kind, context: ctx)
+                return (kind, view)
+            }
             return AnyView(
                 ConversationPanel(
                     chatViewModel: chatViewModel,
@@ -208,10 +219,15 @@ internal struct SessionChatCanvas: View {
                     engine: engine,
                     selection: $selectedNodeID,
                     // Each turn's inline rail shows the registry's inline lenses
-                    // MINUS any already peeled onto the canvas — peel a lens and
-                    // it leaves the rail for its dedicated panel (no duplication).
-                    inlineLenses: registry.inlineLenses(peeled: layout.panels.map(\.kind)),
-                    onPeel: peelLens
+                    // MINUS any already peeled onto the canvas or docked beneath —
+                    // a docked/peeled lens is never shown twice.
+                    inlineLenses: registry.inlineLenses(
+                        peeled: layout.panels.map(\.kind) + dockedKinds
+                    ),
+                    onPeel: peelLens,
+                    dockedViews: docked,
+                    onDockedDetach: detachFromDock,
+                    dockedHeight: $dockedSectionHeight
                 )
             )
         }
@@ -497,15 +513,20 @@ internal struct SessionChatCanvas: View {
     }
 
     private var addPalette: some View {
-        let present = layout.panels.map(\.kind)
-        let options = registry.addableDescriptors(present: present)
+        let presentOnCanvas = layout.panels.map(\.kind)
+        let options = registry.addableDescriptors(present: presentOnCanvas)
+        // Dockable: non-singleton lenses from the standard set that aren't
+        // already docked or a conversation/artifacts/sessionGraph panel
+        // (those are session-global and must live on the canvas).
+        let nonDockable: Set<PanelKind> = [.conversation, .artifacts, .sessionGraph]
+        let dockOptions = options.filter { !nonDockable.contains($0.kind) && !dockedKinds.contains($0.kind) }
         return VStack(alignment: .leading, spacing: 2) {
-            Text("Add a panel")
+            Text("Add to canvas")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.secondary)
                 .padding(.bottom, 4)
-            if options.isEmpty {
-                Text("Every panel is already on the canvas.")
+            if options.isEmpty && dockOptions.isEmpty {
+                Text("Every panel is already visible.")
                     .font(.caption)
                     .foregroundStyle(Theme.tertiary)
             } else {
@@ -530,9 +551,42 @@ internal struct SessionChatCanvas: View {
                     .buttonStyle(.plain)
                 }
             }
+            // ── Dock inside conversation ──
+            // The conversation panel is the only one that hosts nested panels,
+            // so docking is a separate section — visually distinct from "add to canvas".
+            if !dockOptions.isEmpty {
+                Divider().padding(.vertical, 4)
+                Text("Dock inside conversation")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.secondary)
+                    .padding(.bottom, 2)
+                ForEach(dockOptions) { descriptor in
+                    Button {
+                        dockLens(descriptor.kind)
+                        showAddPalette = false
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: descriptor.icon)
+                                .frame(width: 16)
+                                .foregroundStyle(Theme.tertiary)
+                            Text(descriptor.title)
+                                .foregroundStyle(Theme.primary)
+                            Image(systemName: "arrow.down.to.line")
+                                .font(.system(size: 9))
+                                .foregroundStyle(Theme.tertiary)
+                            Spacer()
+                        }
+                        .font(.system(size: 12))
+                        .contentShape(Rectangle())
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
         .padding(12)
-        .frame(width: 200)
+        .frame(width: 220)
     }
 
     private var composer: some View {
@@ -607,6 +661,25 @@ internal struct SessionChatCanvas: View {
             } else {
                 addPanel(kind: kind)
             }
+        }
+    }
+
+    /// Dock a lens INSIDE the conversation panel (attached beneath the transcript)
+    /// rather than as an external canvas tile. Removes any existing canvas tile for
+    /// that kind so it doesn't exist in both places.
+    internal func dockLens(_ kind: PanelKind) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            layout.remove(kind)
+            if !dockedKinds.contains(kind) { dockedKinds.append(kind) }
+            layout.store(key: DashboardLayout.chatCanvasKey)
+        }
+    }
+
+    /// Detach a docked lens, promoting it back onto the canvas as a regular tile.
+    private func detachFromDock(_ kind: PanelKind) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            dockedKinds.removeAll { $0 == kind }
+            addPanel(kind: kind)
         }
     }
 

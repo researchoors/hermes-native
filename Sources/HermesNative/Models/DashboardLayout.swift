@@ -31,6 +31,12 @@ internal struct DashboardLayout: Codable, Equatable {
         panels.removeAll { $0.id == id }
     }
 
+    /// Remove all panels of a given kind (e.g. when docking a lens inside the
+    /// conversation panel — the canvas tile is removed and replaced by the dock).
+    internal mutating func remove(_ kind: PanelKind) {
+        panels.removeAll { $0.kind == kind }
+    }
+
     /// Replace a panel's frame in place (after a drag or resize), preserving order.
     internal mutating func setFrame(_ frame: CGRect, for id: UUID) {
         guard let idx = panels.firstIndex(where: { $0.id == id }) else { return }

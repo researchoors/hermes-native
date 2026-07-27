@@ -45,6 +45,18 @@ internal struct ConversationPanel: View {
     /// canvas to peel onto (the rail is then read-only).
     internal var onPeel: ((PanelKind) -> Void)?
 
+    // MARK: - Docked panels (attached INSIDE the conversation, below the transcript)
+
+    /// Lenses docked inside this panel — rendered as a persistent section BELOW
+    /// the transcript, resizable via a drag divider. Unlike canvas tiles they
+    /// travel with the conversation panel and are never external floating views.
+    /// The conversation is the ONLY panel that hosts a docked section.
+    internal var dockedViews: [(kind: PanelKind, content: AnyView)] = []
+    /// Remove a docked lens. Nil when there's nowhere to send the action (read-only).
+    internal var onDockedDetach: ((PanelKind) -> Void)?
+    /// Height of the docked section (controlled by the parent so it survives re-renders).
+    internal var dockedHeight: Binding<CGFloat>?
+
     /// Coalesce token-by-token auto-scroll: bucket the streaming tail so a full
     /// scroll pass fires per ~256 chars, not per delta (mirrors ChatView).
     private var streamTailKey: String {
@@ -93,36 +105,105 @@ internal struct ConversationPanel: View {
     }
 
     internal var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    let msgs = visibleMessages
-                    ForEach(msgs) { message in
-                        VStack(alignment: .leading, spacing: 4) {
-                            let showTimestamp = ChatView.isLastMessageInGroup(message: message, msgs: msgs)
-                            let prepared = ChatView.prepareBubbleMessage(message, showTimestamp: showTimestamp)
-                            skinProvider.messageBubble(message: prepared, persona: persona)
-                            // The turn's inline lens rail, right under its reply:
-                            // live for the streaming turn, replayed snapshot for a
-                            // settled one. Bubbles that don't close a turn (user
-                            // prompts, mid-turn parts) render no rail.
-                            railUnder(message)
+        VStack(spacing: 0) {
+            // ── The transcript (scroll region) ──
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        let msgs = visibleMessages
+                        ForEach(msgs) { message in
+                            VStack(alignment: .leading, spacing: 4) {
+                                let showTimestamp = ChatView.isLastMessageInGroup(message: message, msgs: msgs)
+                                let prepared = ChatView.prepareBubbleMessage(message, showTimestamp: showTimestamp)
+                                skinProvider.messageBubble(message: prepared, persona: persona)
+                                // The turn's inline lens rail, right under its reply.
+                                railUnder(message)
+                            }
+                            .id(message.id)
                         }
-                        .id(message.id)
+                        // Bottom anchor for auto-scroll.
+                        Color.clear.frame(height: 1).id(Self.bottomAnchor)
                     }
-
-                    // Bottom anchor for auto-scroll.
-                    Color.clear.frame(height: 1).id(Self.bottomAnchor)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.background)
+                .onChange(of: streamTailKey) { _, _ in if showsLiveTail { scrollToBottom(proxy) } }
+                .onChange(of: chatViewModel.messages.count) { _, _ in if showsLiveTail { scrollToBottom(proxy) } }
+                .onChange(of: focusedTurnID) { _, _ in scrollToTop(proxy) }
+                .onAppear { if showsLiveTail { scrollToBottom(proxy, animated: false) } }
             }
+
+            // ── Docked panels (attached beneath, part of this view) ──
+            // These are lenses the user has chosen to dock INSIDE the
+            // conversation rather than as external canvas tiles. They travel
+            // with the panel and are the ONLY panels allowed to nest here.
+            if !dockedViews.isEmpty, let heightBinding = dockedHeight {
+                dockedSection(heightBinding)
+            }
+        }
+    }
+
+    /// The docked-panel section: a drag handle (divider) the user pulls to resize,
+    /// then the stacked lens views. Each lens has a detach button (× or ↗) that
+    /// calls `onDockedDetach` to promote it back to a canvas tile.
+    @ViewBuilder
+    private func dockedSection(_ heightBinding: Binding<CGFloat>) -> some View {
+        VStack(spacing: 0) {
+            // Drag handle
+            Rectangle()
+                .fill(Theme.border)
+                .frame(height: 1)
+            Color.clear
+                .frame(height: 10)
+                .contentShape(Rectangle())
+                .overlay(
+                    Capsule()
+                        .fill(Theme.tertiary.opacity(0.45))
+                        .frame(width: 36, height: 4)
+                )
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            let newH = max(80, heightBinding.wrappedValue - value.translation.height)
+                            heightBinding.wrappedValue = newH
+                        }
+                )
+                .pointerStyleDockedResize()
+
+            // The docked lenses, stacked and clipped to the docked height
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(dockedViews, id: \.kind) { entry in
+                        VStack(spacing: 0) {
+                            HStack(spacing: 6) {
+                                Text(entry.kind.rawValue.capitalized)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(Theme.secondary)
+                                Spacer()
+                                if let onDockedDetach {
+                                    Button { onDockedDetach(entry.kind) } label: {
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(Theme.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Detach to canvas")
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Theme.surface.opacity(0.6))
+
+                            entry.content
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+            }
+            .frame(height: heightBinding.wrappedValue)
             .background(Theme.background)
-            .onChange(of: streamTailKey) { _, _ in if showsLiveTail { scrollToBottom(proxy) } }
-            .onChange(of: chatViewModel.messages.count) { _, _ in if showsLiveTail { scrollToBottom(proxy) } }
-            .onChange(of: focusedTurnID) { _, _ in scrollToTop(proxy) }
-            .onAppear { if showsLiveTail { scrollToBottom(proxy, animated: false) } }
         }
     }
 
@@ -187,5 +268,20 @@ internal struct ConversationPanel: View {
     private func scrollToTop(_ proxy: ScrollViewProxy) {
         guard !showsLiveTail, let firstID = visibleMessages.first?.id else { return }
         withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(firstID, anchor: .top) }
+    }
+}
+
+// MARK: - Cursor (macOS only)
+
+private extension View {
+    @ViewBuilder
+    func pointerStyleDockedResize() -> some View {
+        #if os(macOS)
+        self.onHover { inside in
+            if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() }
+        }
+        #else
+        self
+        #endif
     }
 }
