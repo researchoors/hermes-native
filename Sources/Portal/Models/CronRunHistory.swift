@@ -11,6 +11,8 @@ struct CronRunRecord: Identifiable, Codable {
     var status: String
     var duration: TimeInterval?
     var errorMessage: String?
+    /// Session ID spawned by this run — used to jump to the session from the UI.
+    var sessionID: String?
 
     var durationLabel: String {
         guard let d = duration else { return "—" }
@@ -77,7 +79,8 @@ final class CronRunHistoryStore: ObservableObject {
                         firedAt: lastRun,
                         status: job.lastStatus ?? "unknown",
                         duration: nil,
-                        errorMessage: job.lastError
+                        errorMessage: job.lastError,
+                        sessionID: job.lastSessionID
                     ))
                     trim(jobID: job.id)
                     didChange = true
@@ -95,7 +98,8 @@ final class CronRunHistoryStore: ObservableObject {
                         firedAt: lastRun,
                         status: job.lastStatus ?? "unknown",
                         duration: nil,
-                        errorMessage: job.lastError
+                        errorMessage: job.lastError,
+                        sessionID: job.lastSessionID
                     )
                     records.append(record)
                     trim(jobID: job.id)
@@ -126,7 +130,8 @@ final class CronRunHistoryStore: ObservableObject {
                     firedAt: lastRun,
                     status: job.lastStatus ?? "unknown",
                     duration: nil,
-                    errorMessage: job.lastError
+                    errorMessage: job.lastError,
+                    sessionID: job.lastSessionID
                 )
                 records.append(record)
                 trim(jobID: job.id)

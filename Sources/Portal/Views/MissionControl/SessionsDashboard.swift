@@ -585,13 +585,15 @@ extension Session {
     }
 
     internal var displaySource: String {
-        if isOwned { return "Native" }
+        if isCron { return "Cron" }
         if let source, !source.isEmpty { return source.capitalized }
+        if isOwned { return "Native" }
         return "Unknown"
     }
 
     internal var isCron: Bool {
-        source?.lowercased() == "cron"
+        guard let src = source?.lowercased() else { return false }
+        return src == "cron" || src == "cron_job" || src == "scheduled" || src == "scheduler"
     }
 }
 

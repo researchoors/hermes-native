@@ -986,11 +986,23 @@ internal struct ContentView: View {
             }
 
             if showCronDashboard {
+                #if os(macOS)
+                CronDashboardCanvas(onOpenSession: { sessionID in
+                    showCronDashboard = false
+                    sessionList.selectSession(id: sessionID)
+                })
+                .environmentObject(gatewayClientWrapper)
+                .environmentObject(sessionList)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.background)
+                .transition(.opacity)
+                #else
                 CronDashboardView()
                     .environmentObject(gatewayClientWrapper)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.background)
                     .transition(.opacity)
+                #endif
             }
 
             if showSkills {

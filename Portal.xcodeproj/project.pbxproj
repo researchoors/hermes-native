@@ -98,6 +98,7 @@
 		323D2A3AAF1A1E2442F61A60 /* FeedArticle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CC149A8A95FD687281EB28C /* FeedArticle.swift */; };
 		32A974734A9A21B49D1C16B0 /* ChatSkin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D09F1E257892B5EC054D814 /* ChatSkin.swift */; };
 		3325874BE07AFB5DD949BE83 /* ArtifactsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFE662B6E86264722C3A7CF6 /* ArtifactsPanel.swift */; };
+		33AF662727029F87CFBADACA /* CronDashboardCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E535AE495B4D4F1F6162D35 /* CronDashboardCanvas.swift */; };
 		34A11733DEDCA3D557CB3CE4 /* WikiGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA37D2649DCF0677BDD8A2F /* WikiGraphView.swift */; };
 		34BF438537E322675EC7FD56 /* SkillModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346A28CBBF871D9A0AAF2E76 /* SkillModels.swift */; };
 		3500E229145AE9C0B36F6C00 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3772BAD993D4BE7106C8635C /* Session.swift */; };
@@ -354,6 +355,7 @@
 		B8AD89F7F2D3AF6BC5B1254F /* DarkMangaSkin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B9223A5205A066F8CB68337 /* DarkMangaSkin.swift */; };
 		B9A4F028586F5C187DFB95B9 /* QuizStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC041062826FA7BF292F346A /* QuizStore.swift */; };
 		B9DD6179B635CC042D728687 /* StreamingStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADAA6BB991E73D9F8BC0D92D /* StreamingStatusBar.swift */; };
+		BA6A404A4EC7D6C475F93ABE /* CronDashboardCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E535AE495B4D4F1F6162D35 /* CronDashboardCanvas.swift */; };
 		BAB81EF5F5F3EF4C74B5982F /* FlashcardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C1991A3E699A437ADB4554 /* FlashcardView.swift */; };
 		BAD988379FCDF8B0C5409C5E /* WikiEventsKnowledgePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A42555FC2D58C23D24FF073 /* WikiEventsKnowledgePane.swift */; };
 		BE43555C61B1DE2C2AEAB5D5 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 265AE63B73C4E92BB10C99F0 /* MLXLMCommon */; };
@@ -592,6 +594,7 @@
 		5992BF7916A67FEC7BB1AA8B /* SessionsDashboardCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsDashboardCanvas.swift; sourceTree = "<group>"; };
 		5A942B80C820875BEF8FA828 /* FlashcardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardModels.swift; sourceTree = "<group>"; };
 		5D1BFE43A1BB8C08760A8CF3 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		5E535AE495B4D4F1F6162D35 /* CronDashboardCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronDashboardCanvas.swift; sourceTree = "<group>"; };
 		5E8126EDDA205BA1777F2E5F /* SessionGraphPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionGraphPane.swift; sourceTree = "<group>"; };
 		5F8CFECC3A15ADFE69AC40A6 /* ResponseStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseStyle.swift; sourceTree = "<group>"; };
 		6100B0C1D3B3AAC7FB39E03B /* ChartSpec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartSpec.swift; sourceTree = "<group>"; };
@@ -978,6 +981,7 @@
 				646A815661E6703CCAF37660 /* CFAuthView.swift */,
 				0C74FA52D4C0E8DA1CA779AF /* ChatView.swift */,
 				E45A3C5BEC6B99EE33B623FB /* ContentView.swift */,
+				5E535AE495B4D4F1F6162D35 /* CronDashboardCanvas.swift */,
 				CC6D25F2C20792268A0BA62B /* CronDashboardView.swift */,
 				F1C6BA2AFC097BB28CF709EE /* CronListView.swift */,
 				437F051D9AE2A5A9F53C5F29 /* FeedView.swift */,
@@ -1450,6 +1454,7 @@
 				2C93F1C632EDE1C85B02CF0D /* Constants.swift in Sources */,
 				88B963EC01DBCB24E168C7CF /* ContentView.swift in Sources */,
 				7B943E979117919DDA3AF8BA /* ConversationPanel.swift in Sources */,
+				BA6A404A4EC7D6C475F93ABE /* CronDashboardCanvas.swift in Sources */,
 				7F2E9F9F7D7C8DB7D62AE64D /* CronDashboardView.swift in Sources */,
 				2AFF7759D9BB3E7489F80CA0 /* CronJob.swift in Sources */,
 				D3206BDD4BE6BDBB66428CDC /* CronListView.swift in Sources */,
@@ -1696,6 +1701,7 @@
 				2E32F1D11AF5AD14DD155BC7 /* Constants.swift in Sources */,
 				F3E31C0190A36B6FF03F933A /* ContentView.swift in Sources */,
 				2CFBCFECDB65FF0A2CE6F2D5 /* ConversationPanel.swift in Sources */,
+				33AF662727029F87CFBADACA /* CronDashboardCanvas.swift in Sources */,
 				120D1AEB808BCFB50BFE7F40 /* CronDashboardView.swift in Sources */,
 				B0B2245C689AD0B200B87ED3 /* CronJob.swift in Sources */,
 				8B9D93C92E8E8FD1FBB0FE97 /* CronListView.swift in Sources */,

@@ -15,6 +15,8 @@ struct CronJob: Identifiable, Equatable, Hashable {
     var prompt: String?
     /// The error detail from the last failed run, if the gateway reported one.
     var lastError: String?
+    /// The session ID spawned by the most recent run, if the gateway reported one.
+    var lastSessionID: String?
 
     /// True when the full prompt is identical to the preview, meaning the gateway
     /// only stores a truncated version server-side.

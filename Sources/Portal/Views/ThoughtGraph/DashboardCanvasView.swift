@@ -158,6 +158,13 @@ internal struct DashboardCanvasView: View {
                 content(panel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .clipped()
+                    // When headers are hidden, overlay a slim hover-reveal strip at the
+                    // top so the user can still collapse/expand without needing a header.
+                    .overlay(alignment: .top) {
+                        if !showsTitleBars && !isEditing {
+                            collapseStrip(panel)
+                        }
+                    }
             }
         }
         .frame(width: panel.frame.width, height: visibleHeight)
@@ -169,6 +176,18 @@ internal struct DashboardCanvasView: View {
         // through to the live content.
         .simultaneousGesture(TapGesture().onEnded {
             if isEditing { layout.bringToFront(panel.id) }
+        })
+    }
+
+    /// A thin strip that appears at the top of the content area when headers are
+    /// hidden. Hover-reveal: transparent until the pointer enters, then shows a
+    /// collapse chevron. Lets the user collapse panels without needing full headers.
+    private func collapseStrip(_ panel: DashboardPanel) -> some View {
+        CollapseStrip(onTap: {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                layout.toggleCollapsed(panel.id)
+            }
+            onLayoutCommitted()
         })
     }
 
@@ -422,6 +441,33 @@ internal struct DashboardCanvasView: View {
                 .font(.caption)
                 .foregroundStyle(Theme.tertiary)
         }
+    }
+}
+
+// MARK: - Collapse strip (shown when headers are hidden)
+
+/// A slim transparent strip at the top of a headerless panel. Invisible until
+/// hovered; then a chevron appears so the user can still collapse/expand the panel.
+private struct CollapseStrip: View {
+    internal let onTap: () -> Void
+    @State private var isHovered = false
+
+    internal var body: some View {
+        Rectangle()
+            .fill(isHovered ? Theme.surfaceHover.opacity(0.85) : Color.clear)
+            .frame(maxWidth: .infinity)
+            .frame(height: 16)
+            .overlay {
+                if isHovered {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(Theme.tertiary)
+                }
+            }
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
+            .onTapGesture { onTap() }
+            .animation(.easeInOut(duration: 0.12), value: isHovered)
     }
 }
 

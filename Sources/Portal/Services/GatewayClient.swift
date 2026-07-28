@@ -845,11 +845,20 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
                 return nil
             }()
 
+            // Gateway may send the session origin in various fields depending on version.
+            let source: String? = [
+                d["source"]?.stringValue,
+                d["trigger"]?.stringValue,
+                d["origin"]?.stringValue,
+                d["session_type"]?.stringValue,
+                d["type"]?.stringValue
+            ].compactMap { $0 }.first { !$0.isEmpty }
+
             return Session(
                 id: id,
                 title: d["title"]?.stringValue,
                 preview: d["preview"]?.stringValue,
-                source: d["source"]?.stringValue,
+                source: source,
                 messageCount: d["message_count"]?.intValue ?? 0,
                 startedAt: startedAt,
                 endedAt: endedAt,
@@ -930,6 +939,12 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
                 d["last_error_message"]?.stringValue
             ].compactMap { $0 }.first
 
+            let lastSessionID: String? = [
+                d["last_session_id"]?.stringValue,
+                d["session_id"]?.stringValue,
+                d["last_run_session_id"]?.stringValue
+            ].compactMap { $0 }.first
+
             return CronJob(
                 id: jobID,
                 name: d["name"]?.stringValue ?? jobID,
@@ -942,7 +957,8 @@ final class GatewayClient: NSObject, ObservableObject, URLSessionWebSocketDelega
                 deliver: d["deliver"]?.stringValue ?? "local",
                 promptPreview: d["prompt_preview"]?.stringValue,
                 prompt: promptValue,
-                lastError: lastError
+                lastError: lastError,
+                lastSessionID: lastSessionID
             )
         }
     }

@@ -92,6 +92,8 @@ internal struct DashboardLayout: Codable, Equatable {
     internal static let chatCanvasKey = "sessionChatCanvasLayout.v2"
     /// The sessions dashboard canvas layout (list + timeline panels).
     internal static let sessionsDashboardKey = "sessionsDashboardLayout.v4"
+    /// The cron dashboard canvas layout.
+    internal static let cronDashboardKey = "cronDashboardLayout.v2"
 
     /// Load the saved layout for `key`, or `nil` if the user has never arranged
     /// one (the caller then seeds a sensible default). Corrupt JSON is logged and
@@ -177,6 +179,43 @@ internal struct DashboardLayout: Codable, Equatable {
             DashboardPanel(kind: .sessionsSourceBreakdown,
                 frame: CGRect(x: midX, y: breakdownY, width: midW, height: breakdownH)),
             DashboardPanel(kind: .sessionsTimeline,
+                frame: CGRect(x: rightX, y: gap, width: rightW, height: h - gap * 2)),
+        ]).clamped(to: bounds)
+    }
+
+    /// First-run arrangement for the **cron dashboard canvas**:
+    ///
+    /// ```
+    /// ┌──────────────┬─────────────┬────────────┐
+    /// │              │  Summary    │            │
+    /// │   Jobs       ├─────────────┤  Timeline  │
+    /// │              │   Volume    │            │
+    /// │              ├─────────────┤            │
+    /// │              │  Breakdown  │            │
+    /// └──────────────┴─────────────┴────────────┘
+    /// ```
+    internal static func seededCronDashboard(for bounds: CGSize) -> DashboardLayout {
+        let w = max(bounds.width, DashboardPanel.minSize.width * 3 + 32)
+        let h = max(bounds.height, DashboardPanel.minSize.height * 2 + 24)
+        let gap: CGFloat = 8
+        let leftW  = max(DashboardPanel.minSize.width, w * 0.32)
+        let rightW = max(DashboardPanel.minSize.width, w * 0.33)
+        let midW   = w - leftW - rightW - gap * 4
+        let midX   = gap + leftW + gap
+        let rightX = midX + midW + gap
+        let summaryH: CGFloat = 110
+        let volH = (h - summaryH - gap * 4) * 0.55
+        let breakH = h - summaryH - volH - gap * 4
+        return DashboardLayout(panels: [
+            DashboardPanel(kind: .cronJobs,
+                frame: CGRect(x: gap, y: gap, width: leftW, height: h - gap * 2)),
+            DashboardPanel(kind: .cronSummary,
+                frame: CGRect(x: midX, y: gap, width: midW, height: summaryH)),
+            DashboardPanel(kind: .cronVolume,
+                frame: CGRect(x: midX, y: gap + summaryH + gap, width: midW, height: volH)),
+            DashboardPanel(kind: .cronBreakdown,
+                frame: CGRect(x: midX, y: gap + summaryH + gap + volH + gap, width: midW, height: breakH)),
+            DashboardPanel(kind: .cronTimeline,
                 frame: CGRect(x: rightX, y: gap, width: rightW, height: h - gap * 2)),
         ]).clamped(to: bounds)
     }

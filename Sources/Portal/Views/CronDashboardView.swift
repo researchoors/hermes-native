@@ -642,15 +642,15 @@ struct CronDashboardView: View {
 
 // MARK: - Cron Job Card
 
-private struct CronJobCard: View {
-    let job: CronJob
-    let isExpanded: Bool
-    let runRecords: [CronRunRecord]
-    let onToggle: () -> Void
-    let onPause: () -> Void
-    let onResume: () -> Void
-    let onRemove: () -> Void
-    let onUpdatePrompt: (String) -> Void
+internal struct CronJobCard: View {
+    internal let job: CronJob
+    internal let isExpanded: Bool
+    internal let runRecords: [CronRunRecord]
+    internal let onToggle: () -> Void
+    internal let onPause: () -> Void
+    internal let onResume: () -> Void
+    internal let onRemove: () -> Void
+    internal let onUpdatePrompt: (String) -> Void
 
     @State private var isEditingPrompt = false
     @State private var editedPrompt = ""
@@ -1018,9 +1018,9 @@ private struct CronJobCard: View {
     }
 }
 
-private struct LegendItem: View {
-    let color: Color
-    let label: String
+internal struct LegendItem: View {
+    internal let color: Color
+    internal let label: String
 
     var body: some View {
         HStack(spacing: 4) {

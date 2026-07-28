@@ -390,6 +390,10 @@ final class SessionListViewModel: ObservableObject {
             let pinned = pinnedIDs
             let tags = sessionTags
             let runStates = localRunStates
+            // Build a set of known cron job names for source inference below.
+            let cronJobNames: Set<String> = Set(
+                CronRunHistoryStore.shared.records.map { $0.jobName.lowercased() }
+            )
             for i in fetched.indices {
                 // Merge local title (overrides gateway title)
                 if let local = titles[fetched[i].id], !local.isEmpty {
@@ -408,6 +412,14 @@ final class SessionListViewModel: ObservableObject {
                     ?? mappedGatewayID.flatMap { runStates[$0] }
                 if let localRunState {
                     fetched[i].runState = localRunState
+                }
+                // If the gateway didn't send a source, infer "cron" from the job
+                // name registry — the gateway titles cron sessions with the job name.
+                if (fetched[i].source ?? "").isEmpty {
+                    let sessionTitle = (fetched[i].localTitle ?? fetched[i].title ?? "").lowercased()
+                    if !sessionTitle.isEmpty && cronJobNames.contains(sessionTitle) {
+                        fetched[i].source = "cron"
+                    }
                 }
             }
 

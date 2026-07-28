@@ -67,6 +67,16 @@ internal struct PanelKind: RawRepresentable, Codable, Hashable, Identifiable {
     /// Categorical breakdown of sessions by source — donut chart + legend.
     /// Host-rendered singleton on the sessions canvas.
     internal static let sessionsSourceBreakdown = PanelKind(rawValue: "sessionsSourceBreakdown")
+
+    // MARK: Cron dashboard panels
+
+    internal static let cronSummary    = PanelKind(rawValue: "cronSummary")
+    internal static let cronVolume     = PanelKind(rawValue: "cronVolume")
+    internal static let cronJobs       = PanelKind(rawValue: "cronJobs")
+    internal static let cronTimeline   = PanelKind(rawValue: "cronTimeline")
+    internal static let cronBreakdown  = PanelKind(rawValue: "cronBreakdown")
+    internal static let cronFailureLog = PanelKind(rawValue: "cronFailureLog")
+    internal static let cronNextRuns   = PanelKind(rawValue: "cronNextRuns")
 }
 
 /// One panel on the dashboard canvas: a kind (what it shows) placed at a frame
