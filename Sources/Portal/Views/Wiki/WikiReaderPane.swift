@@ -79,7 +79,7 @@ struct WikiReaderPane: View {
                 Spacer()
                 HStack {
                     Spacer()
-                    HermesProgressView(label: "Loading…")
+                    PortalProgressView(label: "Loading…")
                     Spacer()
                 }
                 Spacer()
